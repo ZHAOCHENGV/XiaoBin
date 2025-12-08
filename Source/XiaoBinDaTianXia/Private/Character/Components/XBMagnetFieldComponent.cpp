@@ -1,6 +1,9 @@
 ﻿// XBMagnetFieldComponent.cpp
 #include "Character/Components/XBMagnetFieldComponent.h"
 
+#include "Character/XBCharacterBase.h"
+#include "Soldier/XBSoldierActor.h"
+
 UXBMagnetFieldComponent::UXBMagnetFieldComponent()
 {
     // 构造函数中只设置基本属性，不做复杂操作
@@ -67,11 +70,34 @@ void UXBMagnetFieldComponent::OnSphereBeginOverlap(UPrimitiveComponent* Overlapp
         return;
     }
 
+    // 忽略自身
     if (OtherActor == GetOwner())
     {
         return;
     }
 
+    // 检查是否是可招募的士兵
+    if (AXBSoldierActor* Soldier = Cast<AXBSoldierActor>(OtherActor))
+    {
+        // 只招募中立或待机状态的士兵
+        if (Soldier->GetFaction() == EXBFaction::Neutral && 
+            Soldier->GetSoldierState() == EXBSoldierState::Idle)
+        {
+            // 获取将领
+            if (AXBCharacterBase* Leader = Cast<AXBCharacterBase>(GetOwner()))
+            {
+                // 设置士兵阵营为将领阵营
+                // 注意：需要在 AXBSoldierActor 中添加 SetFaction 方法
+                
+                // 添加士兵到将领
+                Leader->AddSoldier(Soldier);
+                
+                UE_LOG(LogTemp, Log, TEXT("Soldier recruited by leader"));
+            }
+        }
+    }
+
+    // 广播事件
     if (IsActorDetectable(OtherActor))
     {
         OnActorEnteredField.Broadcast(OtherActor);

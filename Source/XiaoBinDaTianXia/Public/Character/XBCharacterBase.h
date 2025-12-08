@@ -7,6 +7,7 @@
 #include "AbilitySystemInterface.h"
 #include "GameplayTagContainer.h"
 #include "Army/XBSoldierTypes.h"
+#include "Data/XBDataTypes.h"
 #include "XBCharacterBase.generated.h"
 
 class UXBAbilitySystemComponent;
@@ -107,12 +108,6 @@ public:
 
     // ============ 士兵管理 ============
 
-    /**
-     * @brief 获取当前携带的士兵数量
-     * * @return int32 数量
-     */
-    UFUNCTION(BlueprintCallable, Category = "XB|Army")
-    int32 GetSoldierCount() const;
 
     /**
      * @brief 招募一个士兵（逻辑层）
@@ -122,12 +117,6 @@ public:
     UFUNCTION(BlueprintCallable, Category = "XB|Army")
     void RecruitSoldier(int32 SoldierId);
 
-    /**
-     * @brief 召回所有士兵
-     * * 用于进入兵营或清除状态
-     */
-    UFUNCTION(BlueprintCallable, Category = "XB|Army")
-    void RecallAllSoldiers();
 
     /**
      * @brief 强制进入战斗状态
@@ -157,20 +146,7 @@ public:
      */
     UFUNCTION(BlueprintCallable, Category = "XB|Growth")
     void UpdateScaleFromSoldierCount();
-
-    /**
-     * @brief 响应士兵招募事件
-     * * 增加血量上限并回血，更新缩放
-     */
-    UFUNCTION(BlueprintCallable, Category = "XB|Growth")
-    void OnSoldierRecruited();
-
-    /**
-     * @brief 响应士兵死亡事件
-     * * 减小缩放，但不扣除血量
-     */
-    UFUNCTION(BlueprintCallable, Category = "XB|Growth")
-    void OnSoldierDied();
+    
 
     // ============ 隐身 ============
 
@@ -221,7 +197,7 @@ protected:
     
     /** 将领成长配置（缩放倍率、血量加成等） */
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XB|Growth", meta = (DisplayName = "成长配置"))
-    FXBLeaderGrowthConfig GrowthConfig;
+    FXBLeaderConfig GrowthConfig;
 
     
     /** 默认携带的兵种类型 */
@@ -277,4 +253,77 @@ protected:
     UFUNCTION(BlueprintNativeEvent, Category = "XB|Death")
     void OnDeath();
     virtual void OnDeath_Implementation();
+
+
+public:
+    /**
+     * @brief 获取当前士兵数量
+     * @return 士兵数量
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Army", meta = (DisplayName = "获取士兵数量"))
+    int32 GetSoldierCount() const { return OwnedSoldiers.Num(); }
+
+    /**
+     * @brief 添加士兵
+     * @param Soldier 士兵Actor
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Army", meta = (DisplayName = "添加士兵"))
+    void AddSoldier(AXBSoldierActor* Soldier);
+
+    /**
+     * @brief 移除士兵
+     * @param Soldier 士兵Actor
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Army", meta = (DisplayName = "移除士兵"))
+    void RemoveSoldier(AXBSoldierActor* Soldier);
+
+    /**
+     * @brief 获取所有士兵
+     * @return 士兵数组
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Army", meta = (DisplayName = "获取所有士兵"))
+    TArray<AXBSoldierActor*> GetAllSoldiers() const { return OwnedSoldiers; }
+
+    /**
+     * @brief 召回所有士兵
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Army", meta = (DisplayName = "召回所有士兵"))
+    void RecallAllSoldiers();
+
+    /**
+     * @brief 让所有士兵进入战斗
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Army", meta = (DisplayName = "士兵进入战斗"))
+    void SoldiersEnterCombat();
+
+    /**
+     * @brief 设置士兵逃跑状态（将领冲刺时）
+     * @param bEscaping 是否逃跑
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Army", meta = (DisplayName = "设置士兵逃跑"))
+    void SetSoldiersEscaping(bool bEscaping);
+
+    /**
+     * @brief 士兵死亡回调
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Army", meta = (DisplayName = "士兵死亡回调"))
+    void OnSoldierDied();
+
+    /**
+     * @brief 士兵招募回调（拾取士兵后）
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Army", meta = (DisplayName = "士兵招募回调"))
+    void OnSoldierRecruited();
+
+protected:
+    /** 拥有的士兵列表 */
+    UPROPERTY(BlueprintReadOnly, Category = "XB|Army", meta = (DisplayName = "士兵列表"))
+    TArray<TObjectPtr<AXBSoldierActor>> OwnedSoldiers;
+
+    /** 重新分配士兵槽位 */
+    void ReorganizeSoldierFormation();
+
+    /** 更新将领缩放和属性 */
+    void UpdateLeaderScaleAndAttributes();
+    
 };

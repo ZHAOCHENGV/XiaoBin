@@ -19,6 +19,7 @@ public class XiaoBinDaTianXia : ModuleRules
 			"GameplayStateTreeModule",
 			"UMG",
 			"Slate",
+			"Niagara",
 			
 			// GAS 相关
 			"GameplayAbilities",
@@ -39,7 +40,7 @@ public class XiaoBinDaTianXia : ModuleRules
 			
 			"Slate",
 			"SlateCore",
-			"UMG",
+			"UMG", "Niagara",
 			
 			
 		});

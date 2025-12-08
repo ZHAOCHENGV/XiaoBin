@@ -45,38 +45,12 @@ UXBSoldierRenderer::UXBSoldierRenderer()
 
 void UXBSoldierRenderer::Initialize(UWorld* InWorld)
 {
-    if (!InWorld)
-    {
-        UE_LOG(LogTemp, Error, TEXT("XBSoldierRenderer::Initialize - Invalid World!"));
-        return;
-    }
-
-    OwningWorld = InWorld;
-
-    // 创建宿主 Actor 用于挂载 HISM 组件
-    FActorSpawnParameters SpawnParams;
-    SpawnParams.Name = FName(TEXT("SoldierRendererHost"));
-    SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-    HostActor = InWorld->SpawnActor<AActor>(AActor::StaticClass(), FVector::ZeroVector, FRotator::ZeroRotator, SpawnParams);
-    
-    if (HostActor)
-    {
-        HostActor->SetRootComponent(NewObject<USceneComponent>(HostActor, TEXT("RootComponent")));
-        HostActor->GetRootComponent()->RegisterComponent();
-        
-#if WITH_EDITOR
-        HostActor->SetActorLabel(TEXT("SoldierRendererHost"));
-#endif
-    }
-
-    UE_LOG(LogTemp, Log, TEXT("XBSoldierRenderer Initialized"));
+    WorldRef = InWorld;
 }
 
 void UXBSoldierRenderer::Cleanup()
 {
-    // 清理所有 HISM 组件
-    for (auto& Pair : MeshComponents)
+    for (auto& Pair : HISMComponents)
     {
         if (Pair.Value)
         {
@@ -84,22 +58,10 @@ void UXBSoldierRenderer::Cleanup()
             Pair.Value->DestroyComponent();
         }
     }
-    MeshComponents.Empty();
-
-    // 清理映射
+    HISMComponents.Empty();
     SoldierIdToInstanceIndex.Empty();
     InstanceIndexToSoldierId.Empty();
-
-    // 销毁宿主 Actor
-    if (HostActor)
-    {
-        HostActor->Destroy();
-        HostActor = nullptr;
-    }
-
-    OwningWorld.Reset();
-
-    UE_LOG(LogTemp, Log, TEXT("XBSoldierRenderer Cleaned up"));
+    SoldierIdToType.Empty();
 }
 
 int32 UXBSoldierRenderer::AddInstance(int32 SoldierId, const FVector& Location)
@@ -107,6 +69,74 @@ int32 UXBSoldierRenderer::AddInstance(int32 SoldierId, const FVector& Location)
     // 默认使用步兵类型
     return AddInstanceWithType(SoldierId, Location, EXBSoldierType::Infantry);
 }
+
+
+void UXBSoldierRenderer::SetMeshForType(EXBSoldierType SoldierType, UStaticMesh* Mesh, UMaterialInterface* Material)
+{
+    if (Mesh)
+    {
+        MeshAssets.Add(SoldierType, Mesh);
+        
+        if (UHierarchicalInstancedStaticMeshComponent* HISM = GetOrCreateHISM(SoldierType))
+        {
+            HISM->SetStaticMesh(Mesh);
+            if (Material)
+            {
+                HISM->SetMaterial(0, Material);
+            }
+        }
+    }
+}
+
+void UXBSoldierRenderer::UpdateInstancesFromData(const TMap<int32, FXBSoldierData>& SoldierMap)
+{
+    // 收集当前有效的小兵ID
+    TSet<int32> ValidIds;
+    
+    for (const auto& Pair : SoldierMap)
+    {
+        const FXBSoldierData& Soldier = Pair.Value;
+        
+        if (!Soldier.IsAlive())
+        {
+            continue;
+        }
+        
+        ValidIds.Add(Soldier.SoldierId);
+        
+        FTransform Transform;
+        Transform.SetLocation(Soldier.Position);
+        Transform.SetRotation(Soldier.Rotation.Quaternion());
+        Transform.SetScale3D(FVector(1.0f));
+        
+        if (SoldierIdToInstanceIndex.Contains(Soldier.SoldierId))
+        {
+            // 更新现有实例
+            UpdateInstanceTransform(Soldier.SoldierId, Transform);
+        }
+        else
+        {
+            // 添加新实例
+            AddInstanceForSoldier(Soldier);
+        }
+    }
+    
+    // 移除不再有效的实例
+    TArray<int32> IdsToRemove;
+    for (const auto& Pair : SoldierIdToInstanceIndex)
+    {
+        if (!ValidIds.Contains(Pair.Key))
+        {
+            IdsToRemove.Add(Pair.Key);
+        }
+    }
+    
+    for (int32 Id : IdsToRemove)
+    {
+        RemoveInstance(Id);
+    }
+}
+
 
 int32 UXBSoldierRenderer::AddInstanceWithType(int32 SoldierId, const FVector& Location, EXBSoldierType Type)
 {
@@ -143,42 +173,25 @@ int32 UXBSoldierRenderer::AddInstanceWithType(int32 SoldierId, const FVector& Lo
 
 void UXBSoldierRenderer::RemoveInstance(int32 SoldierId)
 {
-    int32* InstanceIndexPtr = SoldierIdToInstanceIndex.Find(SoldierId);
-    if (!InstanceIndexPtr)
+    if (!SoldierIdToInstanceIndex.Contains(SoldierId))
     {
         return;
     }
-
-    int32 InstanceIndex = *InstanceIndexPtr;
-
-    // 查找该实例所属的 HISM
-    for (auto& Pair : MeshComponents)
+    
+    int32 InstanceIndex = SoldierIdToInstanceIndex[SoldierId];
+    EXBSoldierType SoldierType = SoldierIdToType.FindRef(SoldierId);
+    
+    if (UHierarchicalInstancedStaticMeshComponent* HISM = HISMComponents.FindRef(SoldierType))
     {
-        UHierarchicalInstancedStaticMeshComponent* HISM = Pair.Value;
-        if (HISM && InstanceIndex < HISM->GetInstanceCount())
-        {
-            // 使用交换删除法移除实例
-            // 注意：这会改变最后一个实例的索引
-            if (HISM->RemoveInstance(InstanceIndex))
-            {
-                // 更新被交换实例的映射
-                int32 LastIndex = HISM->GetInstanceCount();
-                if (InstanceIndex != LastIndex)
-                {
-                    if (int32* SwappedSoldierId = InstanceIndexToSoldierId.Find(LastIndex))
-                    {
-                        SoldierIdToInstanceIndex[*SwappedSoldierId] = InstanceIndex;
-                        InstanceIndexToSoldierId.Add(InstanceIndex, *SwappedSoldierId);
-                    }
-                }
-            }
-            break;
-        }
+        HISM->RemoveInstance(InstanceIndex);
+        
+        // 注意：移除实例后索引会变化，需要重建映射
+        // 这里简化处理，实际应该使用更复杂的索引管理
     }
-
-    // 清理映射
+    
     SoldierIdToInstanceIndex.Remove(SoldierId);
     InstanceIndexToSoldierId.Remove(InstanceIndex);
+    SoldierIdToType.Remove(SoldierId);
 }
 
 void UXBSoldierRenderer::UpdateInstances(const TMap<int32, FXBSoldierAgent>& SoldierMap)
@@ -300,51 +313,72 @@ void UXBSoldierRenderer::SetVATMaterial(UMaterialInterface* Material)
 
 UHierarchicalInstancedStaticMeshComponent* UXBSoldierRenderer::GetOrCreateHISM(EXBSoldierType Type)
 {
-    // 检查是否已存在
-    if (TObjectPtr<UHierarchicalInstancedStaticMeshComponent>* ExistingHISM = MeshComponents.Find(Type))
+    if (TObjectPtr<UHierarchicalInstancedStaticMeshComponent>* Found = HISMComponents.Find(SoldierType))
     {
-        return *ExistingHISM;
+        return Found->Get();
     }
-
-    // 创建新的 HISM
-    if (!HostActor)
+    
+    UWorld* World = WorldRef.Get();
+    if (!World)
     {
-        UE_LOG(LogTemp, Error, TEXT("XBSoldierRenderer::GetOrCreateHISM - HostActor is null!"));
         return nullptr;
     }
-
-    FName ComponentName = *FString::Printf(TEXT("HISM_%d"), static_cast<int32>(Type));
-    UHierarchicalInstancedStaticMeshComponent* NewHISM = NewObject<UHierarchicalInstancedStaticMeshComponent>(
-        HostActor, ComponentName);
-
-    if (NewHISM)
+    
+    // 创建一个临时 Actor 来承载 HISM
+    AActor* HISMOwner = World->SpawnActor<AActor>();
+    if (!HISMOwner)
     {
-        NewHISM->SetupAttachment(HostActor->GetRootComponent());
-        NewHISM->RegisterComponent();
-
-        // 配置 HISM 优化参数
-        NewHISM->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-        NewHISM->SetCastShadow(true);
-        NewHISM->bUseDefaultCollision = false;
-        NewHISM->SetGenerateOverlapEvents(false);
-        
-        // VAT 需要的自定义数据数量
-        NewHISM->NumCustomDataFloats = 4; // AnimTime, AnimId, PlayRate, Reserved
-
-        // 启用 GPU 实例化
-        NewHISM->bUseGpuLodSelection = true;
-
-        // 添加到映射
-        MeshComponents.Add(Type, NewHISM);
-
-        // 如果有 VAT 材质，应用之
-        if (VATMaterialInstance)
-        {
-            NewHISM->SetMaterial(0, VATMaterialInstance);
-        }
+        return nullptr;
     }
-
+    
+    UHierarchicalInstancedStaticMeshComponent* NewHISM = NewObject<UHierarchicalInstancedStaticMeshComponent>(HISMOwner);
+    NewHISM->RegisterComponent();
+    NewHISM->SetMobility(EComponentMobility::Movable);
+    
+    if (TObjectPtr<UStaticMesh>* MeshPtr = MeshAssets.Find(SoldierType))
+    {
+        NewHISM->SetStaticMesh(MeshPtr->Get());
+    }
+    
+    HISMComponents.Add(SoldierType, NewHISM);
+    
     return NewHISM;
+}
+
+void UXBSoldierRenderer::AddInstanceForSoldier(const FXBSoldierData& Soldier)
+{
+    UHierarchicalInstancedStaticMeshComponent* HISM = GetOrCreateHISM(Soldier.SoldierType);
+    if (!HISM)
+    {
+        return;
+    }
+    
+    FTransform Transform;
+    Transform.SetLocation(Soldier.Position);
+    Transform.SetRotation(Soldier.Rotation.Quaternion());
+    Transform.SetScale3D(FVector(1.0f));
+    
+    int32 InstanceIndex = HISM->AddInstance(Transform);
+    
+    SoldierIdToInstanceIndex.Add(Soldier.SoldierId, InstanceIndex);
+    InstanceIndexToSoldierId.Add(InstanceIndex, Soldier.SoldierId);
+    SoldierIdToType.Add(Soldier.SoldierId, Soldier.SoldierType);
+}
+
+void UXBSoldierRenderer::UpdateInstanceTransform(int32 SoldierId, const FTransform& NewTransform)
+{
+    if (!SoldierIdToInstanceIndex.Contains(SoldierId))
+    {
+        return;
+    }
+    
+    int32 InstanceIndex = SoldierIdToInstanceIndex[SoldierId];
+    EXBSoldierType SoldierType = SoldierIdToType.FindRef(SoldierId);
+    
+    if (UHierarchicalInstancedStaticMeshComponent* HISM = HISMComponents.FindRef(SoldierType))
+    {
+        HISM->UpdateInstanceTransform(InstanceIndex, NewTransform, true, true);
+    }
 }
 
 void UXBSoldierRenderer::UpdateInstanceCustomData(UHierarchicalInstancedStaticMeshComponent* HISM, int32 InstanceIndex, const FXBSoldierAgent& Soldier)

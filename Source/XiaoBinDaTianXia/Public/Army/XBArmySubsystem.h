@@ -1,151 +1,183 @@
-﻿// XBArmySubsystem.h
-
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "Army/XBSoldierTypes.h"
 #include "XBArmySubsystem.generated.h"
 
+class AXBCharacterBase;
 class UXBSoldierRenderer;
-class UXBSoldierPool;
+
+// ============================================
+// 委托声明
+// ============================================
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(
+    FXBOnSoldierStateChanged,
+    int32, SoldierId,
+    EXBSoldierState, OldState,
+    EXBSoldierState, NewState
+);
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(
+    FXBOnSoldierDamaged,
+    int32, SoldierId,
+    float, Damage,
+    float, RemainingHealth
+);
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
+    FXBOnSoldierDied,
+    int32, SoldierId,
+    int32, LeaderId
+);
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
+    FXBOnSoldierCreated,
+    int32, SoldierId
+);
+
+// ============================================
+// 军队子系统
+// ============================================
 
 UCLASS()
-class XIAOBINDATIANXIA_API UXBArmySubsystem : public UTickableWorldSubsystem
+class XIAOBINDATIANXIA_API UXBArmySubsystem : public UWorldSubsystem
 {
     GENERATED_BODY()
 
 public:
-    // ============ USubsystem 接口 ============
+    UXBArmySubsystem();
+
+    // USubsystem 接口
     virtual void Initialize(FSubsystemCollectionBase& Collection) override;
     virtual void Deinitialize() override;
-    virtual void Tick(float DeltaTime) override;
-    virtual TStatId GetStatId() const override;
-    virtual bool IsTickable() const override { return true; }
-    virtual bool IsTickableInEditor() const override { return false; }
+    virtual bool ShouldCreateSubsystem(UObject* Outer) const override { return true; }
 
-    // ============ 士兵管理 ============
+    // 自定义 Tick（非继承）- 由 Ticker 调用
+    bool TickSubsystem(float DeltaTime);
 
-    /** 创建新士兵并返回ID */
-    UFUNCTION(BlueprintCallable, Category = "XB|Army")
-    int32 CreateSoldier(const FXBSoldierConfig& Config, EXBFaction Faction, const FVector& SpawnLocation);
+    // ============================================
+    // 小兵管理
+    // ============================================
+    
+    UFUNCTION(BlueprintCallable, Category = "Army|Soldier")
+    int32 CreateSoldier(EXBSoldierType SoldierType, EXBFaction Faction, const FVector& Position);
 
-    /** 销毁士兵 */
-    UFUNCTION(BlueprintCallable, Category = "XB|Army")
+    UFUNCTION(BlueprintCallable, Category = "Army|Soldier")
     void DestroySoldier(int32 SoldierId);
 
-    /** 
-     * 获取士兵数据（只读）
-     * 注意：TMap 和复杂引用类型不支持蓝图，所以这个函数不暴露给蓝图
-     */
-    bool GetSoldierData(int32 SoldierId, FXBSoldierAgent& OutData) const;  // 移除 UFUNCTION
+    UFUNCTION(BlueprintCallable, Category = "Army|Soldier")
+    bool GetSoldierDataById(int32 SoldierId, FXBSoldierData& OutData) const;
 
-    /** 
-     * 修改士兵数据
-     * 不暴露给蓝图
-     */
-    bool ModifySoldierData(int32 SoldierId, const FXBSoldierAgent& NewData);  // 移除 UFUNCTION
+    UFUNCTION(BlueprintCallable, Category = "Army|Soldier")
+    void SetSoldierPosition(int32 SoldierId, const FVector& NewPosition);
 
-    /** 蓝图友好版本：获取士兵位置 */
-    UFUNCTION(BlueprintCallable, Category = "XB|Army")
+    UFUNCTION(BlueprintCallable, Category = "Army|Soldier")
+    void SetSoldierState(int32 SoldierId, EXBSoldierState NewState);
+
+    // ============================================
+    // 主将关联
+    // ============================================
+
+    UFUNCTION(BlueprintCallable, Category = "Army|Leader")
+    void AssignSoldierToLeader(int32 SoldierId, int32 LeaderId);
+
+    UFUNCTION(BlueprintCallable, Category = "Army|Leader")
+    void RemoveSoldierFromLeader(int32 SoldierId);
+
+    UFUNCTION(BlueprintCallable, Category = "Army|Leader")
+    TArray<int32> GetSoldiersByLeader(int32 LeaderId) const;
+
+    UFUNCTION(BlueprintCallable, Category = "Army|Formation")
+    void SetSoldierFormationSlot(int32 SoldierId, int32 SlotIndex);
+
+    // ============================================
+    // 战斗
+    // ============================================
+
+    UFUNCTION(BlueprintCallable, Category = "Army|Combat")
+    float DamageSoldier(int32 SoldierId, float DamageAmount, AActor* DamageCauser);
+
+    UFUNCTION(BlueprintCallable, Category = "Army|Combat")
+    void SetSoldierCombatTarget(int32 SoldierId, int32 TargetSoldierId);
+
+    // ============================================
+    // 查询方法
+    // ============================================
+
+    UFUNCTION(BlueprintCallable, Category = "Army|Query")
     FVector GetSoldierPosition(int32 SoldierId) const;
 
-    /** 蓝图友好版本：获取士兵血量 */
-    UFUNCTION(BlueprintCallable, Category = "XB|Army")
+    UFUNCTION(BlueprintCallable, Category = "Army|Query")
     float GetSoldierHealth(int32 SoldierId) const;
 
-    /** 蓝图友好版本：获取士兵状态 */
-    UFUNCTION(BlueprintCallable, Category = "XB|Army")
+    UFUNCTION(BlueprintCallable, Category = "Army|Query")
     EXBSoldierState GetSoldierState(int32 SoldierId) const;
 
-    /** 蓝图友好版本：检查士兵是否存活 */
-    UFUNCTION(BlueprintCallable, Category = "XB|Army")
+    UFUNCTION(BlueprintCallable, Category = "Army|Query")
     bool IsSoldierAlive(int32 SoldierId) const;
 
-    /** 将士兵分配给将领 */
-    UFUNCTION(BlueprintCallable, Category = "XB|Army")
-    bool AssignSoldierToLeader(int32 SoldierId, AActor* Leader, int32 SlotIndex);
+    UFUNCTION(BlueprintCallable, Category = "Army|Query")
+    TArray<int32> GetSoldiersByFaction(EXBFaction Faction) const;
 
-    /** 从将领处移除士兵 */
-    UFUNCTION(BlueprintCallable, Category = "XB|Army")
-    bool RemoveSoldierFromLeader(int32 SoldierId);
+    UFUNCTION(BlueprintCallable, Category = "Army|Query")
+    TArray<int32> GetSoldiersInRadius(const FVector& Center, float Radius) const;
 
-    /** 获取将领的所有士兵ID */
-    UFUNCTION(BlueprintCallable, Category = "XB|Army")
-    TArray<int32> GetSoldiersByLeader(const AActor* Leader) const;
+    // ============================================
+    // 批量操作
+    // ============================================
 
-    /** 获取将领的士兵数量 */
-    UFUNCTION(BlueprintCallable, Category = "XB|Army")
-    int32 GetSoldierCountByLeader(const AActor* Leader) const;
+    UFUNCTION(BlueprintCallable, Category = "Army|Batch")
+    void UpdateLeaderFormation(int32 LeaderId, const FVector& LeaderPosition, const FRotator& LeaderRotation);
 
-    // ============ 战斗控制 ============
+    UFUNCTION(BlueprintCallable, Category = "Army|Batch")
+    void SetLeaderSoldiersSprinting(int32 LeaderId, bool bSprinting);
 
-    UFUNCTION(BlueprintCallable, Category = "XB|Army")
-    void EnterCombatForLeader(AActor* Leader);
+    // ============================================
+    // 渲染器更新（内部使用）
+    // ============================================
+    
+    void UpdateRenderer();
 
-    UFUNCTION(BlueprintCallable, Category = "XB|Army")
-    void ExitCombatForLeader(AActor* Leader);
+    // ============================================
+    // 事件委托
+    // ============================================
 
-    UFUNCTION(BlueprintCallable, Category = "XB|Army")
-    float ApplyDamageToSoldier(int32 SoldierId, float DamageAmount, AActor* DamageSource);
-
-    // ============ 隐身控制 ============
-
-    UFUNCTION(BlueprintCallable, Category = "XB|Army")
-    void SetHiddenForLeader(AActor* Leader, bool bNewHidden);  // 改名避免遮蔽
-
-    // ============ 兵种转换 ============
-
-    UFUNCTION(BlueprintCallable, Category = "XB|Army")
-    void ConvertSoldierType(AActor* Leader, EXBSoldierType NewType);
-
-    // ============ 查询 ============
-
-    UFUNCTION(BlueprintCallable, Category = "XB|Army")
-    int32 FindNearestEnemy(const FVector& Location, EXBFaction MyFaction, float MaxDistance) const;
-
-    UFUNCTION(BlueprintCallable, Category = "XB|Army")
-    TArray<int32> FindEnemiesInRadius(const FVector& Location, EXBFaction MyFaction, float Radius) const;
-
-    // ============ 委托 ============
-
-    UPROPERTY(BlueprintAssignable, Category = "XB|Army")
+    UPROPERTY(BlueprintAssignable, Category = "Army|Events")
     FXBOnSoldierStateChanged OnSoldierStateChanged;
 
-    UPROPERTY(BlueprintAssignable, Category = "XB|Army")
+    UPROPERTY(BlueprintAssignable, Category = "Army|Events")
     FXBOnSoldierDamaged OnSoldierDamaged;
 
-    UPROPERTY(BlueprintAssignable, Category = "XB|Army")
+    UPROPERTY(BlueprintAssignable, Category = "Army|Events")
     FXBOnSoldierDied OnSoldierDied;
 
+    UPROPERTY(BlueprintAssignable, Category = "Army|Events")
+    FXBOnSoldierCreated OnSoldierCreated;
+
+    // 获取小兵数据映射（供渲染器使用）
+    const TMap<int32, FXBSoldierData>& GetSoldierMap() const { return SoldierMap; }
+
 protected:
-    /** 所有士兵数据（核心存储） */
+    FXBSoldierData* GetSoldierDataInternal(int32 SoldierId);
+    const FXBSoldierData* GetSoldierDataInternal(int32 SoldierId) const;
+    
+    void UpdateSoldierLogic(float DeltaTime);
+    void UpdateSoldierMovement(FXBSoldierData& Soldier, float DeltaTime);
+    void ProcessSoldierDeath(int32 SoldierId);
+
+protected:
     UPROPERTY()
-    TMap<int32, FXBSoldierAgent> SoldierMap;
+    TMap<int32, FXBSoldierData> SoldierMap;
 
-    /** 将领到士兵的映射 */
-    TMap<TWeakObjectPtr<AActor>, TArray<int32>> LeaderToSoldiersMap;
+    TMap<int32, TArray<int32>> LeaderToSoldiersMap;
+    TMap<EXBFaction, TSet<int32>> FactionSoldiersMap;
 
-    /** 渲染器 */
+    int32 NextSoldierId = 1;
+
     UPROPERTY()
     TObjectPtr<UXBSoldierRenderer> SoldierRenderer;
 
-    /** 对象池 */
-    UPROPERTY()
-    TObjectPtr<UXBSoldierPool> SoldierPool;
-
-    /** ID 生成器 */
-    int32 NextSoldierId = 1;
-
-private:
-    void TickAllSoldiers(float DeltaTime);
-    void TickSoldier(FXBSoldierAgent& Soldier, float DeltaTime);
-    void UpdateFollowingState(FXBSoldierAgent& Soldier, float DeltaTime);
-    void UpdateEngagingState(FXBSoldierAgent& Soldier, float DeltaTime);
-    void UpdateReturningState(FXBSoldierAgent& Soldier, float DeltaTime);
-    void HandleSoldierDeath(int32 SoldierId);
-    void ReorganizeFormation(AActor* Leader);
-    int32 GenerateSoldierId();
+    FTSTicker::FDelegateHandle TickHandle;
 };
-
-

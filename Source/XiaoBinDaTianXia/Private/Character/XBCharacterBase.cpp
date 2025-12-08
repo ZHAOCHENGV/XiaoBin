@@ -5,6 +5,7 @@
 #include "GAS/XBAttributeSet.h"
 #include "Army/XBArmySubsystem.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Soldier/XBSoldierActor.h"
 #include "Components/CapsuleComponent.h"
 
 AXBCharacterBase::AXBCharacterBase()
@@ -161,17 +162,7 @@ bool AXBCharacterBase::IsHostileTo(const AXBCharacterBase* Other) const
     return Faction != Other->Faction;
 }
 
-int32 AXBCharacterBase::GetSoldierCount() const
-{
-    if (UWorld* World = GetWorld())
-    {
-        if (UXBArmySubsystem* ArmySubsystem = World->GetSubsystem<UXBArmySubsystem>())
-        {
-            return ArmySubsystem->GetSoldierCountByLeader(this);
-        }
-    }
-    return 0;
-}
+
 
 void AXBCharacterBase::RecruitSoldier(int32 SoldierId)
 {
@@ -190,17 +181,18 @@ void AXBCharacterBase::RecruitSoldier(int32 SoldierId)
 
 void AXBCharacterBase::RecallAllSoldiers()
 {
+    for (AXBSoldierActor* Soldier : OwnedSoldiers)
+    {
+        if (Soldier)
+        {
+            Soldier->ExitCombat();
+        }
+    }
+
+    // 退出战斗状态
     if (AbilitySystemComponent)
     {
         AbilitySystemComponent->ExitCombat();
-    }
-
-    if (UWorld* World = GetWorld())
-    {
-        if (UXBArmySubsystem* ArmySubsystem = World->GetSubsystem<UXBArmySubsystem>())
-        {
-            ArmySubsystem->ExitCombatForLeader(const_cast<AXBCharacterBase*>(this));
-        }
     }
 }
 
@@ -259,31 +251,42 @@ void AXBCharacterBase::OnSoldierRecruited()
         return;
     }
 
-    const float CurrentHealth = AttributeSet->GetHealth();
-    const float CurrentMaxHealth = AttributeSet->GetMaxHealth();
-    const float HealAmount = GrowthConfig.HealthPerSoldier;
+    // 获取成长配置
+    float HealthPerSoldier = GrowthConfig.HealthPerSoldier;
 
-    // 根据策划文档的逻辑：
-    // 如果 CurrentHealth + HealAmount > CurrentMaxHealth，则提升 MaxHealth
-    // 否则只回复血量
-    const float NewHealth = CurrentHealth + HealAmount;
-    
+    // 计算新血量
+    float CurrentHealth = AttributeSet->GetHealth();
+    float CurrentMaxHealth = AttributeSet->GetMaxHealth();
+    float NewHealth = CurrentHealth + HealthPerSoldier;
+
+    // 如果新血量超过最大血量，提升最大血量
     if (NewHealth > CurrentMaxHealth)
     {
-        // 提升最大血量
         AttributeSet->SetMaxHealth(NewHealth);
     }
-    
-    // 回复血量（不超过最大血量）
+
+    // 设置当前血量（不超过最大血量）
     AttributeSet->SetHealth(FMath::Min(NewHealth, AttributeSet->GetMaxHealth()));
 
     // 更新缩放
     UpdateScaleFromSoldierCount();
+
+    UE_LOG(LogTemp, Log, TEXT("Soldier recruited, Health: %.1f/%.1f, Scale: %.2f"), 
+        AttributeSet->GetHealth(), AttributeSet->GetMaxHealth(), GetActorScale3D().X);
 }
 
 void AXBCharacterBase::OnSoldierDied()
 {
-    // 只缩小，不扣血
+    // 清理死亡的士兵
+    OwnedSoldiers.RemoveAll([](AXBSoldierActor* Soldier) 
+    {
+        return !Soldier || Soldier->GetSoldierState() == EXBSoldierState::Dead;
+    });
+
+    // 重新分配槽位
+    ReorganizeSoldierFormation();
+
+    // 更新缩放（不扣血量）
     UpdateScaleFromSoldierCount();
 }
 
@@ -365,3 +368,92 @@ void AXBCharacterBase::OnDeath_Implementation()
 
     // TODO: 播放死亡动画，掉落士兵
 }
+
+void AXBCharacterBase::AddSoldier(AXBSoldierActor* Soldier)
+{
+    if (!Soldier)
+    {
+        return;
+    }
+
+    // 检查是否已存在
+    if (OwnedSoldiers.Contains(Soldier))
+    {
+        return;
+    }
+
+    // 添加到列表
+    OwnedSoldiers.Add(Soldier);
+
+    // 分配槽位
+    int32 SlotIndex = OwnedSoldiers.Num() - 1;
+    Soldier->SetFollowTarget(this, SlotIndex);
+    Soldier->SetSoldierState(EXBSoldierState::Following);
+
+    // 触发招募回调
+    OnSoldierRecruited();
+
+    UE_LOG(LogTemp, Log, TEXT("Soldier added, total: %d"), OwnedSoldiers.Num());
+}
+
+void AXBCharacterBase::RemoveSoldier(AXBSoldierActor* Soldier)
+{
+    if (!Soldier)
+    {
+        return;
+    }
+
+    int32 Index = OwnedSoldiers.Find(Soldier);
+    if (Index != INDEX_NONE)
+    {
+        OwnedSoldiers.RemoveAt(Index);
+        
+        // 重新分配槽位
+        ReorganizeSoldierFormation();
+
+        UE_LOG(LogTemp, Log, TEXT("Soldier removed, total: %d"), OwnedSoldiers.Num());
+    }
+}
+
+
+void AXBCharacterBase::SoldiersEnterCombat()
+{
+    for (AXBSoldierActor* Soldier : OwnedSoldiers)
+    {
+        if (Soldier)
+        {
+            Soldier->EnterCombat();
+        }
+    }
+}
+
+void AXBCharacterBase::SetSoldiersEscaping(bool bEscaping)
+{
+    for (AXBSoldierActor* Soldier : OwnedSoldiers)
+    {
+        if (Soldier)
+        {
+            Soldier->SetEscaping(bEscaping);
+        }
+    }
+}
+
+
+void AXBCharacterBase::ReorganizeSoldierFormation()
+{
+    // 重新分配槽位索引
+    for (int32 i = 0; i < OwnedSoldiers.Num(); ++i)
+    {
+        if (OwnedSoldiers[i])
+        {
+            OwnedSoldiers[i]->SetFormationSlotIndex(i);
+        }
+    }
+}
+
+void AXBCharacterBase::UpdateLeaderScaleAndAttributes()
+{
+    UpdateScaleFromSoldierCount();
+}
+
+

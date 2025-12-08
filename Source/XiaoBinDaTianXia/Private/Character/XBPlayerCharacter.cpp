@@ -229,37 +229,31 @@ void AXBPlayerCharacter::SetCameraYawOffset(float YawOffset)
  */
 void AXBPlayerCharacter::StartDash()
 {
-    // 如果已经在冲刺，不需要重复操作
     if (bIsDashing)
     {
         return;
     }
 
-    // 设置冲刺状态
     bIsDashing = true;
-
-    // 计算目标冲刺速度
     TargetMoveSpeed = BaseMoveSpeed * DashSpeedMultiplier;
 
-    // 调整转向速率（如果允许转向）
     if (UCharacterMovementComponent* CMC = GetCharacterMovement())
     {
         if (bCanSteerWhileDashing)
         {
-            // 使用冲刺转向速率
             CMC->RotationRate = FRotator(0.0f, BaseRotationRate * DashSteerRateMultiplier, 0.0f);
         }
         else
         {
-            // 大幅降低转向速率
             CMC->RotationRate = FRotator(0.0f, 100.0f, 0.0f);
         }
     }
 
-    // 广播冲刺状态变化事件
+    // ✨ 新增 - 通知士兵进入逃跑加速状态
+    SetSoldiersEscaping(true);
+
     OnDashStateChanged.Broadcast(true);
 
-    // 打印调试信息
     UE_LOG(LogTemp, Log, TEXT("Dash Started - Target Speed: %.1f"), TargetMoveSpeed);
 }
 
@@ -279,28 +273,24 @@ void AXBPlayerCharacter::StartDash()
  */
 void AXBPlayerCharacter::StopDash()
 {
-    // 如果没有在冲刺，不需要操作
     if (!bIsDashing)
     {
         return;
     }
 
-    // 清除冲刺状态
     bIsDashing = false;
-
-    // 恢复目标速度为基础速度
     TargetMoveSpeed = BaseMoveSpeed;
 
-    // 恢复正常转向速率
     if (UCharacterMovementComponent* CMC = GetCharacterMovement())
     {
         CMC->RotationRate = FRotator(0.0f, BaseRotationRate, 0.0f);
     }
 
-    // 广播冲刺状态变化事件
+    // ✨ 新增 - 取消士兵逃跑加速状态
+    SetSoldiersEscaping(false);
+
     OnDashStateChanged.Broadcast(false);
 
-    // 打印调试信息
     UE_LOG(LogTemp, Log, TEXT("Dash Stopped - Target Speed: %.1f"), TargetMoveSpeed);
 }
 
