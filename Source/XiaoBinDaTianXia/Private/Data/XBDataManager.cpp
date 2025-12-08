@@ -1,252 +1,148 @@
-﻿// Copyright XiaoBing Project. All Rights Reserved.
-
-/**
- * @file XBGameplayAbility_Attack.cpp
- * @brief 将领普攻技能实现
- */
+﻿// Source/XiaoBinDaTianXia/Private/Data/XBDataManager.cpp
 
 #include "Data/XBDataManager.h"
-#include "GAS/Abilities/XBGameplayAbility_Attack.h"
-#include "AbilitySystemComponent.h"
-#include "AbilitySystemBlueprintLibrary.h"
-#include "GameFramework/Character.h"
-#include "Kismet/KismetSystemLibrary.h"
-#include "Character/XBCharacterBase.h"
-#include "GAS/XBAttributeSet.h"
+#include "Data/XBGameDataAsset.h"
 
 
-UXBGameplayAbility_Attack::UXBGameplayAbility_Attack()
+void UXBDataManager::Initialize(FSubsystemCollectionBase& Collection)
 {
-    // 设置技能标签
-    AbilityTags.AddTag(FGameplayTag::RequestGameplayTag(FName("Ability.Attack")));
+    Super::Initialize(Collection);
     
-    // 设置冷却和消耗
-    // CooldownGameplayEffectClass 可在蓝图中设置
-    
-    // 设置激活策略
-    InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
-    NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalOnly;
+    // 初始化日志
+    UE_LOG(LogTemp, Log, TEXT("XBDataManager Subsystem Initialized"));
 }
 
-void UXBGameplayAbility_Attack::ActivateAbility(
-    const FGameplayAbilitySpecHandle Handle,
-    const FGameplayAbilityActorInfo* ActorInfo,
-    const FGameplayAbilityActivationInfo ActivationInfo,
-    const FGameplayEventData* TriggerEventData)
+void UXBDataManager::Deinitialize()
 {
-    // 调用父类
-    Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
+    // 清理引用和缓存
+    GlobalDataAsset = nullptr;
+    LeaderDataCache.Empty();
+    SoldierDataCache.Empty();
 
-    // 检查是否可以提交技能消耗
-    if (!CommitAbility(Handle, ActorInfo, ActivationInfo))
+    Super::Deinitialize();
+}
+
+bool UXBDataManager::LoadGlobalData(const FSoftObjectPath& DataAssetPath)
+{
+    if (!DataAssetPath.IsValid())
     {
-        EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
-        return;
+        UE_LOG(LogTemp, Warning, TEXT("XBDataManager::LoadGlobalData - Invalid Asset Path"));
+        return false;
     }
 
-    // 获取角色
-    ACharacter* Character = Cast<ACharacter>(ActorInfo->AvatarActor.Get());
-    if (!Character)
+    // 同步加载全局数据资产
+    // 注意：实际项目中大型资源建议使用异步加载，这里为了简化流程使用同步加载
+    UObject* LoadedObject = DataAssetPath.TryLoad();
+    UXBGlobalDataAsset* GlobalData = Cast<UXBGlobalDataAsset>(LoadedObject);
+
+    if (GlobalData)
     {
-        EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
-        return;
+        SetGlobalData(GlobalData);
+        UE_LOG(LogTemp, Log, TEXT("XBDataManager::LoadGlobalData - Success loading: %s"), *DataAssetPath.ToString());
+        return true;
     }
 
-    // 播放攻击动画
-    if (AttackMontage)
-    {
-        // 播放蒙太奇
-        UAnimInstance* AnimInstance = Character->GetMesh()->GetAnimInstance();
-        if (AnimInstance)
-        {
-            // 绑定结束回调
-            FOnMontageEnded EndDelegate;
-            EndDelegate.BindUObject(this, &UXBGameplayAbility_Attack::OnMontageCompleted);
-            
-            AnimInstance->Montage_Play(AttackMontage);
-            AnimInstance->Montage_SetEndDelegate(EndDelegate, AttackMontage);
-        }
-    }
-    else
-    {
-        // 没有动画，直接执行攻击
-        PerformAttack();
-        EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
-    }
+    UE_LOG(LogTemp, Error, TEXT("XBDataManager::LoadGlobalData - Failed to load: %s"), *DataAssetPath.ToString());
+    return false;
+}
 
-    // 播放攻击特效
-    if (AttackVFX)
+void UXBDataManager::SetGlobalData(UXBGlobalDataAsset* InGlobalData)
+{
+    if (GlobalDataAsset != InGlobalData)
     {
-        UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-            Character->GetWorld(),
-            AttackVFX,
-            Character->GetActorLocation(),
-            Character->GetActorRotation());
+        GlobalDataAsset = InGlobalData;
+        
+        // 数据变更后重新构建缓存
+        InitializeDataCache();
     }
 }
 
-void UXBGameplayAbility_Attack::EndAbility(
-    const FGameplayAbilitySpecHandle Handle,
-    const FGameplayAbilityActorInfo* ActorInfo,
-    const FGameplayAbilityActivationInfo ActivationInfo,
-    bool bReplicateEndAbility,
-    bool bWasCancelled)
+void UXBDataManager::InitializeDataCache()
 {
-    Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
-}
+    LeaderDataCache.Empty();
+    SoldierDataCache.Empty();
 
-void UXBGameplayAbility_Attack::PerformAttack()
-{
-    // 获取扇形范围内的目标
-    TArray<AActor*> Targets;
-    GetTargetsInCone(Targets);
-
-    // 对每个目标应用伤害
-    for (AActor* Target : Targets)
-    {
-        ApplyDamageToTarget(Target);
-    }
-
-    // 如果命中了目标，通知进入战斗状态
-    if (Targets.Num() > 0)
-    {
-        // 通知技能命中
-        NotifyAbilityHit(Targets[0]);
-    }
-
-    UE_LOG(LogTemp, Log, TEXT("Attack hit %d targets"), Targets.Num());
-}
-
-void UXBGameplayAbility_Attack::GetTargetsInCone(TArray<AActor*>& OutTargets) const
-{
-    // 获取施法者
-    AActor* AvatarActor = GetAvatarActorFromActorInfo();
-    if (!AvatarActor)
+    if (!GlobalDataAsset)
     {
         return;
     }
 
-    // 获取施法者位置和朝向
-    FVector Origin = AvatarActor->GetActorLocation();
-    FVector Forward = AvatarActor->GetActorForwardVector();
-
-    // 获取施法者阵营
-    EXBFaction MyFaction = EXBFaction::Neutral;
-    if (AXBCharacterBase* CharacterBase = Cast<AXBCharacterBase>(AvatarActor))
+    // 1. 缓存默认将领数据
+    if (GlobalDataAsset->DefaultLeaderData)
     {
-        MyFaction = CharacterBase->GetFaction();
+        LeaderDataCache.Add(GlobalDataAsset->DefaultLeaderData->LeaderId, GlobalDataAsset->DefaultLeaderData);
     }
 
-    // 球形检测
-    TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
-    ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn));
-
-    TArray<AActor*> ActorsToIgnore;
-    ActorsToIgnore.Add(AvatarActor);
-
-    TArray<AActor*> OverlappedActors;
-    
-    // 使用缩放后的攻击范围
-    float ScaledRange = GetScaledRadius(AttackRange);
-    
-    UKismetSystemLibrary::SphereOverlapActors(
-        AvatarActor->GetWorld(),
-        Origin,
-        ScaledRange,
-        ObjectTypes,
-        AXBCharacterBase::StaticClass(),
-        ActorsToIgnore,
-        OverlappedActors);
-
-    // 过滤：检查是否在扇形范围内 + 是否是敌对阵营
-    float HalfAngleRad = FMath::DegreesToRadians(AttackAngle * 0.5f);
-
-    for (AActor* Actor : OverlappedActors)
+    // 2. 缓存士兵数据
+    for (const auto& SoldierData : GlobalDataAsset->SoldierDataList)
     {
-        if (!Actor)
+        if (SoldierData)
         {
-            continue;
-        }
-
-        // 检查阵营
-        if (AXBCharacterBase* TargetCharacter = Cast<AXBCharacterBase>(Actor))
-        {
-            // 跳过同阵营
-            if (!TargetCharacter->IsHostileTo(Cast<AXBCharacterBase>(AvatarActor)))
-            {
-                continue;
-            }
-        }
-
-        // 检查角度
-        FVector ToTarget = (Actor->GetActorLocation() - Origin).GetSafeNormal();
-        float DotProduct = FVector::DotProduct(Forward, ToTarget);
-        float AngleToTarget = FMath::Acos(DotProduct);
-
-        if (AngleToTarget <= HalfAngleRad)
-        {
-            OutTargets.Add(Actor);
+            // 使用士兵类型作为 Key
+            SoldierDataCache.Add(SoldierData->SoldierType, SoldierData);
         }
     }
+    
+    UE_LOG(LogTemp, Log, TEXT("XBDataManager: Cached %d Leaders, %d Soldier Types"), 
+        LeaderDataCache.Num(), SoldierDataCache.Num());
 }
 
-void UXBGameplayAbility_Attack::ApplyDamageToTarget(AActor* Target)
+FXBLeaderConfig UXBDataManager::GetLeaderConfig(FName LeaderId) const
 {
-    if (!Target || !DamageEffectClass)
+    // 尝试在缓存中查找
+    if (const TObjectPtr<UXBLeaderDataAsset>* FoundData = LeaderDataCache.Find(LeaderId))
     {
-        return;
-    }
-
-    // 获取 ASC
-    UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Target);
-    UAbilitySystemComponent* SourceASC = GetAbilitySystemComponentFromActorInfo();
-
-    if (!TargetASC || !SourceASC)
-    {
-        return;
-    }
-
-    // 创建效果上下文
-    FGameplayEffectContextHandle ContextHandle = SourceASC->MakeEffectContext();
-    ContextHandle.AddSourceObject(GetAvatarActorFromActorInfo());
-
-    // 创建效果规格
-    FGameplayEffectSpecHandle SpecHandle = SourceASC->MakeOutgoingSpec(DamageEffectClass, GetAbilityLevel(), ContextHandle);
-
-    if (SpecHandle.IsValid())
-    {
-        // 获取伤害值（从属性集读取基础伤害 * 缩放）
-        float BaseDamage = 50.0f; // 默认值
-        if (const UXBAttributeSet* AttributeSet = SourceASC->GetSet<UXBAttributeSet>())
+        if (*FoundData)
         {
-            BaseDamage = AttributeSet->GetBaseDamage() * AttributeSet->GetDamageMultiplier();
+            return (*FoundData)->LeaderConfig;
         }
-
-        // 根据缩放调整伤害
-        float ScaledDamage = BaseDamage * GetOwnerScale();
-
-        // 设置伤害值到效果规格
-        SpecHandle.Data->SetSetByCallerMagnitude(
-            FGameplayTag::RequestGameplayTag(FName("Data.Damage")), 
-            ScaledDamage);
-
-        // 应用效果
-        SourceASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);
-
-        UE_LOG(LogTemp, Log, TEXT("Applied %.1f damage to %s"), ScaledDamage, *Target->GetName());
     }
-}
-
-void UXBGameplayAbility_Attack::OnMontageCompleted()
-{
-    // 动画播放到攻击点时执行攻击
-    PerformAttack();
     
-    // 结束技能
-    EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
+    // 如果找不到特定ID的将领，或者缓存为空，尝试返回默认配置
+    // 这样可以避免逻辑崩溃
+    UE_LOG(LogTemp, Warning, TEXT("XBDataManager::GetLeaderConfig - LeaderId '%s' not found, using default."), *LeaderId.ToString());
+    return GetDefaultLeaderConfig();
 }
 
-void UXBGameplayAbility_Attack::OnMontageBlendOut()
+FXBLeaderConfig UXBDataManager::GetDefaultLeaderConfig() const
 {
-    // 混出时也结束技能
+    if (GlobalDataAsset && GlobalDataAsset->DefaultLeaderData)
+    {
+        return GlobalDataAsset->DefaultLeaderData->LeaderConfig;
+    }
+    
+    // 返回空配置
+    return FXBLeaderConfig();
+}
+
+FXBSoldierConfig UXBDataManager::GetSoldierConfig(EXBSoldierType SoldierType) const
+{
+    if (const TObjectPtr<UXBSoldierDataAsset>* FoundData = SoldierDataCache.Find(SoldierType))
+    {
+        if (*FoundData)
+        {
+            return (*FoundData)->SoldierConfig;
+        }
+    }
+    
+    UE_LOG(LogTemp, Warning, TEXT("XBDataManager::GetSoldierConfig - Type %d not found"), (int32)SoldierType);
+    return FXBSoldierConfig();
+}
+
+FXBFormationConfig UXBDataManager::GetFormationConfig() const
+{
+    if (GlobalDataAsset)
+    {
+        return GlobalDataAsset->FormationConfig;
+    }
+    return FXBFormationConfig();
+}
+
+FXBCombatConfig UXBDataManager::GetCombatConfig() const
+{
+    if (GlobalDataAsset)
+    {
+        return GlobalDataAsset->CombatConfig;
+    }
+    return FXBCombatConfig();
 }

@@ -73,6 +73,7 @@ FLinearColor UXBBlueprintFunctionLibrary::GetFactionColor(EXBFaction Faction)
         return FLinearColor::White;
     case EXBFaction::Player:
         return FLinearColor::Blue;
+    case EXBFaction::Enemy: // 兼容旧枚举
     case EXBFaction::Enemy1:
         return FLinearColor::Red;
     case EXBFaction::Enemy2:
@@ -86,7 +87,9 @@ FLinearColor UXBBlueprintFunctionLibrary::GetFactionColor(EXBFaction Faction)
 
 void UXBBlueprintFunctionLibrary::GetFormationDimensions(int32 SoldierCount, int32& OutColumns, int32& OutRows)
 {
-    UXBFormationManager::CalculateFormationDimensions(SoldierCount, OutColumns, OutRows);
+    // 假设默认最大列数为 10，或者从配置获取
+    const int32 DefaultMaxColumns = 10;
+    UXBFormationManager::CalculateFormationDimensions(SoldierCount, DefaultMaxColumns, OutColumns, OutRows);
 }
 
 FVector UXBBlueprintFunctionLibrary::GetFormationSlotOffset(int32 SlotIndex, int32 TotalSoldiers,

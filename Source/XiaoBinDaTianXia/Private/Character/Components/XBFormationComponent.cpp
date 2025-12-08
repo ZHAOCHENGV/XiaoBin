@@ -46,16 +46,16 @@ FVector UXBFormationComponent::GetSlotWorldPosition(int32 SlotIndex) const
     }
 
     const FXBFormationSlot& Slot = FormationSlots[SlotIndex];
-    const FVector WorldOffset = Owner->GetActorRotation().RotateVector(Slot.LocalOffset);
-
-    return Owner->GetActorLocation() + WorldOffset;
+    // 🔧 修改 - 调用 Manager 的静态方法，并传入 FVector2D
+    return UXBFormationManager::GetWorldSlotPosition(Owner->GetActorLocation(), Owner->GetActorRotation(), Slot.LocalOffset);
 }
 
 int32 UXBFormationComponent::GetFirstAvailableSlot() const
 {
     for (int32 i = 0; i < FormationSlots.Num(); ++i)
     {
-        if (!FormationSlots[i].bIsOccupied)
+        // 🔧 修改 - 修复变量名错误: bIsOccupied -> bOccupied (与 struct 定义一致)
+        if (!FormationSlots[i].bOccupied)
         {
             return i;
         }
@@ -71,13 +71,15 @@ bool UXBFormationComponent::OccupySlot(int32 SlotIndex, int32 SoldierId)
     }
 
     FXBFormationSlot& Slot = FormationSlots[SlotIndex];
-    if (Slot.bIsOccupied)
+    // 🔧 修改 - bIsOccupied -> bOccupied
+    if (Slot.bOccupied)
     {
         return false;
     }
 
-    Slot.bIsOccupied = true;
-    Slot.OccupyingSoldierId = SoldierId;
+    // 🔧 修改 - bIsOccupied -> bOccupied, OccupyingSoldierId -> OccupantSoldierId
+    Slot.bOccupied = true;
+    Slot.OccupantSoldierId = SoldierId;
     return true;
 }
 
@@ -89,8 +91,9 @@ bool UXBFormationComponent::ReleaseSlot(int32 SlotIndex)
     }
 
     FXBFormationSlot& Slot = FormationSlots[SlotIndex];
-    Slot.bIsOccupied = false;
-    Slot.OccupyingSoldierId = INDEX_NONE;
+    // 🔧 修改 - bIsOccupied -> bOccupied, OccupyingSoldierId -> OccupantSoldierId
+    Slot.bOccupied = false;
+    Slot.OccupantSoldierId = INDEX_NONE;
     return true;
 }
 
@@ -114,7 +117,8 @@ void UXBFormationComponent::DrawDebugFormation(float Duration)
     for (const FXBFormationSlot& Slot : FormationSlots)
     {
         FVector WorldPos = GetSlotWorldPosition(Slot.SlotIndex);
-        FColor Color = Slot.bIsOccupied ? FColor::Green : FColor::Yellow;
+        // 🔧 修改 - bIsOccupied -> bOccupied
+        FColor Color = Slot.bOccupied ? FColor::Green : FColor::Yellow;
 
         DrawDebugSphere(World, WorldPos, 25.0f, 8, Color, false, Duration);
         DrawDebugString(World, WorldPos + FVector(0, 0, 50), FString::Printf(TEXT("%d"), Slot.SlotIndex), nullptr, FColor::White, Duration);

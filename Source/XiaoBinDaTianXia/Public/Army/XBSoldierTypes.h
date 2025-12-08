@@ -12,17 +12,20 @@ UENUM(BlueprintType)
 enum class EXBSoldierType : uint8
 {
     None        UMETA(DisplayName = "无"),
-    Infantry     UMETA(DisplayName = "步兵"),
-    Archer      UMETA(DisplayName = "弓箭手"),
-    Cavalry     UMETA(DisplayName = "骑兵")
+     Infantry    UMETA(DisplayName = "步兵"),
+     Archer      UMETA(DisplayName = "弓箭手"),
+     Cavalry     UMETA(DisplayName = "骑兵")
 };
 
 UENUM(BlueprintType)
 enum class EXBFaction : uint8
 {
     Neutral     UMETA(DisplayName = "中立"),
-    Player      UMETA(DisplayName = "玩家"),
-    Enemy       UMETA(DisplayName = "敌人")
+     Player      UMETA(DisplayName = "玩家"),
+     Enemy       UMETA(DisplayName = "敌人"),
+     Enemy1      UMETA(DisplayName = "敌方1"),
+     Enemy2      UMETA(DisplayName = "敌方2"),
+     Enemy3      UMETA(DisplayName = "敌方3")
 };
 
 UENUM(BlueprintType)
@@ -48,12 +51,15 @@ struct FXBFormationSlot
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     int32 SlotIndex = -1;
 
+    // 🔧 修改 - 明确使用 FVector2D
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     FVector2D LocalOffset = FVector2D::ZeroVector;
 
+    // ✨ 新增 - 修复 cpp 中 bOccupied 访问错误
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     bool bOccupied = false;
 
+    // ✨ 新增 - 修复 cpp 中 OccupantSoldierId 访问错误
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     int32 OccupantSoldierId = -1;
 };
@@ -67,8 +73,17 @@ struct FXBFormationConfig
 {
     GENERATED_BODY()
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Formation")
-    float SlotSpacing = 150.0f;
+    // ✨ 新增 - 横向间距
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Formation", meta = (DisplayName = "横向间距"))
+    float HorizontalSpacing = 100.0f;
+
+    // ✨ 新增 - 纵向间距
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Formation", meta = (DisplayName = "纵向间距"))
+    float VerticalSpacing = 100.0f;
+
+    // ✨ 新增 - 离将领的最小距离
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Formation", meta = (DisplayName = "离将领距离"))
+    float MinDistanceToLeader = 150.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Formation")
     int32 MaxColumns = 10;
@@ -182,6 +197,10 @@ struct FXBSoldierData
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     FVector TargetPosition = FVector::ZeroVector;
+
+    // ✨ 新增 - 修复 ArmySubsystem 中的 'bIsSprinting' 错误
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    bool bIsSprinting = false;
 
     // 辅助方法
     bool IsAlive() const { return State != EXBSoldierState::Dead && CurrentHealth > 0.0f; }

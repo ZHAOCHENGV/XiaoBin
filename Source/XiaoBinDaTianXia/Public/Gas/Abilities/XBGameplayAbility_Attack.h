@@ -90,7 +90,7 @@ protected:
 
     /** 动画结束回调 */
     UFUNCTION()
-    void OnMontageCompleted();
+    void OnMontageCompleted(UAnimMontage* Montage, bool bInterrupted);
 
     UFUNCTION()
     void OnMontageBlendOut();

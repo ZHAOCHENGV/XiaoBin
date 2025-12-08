@@ -51,6 +51,10 @@ struct FXBLeaderConfig
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Growth")
     float ScalePerSoldier = 0.02f;
 
+    // ✨ 新增 - 修复 XBCharacterBase 中的 MaxScale 访问错误
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Growth")
+    float MaxScale = 2.5f;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ability")
     TSubclassOf<class UGameplayAbility> BasicAttackAbility;
 

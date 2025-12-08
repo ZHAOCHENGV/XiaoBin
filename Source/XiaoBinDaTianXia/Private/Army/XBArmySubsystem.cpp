@@ -9,14 +9,14 @@ UXBArmySubsystem::UXBArmySubsystem()
 void UXBArmySubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
     Super::Initialize(Collection);
-
-    // 注册 Tick - 注意返回类型是 bool
     TickHandle = FTSTicker::GetCoreTicker().AddTicker(
         FTickerDelegate::CreateUObject(this, &UXBArmySubsystem::TickSubsystem),
         0.0f
     );
-
-    UE_LOG(LogTemp, Log, TEXT("XBArmySubsystem Initialized"));
+    
+    // 初始化渲染器
+    SoldierRenderer = NewObject<UXBSoldierRenderer>(this);
+    SoldierRenderer->Initialize(GetWorld());
 }
 
 void UXBArmySubsystem::Deinitialize()
@@ -25,6 +25,12 @@ void UXBArmySubsystem::Deinitialize()
     {
         FTSTicker::GetCoreTicker().RemoveTicker(TickHandle);
         TickHandle.Reset();
+    }
+    
+    if (SoldierRenderer)
+    {
+        SoldierRenderer->Cleanup();
+        SoldierRenderer = nullptr;
     }
 
     SoldierMap.Empty();
@@ -35,9 +41,8 @@ void UXBArmySubsystem::Deinitialize()
 }
 
 bool UXBArmySubsystem::TickSubsystem(float DeltaTime)
-{
-    UpdateSoldierLogic(DeltaTime);
-    return true;  // 返回 true 继续 Tick
+{UpdateSoldierLogic(DeltaTime);
+    return true;
 }
 
 void UXBArmySubsystem::UpdateRenderer()
@@ -48,7 +53,7 @@ void UXBArmySubsystem::UpdateRenderer()
     }
 }
 
-// ... 其他方法保持不变 ...
+
 
 int32 UXBArmySubsystem::CreateSoldier(EXBSoldierType SoldierType, EXBFaction Faction, const FVector& Position)
 {
@@ -121,6 +126,20 @@ void UXBArmySubsystem::SetSoldierState(int32 SoldierId, EXBSoldierState NewState
     }
 }
 
+// ✨ 新增 - 实现 AssignSoldierToLeader (3参数版本)
+bool UXBArmySubsystem::AssignSoldierToLeader(int32 SoldierId, AActor* LeaderActor, int32 SlotIndex)
+{
+    if (!LeaderActor) return false;
+    
+    // 使用 Actor 的 UniqueID 作为 LeaderId
+    int32 LeaderId = LeaderActor->GetUniqueID();
+    
+    AssignSoldierToLeader(SoldierId, LeaderId); // 调用 2 参数版本
+    SetSoldierFormationSlot(SoldierId, SlotIndex);
+    
+    return true;
+}
+
 void UXBArmySubsystem::AssignSoldierToLeader(int32 SoldierId, int32 LeaderId)
 {
     if (FXBSoldierData* Soldier = GetSoldierDataInternal(SoldierId))
@@ -136,6 +155,12 @@ void UXBArmySubsystem::AssignSoldierToLeader(int32 SoldierId, int32 LeaderId)
     }
 }
 
+// ✨ 新增 - 实现 GetSoldiersByLeader (Actor版本)
+TArray<int32> UXBArmySubsystem::GetSoldiersByLeader(const AActor* LeaderActor) const
+{
+    if (!LeaderActor) return TArray<int32>();
+    return GetSoldiersByLeader(LeaderActor->GetUniqueID());
+}
 void UXBArmySubsystem::RemoveSoldierFromLeader(int32 SoldierId)
 {
     if (FXBSoldierData* Soldier = GetSoldierDataInternal(SoldierId))
@@ -162,11 +187,33 @@ TArray<int32> UXBArmySubsystem::GetSoldiersByLeader(int32 LeaderId) const
     return TArray<int32>();
 }
 
+
 void UXBArmySubsystem::SetSoldierFormationSlot(int32 SoldierId, int32 SlotIndex)
 {
     if (FXBSoldierData* Soldier = GetSoldierDataInternal(SoldierId))
     {
         Soldier->FormationSlotIndex = SlotIndex;
+    }
+}
+
+void UXBArmySubsystem::EnterCombatForLeader(AActor* LeaderActor)
+{
+    if (!LeaderActor) return;
+    
+    TArray<int32> Soldiers = GetSoldiersByLeader(LeaderActor);
+    for (int32 SoldierId : Soldiers)
+    {
+        SetSoldierState(SoldierId, EXBSoldierState::Combat);
+    }
+}
+
+void UXBArmySubsystem::SetHiddenForLeader(AActor* LeaderActor, bool bHidden)
+{
+    if (!LeaderActor) return;
+
+    if (SoldierRenderer)
+    {
+        SoldierRenderer->SetVisibilityForLeader(LeaderActor, !bHidden);
     }
 }
 

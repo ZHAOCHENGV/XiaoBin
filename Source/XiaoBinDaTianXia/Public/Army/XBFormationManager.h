@@ -17,14 +17,16 @@ class XIAOBINDATIANXIA_API UXBFormationManager : public UObject
 	GENERATED_BODY()
 
 public:
+	// 🔧 修改 - 增加 MaxColumns 参数，修复 cpp 中的调用参数不匹配
 	/**
 	 * 根据士兵总数计算编队维度
 	 * @param TotalSoldiers 士兵总数
+	 * @param MaxColumns 最大列数限制
 	 * @param OutColumns 输出列数
 	 * @param OutRows 输出行数
 	 */
 	UFUNCTION(BlueprintCallable, Category = "XB|Formation")
-	static void CalculateFormationDimensions(int32 TotalSoldiers, int32& OutColumns, int32& OutRows);
+	static void CalculateFormationDimensions(int32 TotalSoldiers, int32 MaxColumns, int32& OutColumns, int32& OutRows);
 
 	/**
 	 * 计算指定槽位的本地偏移
@@ -45,6 +47,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "XB|Formation")
 	static TArray<FXBFormationSlot> GenerateFormationSlots(int32 TotalSoldiers, const FXBFormationConfig& Config = FXBFormationConfig());
 
+	// ✨ 新增 - 修复 'GetWorldSlotPosition' 未声明的错误
+	/**
+	 * 计算世界空间坐标
+	 */
+	UFUNCTION(BlueprintCallable, Category = "XB|Formation")
+	static FVector GetWorldSlotPosition(const FVector& LeaderPosition, const FRotator& LeaderRotation, const FVector2D& LocalOffset);
+	
 	/**
 	 * 验证槽位索引是否有效
 	 */
@@ -55,5 +64,5 @@ private:
 	/**
 	 * 从槽位索引计算行列位置
 	 */
-	static void SlotIndexToRowColumn(int32 SlotIndex, int32 TotalSoldiers, int32& OutRow, int32& OutColumn);
+	static void SlotIndexToRowColumn(int32 SlotIndex, int32 TotalSoldiers, int32 MaxColumns, int32& OutRow, int32& OutColumn);
 };

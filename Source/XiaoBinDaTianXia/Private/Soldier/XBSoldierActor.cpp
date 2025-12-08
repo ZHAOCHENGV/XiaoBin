@@ -35,7 +35,7 @@ void AXBSoldierActor::BeginPlay()
     Super::BeginPlay();
 
     // 初始化血量
-    CurrentHealth = SoldierConfig.BaseHealth;
+    CurrentHealth = SoldierConfig.MaxHealth;
 }
 
 void AXBSoldierActor::Tick(float DeltaTime)
@@ -75,7 +75,7 @@ void AXBSoldierActor::InitializeSoldier(const FXBSoldierConfig& InConfig, EXBFac
     SoldierConfig = InConfig;
     SoldierType = InConfig.SoldierType;
     Faction = InFaction;
-    CurrentHealth = InConfig.BaseHealth;
+    CurrentHealth = InConfig.MaxHealth;
 
     // 设置网格
     if (InConfig.SoldierMesh)
