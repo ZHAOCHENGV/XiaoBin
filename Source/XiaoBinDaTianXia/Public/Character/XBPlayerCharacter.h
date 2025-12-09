@@ -51,6 +51,10 @@ public:
      */
     AXBPlayerCharacter();
 
+    // 如果需要重写基类方法
+    virtual void RecallAllSoldiers() override;
+    virtual void SetSoldiersEscaping(bool bEscaping) override;
+
     /**
      * @brief 每帧更新
      * @param DeltaTime 帧间隔时间

@@ -27,9 +27,7 @@
 #include "InputMappingContext.h"
 #include "Input/XBInputConfig.h"
 #include "Character/XBPlayerCharacter.h"
-#include "GameFramework/SpringArmComponent.h"
-#include "Kismet/KismetMathLibrary.h"
-
+#include "Character/Components/XBCombatComponent.h"
 AXBPlayerController::AXBPlayerController()
 {
     // 初始化镜头参数
@@ -588,30 +586,44 @@ void AXBPlayerController::HandleCameraResetInput()
 
 /**
  * @brief 处理攻击输入
+ * @note 通过 GAS 系统触发攻击技能，使用 Tag 匹配方式
  */
 void AXBPlayerController::HandleAttackInput()
 {
-    // 获取玩家角色
     if (AXBPlayerCharacter* PlayerChar = Cast<AXBPlayerCharacter>(GetPawn()))
     {
-        // TODO: 触发攻击技能
-        UE_LOG(LogTemp, Log, TEXT("Attack Input Triggered"));
+        // ✨ 新增 - 使用战斗组件执行攻击
+        if (UXBCombatComponent* CombatComp = PlayerChar->GetCombatComponent())
+        {
+            bool bSuccess = CombatComp->PerformBasicAttack();
+            UE_LOG(LogTemp, Log, TEXT("攻击输入触发 - 结果: %s"), 
+                bSuccess ? TEXT("成功") : TEXT("失败/冷却中"));
+        }
     }
 }
+
+
+
+
+
 
 /**
  * @brief 处理技能输入
+ * @note 通过 GAS 系统触发特殊技能
  */
 void AXBPlayerController::HandleSkillInput()
 {
-    // 获取玩家角色
     if (AXBPlayerCharacter* PlayerChar = Cast<AXBPlayerCharacter>(GetPawn()))
     {
-        // TODO: 触发特殊技能
-        UE_LOG(LogTemp, Log, TEXT("Skill Input Triggered"));
+        // ✨ 新增 - 使用战斗组件执行技能
+        if (UXBCombatComponent* CombatComp = PlayerChar->GetCombatComponent())
+        {
+            bool bSuccess = CombatComp->PerformSpecialSkill();
+            UE_LOG(LogTemp, Log, TEXT("技能输入触发 - 结果: %s"), 
+                bSuccess ? TEXT("成功") : TEXT("失败/冷却中"));
+        }
     }
 }
-
 /**
  * @brief 处理召回输入
  */

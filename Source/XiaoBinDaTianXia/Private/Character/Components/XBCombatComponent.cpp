@@ -1,0 +1,394 @@
+﻿/* --- 完整文件代码 --- */
+// Source/XiaoBinDaTianXia/Private/Character/Components/XBCombatComponent.cpp
+
+/**
+ * @file XBCombatComponent.cpp
+ * @brief 战斗组件实现
+ */
+
+#include "Character/Components/XBCombatComponent.h"
+#include "AbilitySystemComponent.h"
+#include "AbilitySystemGlobals.h"
+#include "GameFramework/Character.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Animation/AnimInstance.h"
+#include "Engine/DataTable.h"
+#include "Data/XBLeaderDataTable.h"
+
+UXBCombatComponent::UXBCombatComponent()
+{
+    PrimaryComponentTick.bCanEverTick = true;
+    PrimaryComponentTick.bStartWithTickEnabled = true;
+}
+
+void UXBCombatComponent::BeginPlay()
+{
+    Super::BeginPlay();
+
+    // 缓存ASC
+    if (AActor* Owner = GetOwner())
+    {
+        CachedASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Owner);
+
+        // 缓存AnimInstance
+        if (ACharacter* Character = Cast<ACharacter>(Owner))
+        {
+            if (USkeletalMeshComponent* Mesh = Character->GetMesh())
+            {
+                CachedAnimInstance = Mesh->GetAnimInstance();
+            }
+        }
+    }
+
+    UE_LOG(LogTemp, Log, TEXT("战斗组件初始化 - ASC: %s, AnimInstance: %s"),
+        CachedASC.IsValid() ? TEXT("有效") : TEXT("无效"),
+        CachedAnimInstance.IsValid() ? TEXT("有效") : TEXT("无效"));
+}
+
+void UXBCombatComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+    Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+
+    // ✨ 新增 - 更新普攻冷却
+    if (BasicAttackCooldownTimer > 0.0f)
+    {
+        BasicAttackCooldownTimer -= DeltaTime;
+        if (BasicAttackCooldownTimer < 0.0f)
+        {
+            BasicAttackCooldownTimer = 0.0f;
+        }
+    }
+
+    // 更新技能冷却
+    if (SkillCooldownTimer > 0.0f)
+    {
+        SkillCooldownTimer -= DeltaTime;
+        if (SkillCooldownTimer < 0.0f)
+        {
+            SkillCooldownTimer = 0.0f;
+        }
+    }
+}
+
+void UXBCombatComponent::InitializeFromDataTable(UDataTable* DataTable, FName RowName)
+{
+    if (!DataTable)
+    {
+        UE_LOG(LogTemp, Error, TEXT("战斗组件初始化失败: 数据表为空"));
+        return;
+    }
+
+    if (RowName.IsNone())
+    {
+        UE_LOG(LogTemp, Error, TEXT("战斗组件初始化失败: 行名为空"));
+        return;
+    }
+
+    FXBLeaderTableRow* Row = DataTable->FindRow<FXBLeaderTableRow>(RowName, TEXT("XBCombatComponent::InitializeFromDataTable"));
+    if (!Row)
+    {
+        UE_LOG(LogTemp, Error, TEXT("战斗组件初始化失败: 找不到行 '%s'"), *RowName.ToString());
+        return;
+    }
+
+    // 复制配置（包含冷却时间）
+    BasicAttackConfig = Row->BasicAttackConfig;
+    SpecialSkillConfig = Row->SpecialSkillConfig;
+
+    // 详细的调试日志
+    UE_LOG(LogTemp, Log, TEXT("===== 战斗组件配置加载 ====="));
+    UE_LOG(LogTemp, Log, TEXT("数据表: %s, 行: %s"), *DataTable->GetName(), *RowName.ToString());
+    
+    // 检查普攻配置
+    if (BasicAttackConfig.AbilityMontage.IsNull())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("普攻蒙太奇路径为空!"));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Log, TEXT("普攻蒙太奇路径: %s"), *BasicAttackConfig.AbilityMontage.ToString());
+        
+        LoadedBasicAttackMontage = BasicAttackConfig.AbilityMontage.LoadSynchronous();
+        if (LoadedBasicAttackMontage)
+        {
+            UE_LOG(LogTemp, Log, TEXT("普攻蒙太奇加载成功: %s"), *LoadedBasicAttackMontage->GetName());
+        }
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("普攻蒙太奇加载失败! 路径可能错误: %s"), *BasicAttackConfig.AbilityMontage.ToString());
+        }
+    }
+    // ✨ 新增 - 输出普攻冷却时间
+    UE_LOG(LogTemp, Log, TEXT("普攻冷却时间: %.2f秒"), BasicAttackConfig.Cooldown);
+
+    // 检查技能配置
+    if (SpecialSkillConfig.AbilityMontage.IsNull())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("技能蒙太奇路径为空!"));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Log, TEXT("技能蒙太奇路径: %s"), *SpecialSkillConfig.AbilityMontage.ToString());
+        
+        LoadedSkillMontage = SpecialSkillConfig.AbilityMontage.LoadSynchronous();
+        if (LoadedSkillMontage)
+        {
+            UE_LOG(LogTemp, Log, TEXT("技能蒙太奇加载成功: %s"), *LoadedSkillMontage->GetName());
+        }
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("技能蒙太奇加载失败! 路径可能错误: %s"), *SpecialSkillConfig.AbilityMontage.ToString());
+        }
+    }
+    // ✨ 新增 - 输出技能冷却时间
+    UE_LOG(LogTemp, Log, TEXT("技能冷却时间: %.2f秒"), SpecialSkillConfig.Cooldown);
+
+    // 检查GA类
+    if (BasicAttackConfig.AbilityClass)
+    {
+        UE_LOG(LogTemp, Log, TEXT("普攻GA类: %s"), *BasicAttackConfig.AbilityClass->GetName());
+    }
+    else
+    {
+        UE_LOG(LogTemp, Log, TEXT("普攻GA类: 未配置"));
+    }
+
+    if (SpecialSkillConfig.AbilityClass)
+    {
+        UE_LOG(LogTemp, Log, TEXT("技能GA类: %s"), *SpecialSkillConfig.AbilityClass->GetName());
+    }
+    else
+    {
+        UE_LOG(LogTemp, Log, TEXT("技能GA类: 未配置"));
+    }
+
+    UE_LOG(LogTemp, Log, TEXT("===== 配置加载完成 ====="));
+
+    bInitialized = true;
+}
+
+bool UXBCombatComponent::PerformBasicAttack()
+{
+    UE_LOG(LogTemp, Log, TEXT("执行普通攻击 - bIsAttacking: %s, Cooldown: %.2f"), 
+        bIsAttacking ? TEXT("true") : TEXT("false"),
+        BasicAttackCooldownTimer);
+
+    // ✨ 新增 - 检查普攻冷却
+    if (BasicAttackCooldownTimer > 0.0f)
+    {
+        UE_LOG(LogTemp, Log, TEXT("普攻冷却中: %.2f秒"), BasicAttackCooldownTimer);
+        return false;
+    }
+
+    // 检查是否正在攻击
+    if (bIsAttacking)
+    {
+        if (CachedAnimInstance.IsValid() && LoadedBasicAttackMontage)
+        {
+            if (!CachedAnimInstance->Montage_IsPlaying(LoadedBasicAttackMontage))
+            {
+                UE_LOG(LogTemp, Warning, TEXT("检测到攻击状态异常，正在重置"));
+                ResetAttackState();
+            }
+            else
+            {
+                UE_LOG(LogTemp, Log, TEXT("普攻正在进行中，忽略输入"));
+                return false;
+            }
+        }
+        else
+        {
+            ResetAttackState();
+        }
+    }
+
+    // 使用已加载的蒙太奇
+    UAnimMontage* MontageToPlay = LoadedBasicAttackMontage;
+    if (!MontageToPlay)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("普攻蒙太奇未配置或加载失败"));
+        
+        if (!BasicAttackConfig.AbilityMontage.IsNull())
+        {
+            MontageToPlay = BasicAttackConfig.AbilityMontage.LoadSynchronous();
+            if (MontageToPlay)
+            {
+                LoadedBasicAttackMontage = MontageToPlay;
+                UE_LOG(LogTemp, Log, TEXT("普攻蒙太奇延迟加载成功"));
+            }
+        }
+        
+        if (!MontageToPlay)
+        {
+            return false;
+        }
+    }
+
+    // 播放蒙太奇
+    if (!PlayMontage(MontageToPlay))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("普攻蒙太奇播放失败"));
+        return false;
+    }
+
+    bIsAttacking = true;
+
+    // ✨ 新增 - 设置普攻冷却
+    BasicAttackCooldownTimer = BasicAttackConfig.Cooldown;
+
+    // 激活GA (如果配置了)
+    if (BasicAttackConfig.AbilityClass)
+    {
+        TryActivateAbility(BasicAttackConfig.AbilityClass);
+    }
+
+    UE_LOG(LogTemp, Log, TEXT("普攻释放成功，冷却: %.2f秒"), BasicAttackConfig.Cooldown);
+    return true;
+}
+
+bool UXBCombatComponent::PerformSpecialSkill()
+{
+    UE_LOG(LogTemp, Log, TEXT("尝试使用技能 - bIsAttacking: %s, Cooldown: %.2f"), 
+        bIsAttacking ? TEXT("true") : TEXT("false"), SkillCooldownTimer);
+
+    // 检查技能冷却
+    if (SkillCooldownTimer > 0.0f)
+    {
+        UE_LOG(LogTemp, Log, TEXT("技能冷却中: %.2f秒"), SkillCooldownTimer);
+        return false;
+    }
+
+    // 如果正在普攻，打断它
+    if (bIsAttacking && CachedAnimInstance.IsValid())
+    {
+        CachedAnimInstance->Montage_Stop(0.2f);
+        ResetAttackState();
+        UE_LOG(LogTemp, Log, TEXT("技能打断了普攻"));
+    }
+
+    // 使用已加载的蒙太奇
+    UAnimMontage* MontageToPlay = LoadedSkillMontage;
+    if (!MontageToPlay)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("技能蒙太奇未配置或加载失败"));
+        
+        if (!SpecialSkillConfig.AbilityMontage.IsNull())
+        {
+            MontageToPlay = SpecialSkillConfig.AbilityMontage.LoadSynchronous();
+            if (MontageToPlay)
+            {
+                LoadedSkillMontage = MontageToPlay;
+                UE_LOG(LogTemp, Log, TEXT("技能蒙太奇延迟加载成功"));
+            }
+        }
+        
+        if (!MontageToPlay)
+        {
+            return false;
+        }
+    }
+
+    // 播放蒙太奇
+    if (!PlayMontage(MontageToPlay))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("技能蒙太奇播放失败"));
+        return false;
+    }
+
+    bIsAttacking = true;
+    
+    // ✨ 新增 - 使用配置中的冷却时间
+    SkillCooldownTimer = SpecialSkillConfig.Cooldown;
+
+    // 激活GA
+    if (SpecialSkillConfig.AbilityClass)
+    {
+        TryActivateAbility(SpecialSkillConfig.AbilityClass);
+    }
+
+    UE_LOG(LogTemp, Log, TEXT("技能释放成功，冷却: %.2f秒"), SpecialSkillConfig.Cooldown);
+    return true;
+}
+
+void UXBCombatComponent::ResetAttackState()
+{
+    bIsAttacking = false;
+    UE_LOG(LogTemp, Log, TEXT("攻击状态已重置"));
+}
+
+bool UXBCombatComponent::PlayMontage(UAnimMontage* Montage, float PlayRate)
+{
+    if (!Montage)
+    {
+        return false;
+    }
+
+    if (!CachedAnimInstance.IsValid())
+    {
+        if (ACharacter* Character = Cast<ACharacter>(GetOwner()))
+        {
+            if (USkeletalMeshComponent* Mesh = Character->GetMesh())
+            {
+                CachedAnimInstance = Mesh->GetAnimInstance();
+            }
+        }
+    }
+
+    if (!CachedAnimInstance.IsValid())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("无法获取AnimInstance"));
+        return false;
+    }
+
+    float Duration = CachedAnimInstance->Montage_Play(Montage, PlayRate);
+    if (Duration <= 0.0f)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("蒙太奇播放返回时长为0"));
+        return false;
+    }
+
+    FOnMontageEnded EndDelegate;
+    EndDelegate.BindUObject(this, &UXBCombatComponent::OnMontageEnded);
+    CachedAnimInstance->Montage_SetEndDelegate(EndDelegate, Montage);
+
+    UE_LOG(LogTemp, Log, TEXT("蒙太奇播放: %s, 时长: %.2f"), *Montage->GetName(), Duration);
+    return true;
+}
+
+void UXBCombatComponent::OnMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+    UE_LOG(LogTemp, Log, TEXT("蒙太奇结束: %s, 被打断: %s"), 
+        Montage ? *Montage->GetName() : TEXT("null"),
+        bInterrupted ? TEXT("是") : TEXT("否"));
+
+    ResetAttackState();
+}
+
+bool UXBCombatComponent::TryActivateAbility(TSubclassOf<UGameplayAbility> AbilityClass)
+{
+    if (!AbilityClass)
+    {
+        return false;
+    }
+
+    if (!CachedASC.IsValid())
+    {
+        if (AActor* Owner = GetOwner())
+        {
+            CachedASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Owner);
+        }
+    }
+
+    if (!CachedASC.IsValid())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("无法激活GA: ASC无效"));
+        return false;
+    }
+
+    bool bSuccess = CachedASC->TryActivateAbilityByClass(AbilityClass);
+    UE_LOG(LogTemp, Log, TEXT("激活GA '%s': %s"), 
+        *AbilityClass->GetName(),
+        bSuccess ? TEXT("成功") : TEXT("失败"));
+
+    return bSuccess;
+}

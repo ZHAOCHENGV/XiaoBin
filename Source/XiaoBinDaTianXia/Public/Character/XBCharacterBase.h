@@ -1,329 +1,240 @@
-﻿// Copyright XiaoBing Project. All Rights Reserved.
+﻿/* --- 完整文件代码 --- */
+// Source/XiaoBinDaTianXia/Public/Character/XBCharacterBase.h
+
+/**
+ * @file XBCharacterBase.h
+ * @brief 角色基类 - 包含阵营、士兵管理、战斗组件等功能
+ */
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "AbilitySystemInterface.h"
-#include "GameplayTagContainer.h"
-#include "Army/XBSoldierTypes.h"
-#include "Data/XBDataTypes.h"
+#include "Data/XBLeaderDataTable.h"
+#include "Army/XBSoldierTypes.h"  // ✨ 新增 - 包含 EXBFaction 枚举定义
 #include "XBCharacterBase.generated.h"
 
+class UAbilitySystemComponent;
 class UXBAbilitySystemComponent;
 class UXBAttributeSet;
-class UGameplayEffect;
-class UGameplayAbility;
+class UXBCombatComponent;
+class UDataTable;
+class AXBSoldierActor;
+
+// ❌ 删除 - EXBFaction 枚举已在 XBSoldierTypes.h 中定义
+// UENUM(BlueprintType)
+// enum class EXBFaction : uint8
+// {
+//     Neutral     UMETA(DisplayName = "中立"),
+//     Player      UMETA(DisplayName = "玩家"),
+//     Enemy       UMETA(DisplayName = "敌人"),
+//     Ally        UMETA(DisplayName = "友军")
+// };
 
 /**
- * @brief 角色基类 (Character Base)
- * * 所有将领（包括玩家和 AI 假人）的基类。
- * * @details 集成了以下核心系统：
- * 1. GAS (Gameplay Ability System)：处理技能、属性（血量、伤害）和状态效果。
- * 2. 阵营系统：区分玩家、敌对势力和中立单位。
- * 3. 士兵管理：提供招募、召回士兵的接口，以及根据士兵数量动态改变自身属性。
- * 4. 隐身系统：处理进入草丛后的逻辑表现。
+ * @brief 成长配置缓存结构体
  */
-UCLASS(Abstract)
+USTRUCT(BlueprintType)
+struct XIAOBINDATIANXIA_API FXBGrowthConfigCache
+{
+    GENERATED_BODY()
+
+    /** @brief 每个士兵提供的生命值 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长", meta = (DisplayName = "每士兵生命加成"))
+    float HealthPerSoldier = 5.0f;
+
+    /** @brief 每个士兵提供的体型缩放 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长", meta = (DisplayName = "每士兵体型加成"))
+    float ScalePerSoldier = 0.01f;
+
+    /** @brief 最大体型缩放 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长", meta = (DisplayName = "最大体型缩放"))
+    float MaxScale = 2.0f;
+};
+
+/**
+ * @brief 角色基类
+ */
+UCLASS()
 class XIAOBINDATIANXIA_API AXBCharacterBase : public ACharacter, public IAbilitySystemInterface
 {
     GENERATED_BODY()
 
 public:
-    /**
-     * @brief 构造函数
-     * * 初始化 GAS 组件、胶囊体和默认设置
-     */
     AXBCharacterBase();
 
     // ============ IAbilitySystemInterface ============
-    
-    /**
-     * @brief 获取技能系统组件 (ASC)
-     * * @return UAbilitySystemComponent* 组件指针
-     * 实现 IAbilitySystemInterface 接口，供系统自动查找 ASC
-     */
     virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
-
-    // ============ AActor ============
-    
-    /**
-     * @brief 游戏开始
-     * * 初始化逻辑
-     */
-    virtual void BeginPlay() override;
-
-    /**
-     * @brief 被控制器接管时调用
-     * * @param NewController 新的控制器
-     * 在服务器端初始化 ASC 的重要时机
-     */
-    virtual void PossessedBy(AController* NewController) override;
-
-    /**
-     * @brief PlayerState 复制回调
-     * * 在客户端初始化 ASC 的重要时机
-     */
-    virtual void OnRep_PlayerState() override;
-
-    // ============ 技能系统 ============
-
-    /**
-     * @brief 尝试通过 Tag 激活技能
-     * * @param AbilityTag 技能标签
-     * * @return bool 是否成功触发
-     */
-    UFUNCTION(BlueprintCallable, Category = "XB|Ability")
-    bool TryActivateAbilityByTag(const FGameplayTag& AbilityTag);
-
-    /**
-     * @brief 获取属性集
-     * * @return UXBAttributeSet* 属性集指针，包含血量、攻击力等
-     */
-    UFUNCTION(BlueprintCallable, Category = "XB|Attribute")
-    UXBAttributeSet* GetAttributeSet() const { return AttributeSet; }
-
-    // ============ 阵营 ============
-
-    /**
-     * @brief 获取当前阵营
-     */
-    UFUNCTION(BlueprintCallable, Category = "XB|Faction")
-    EXBFaction GetFaction() const { return Faction; }
-
-    /**
-     * @brief 设置当前阵营
-     * * @param NewFaction 新阵营
-     */
-    UFUNCTION(BlueprintCallable, Category = "XB|Faction")
-    void SetFaction(EXBFaction NewFaction) { Faction = NewFaction; }
-
-    /**
-     * @brief 检查目标是否敌对
-     * * @param Other 其他角色
-     * * @return true 表示敌对，false 表示友善或中立
-     */
-    UFUNCTION(BlueprintCallable, Category = "XB|Faction")
-    bool IsHostileTo(const AXBCharacterBase* Other) const;
-
-    // ============ 士兵管理 ============
-
-
-    /**
-     * @brief 招募一个士兵（逻辑层）
-     * * @param SoldierId 士兵唯一ID
-     * 处理属性加成和队列更新
-     */
-    UFUNCTION(BlueprintCallable, Category = "XB|Army")
-    void RecruitSoldier(int32 SoldierId);
-
-
-    /**
-     * @brief 强制进入战斗状态
-     * * 通知周围士兵开始索敌
-     */
-    UFUNCTION(BlueprintCallable, Category = "XB|Combat")
-    void EnterCombat();
-
-    /**
-     * @brief 强制退出战斗状态
-     * * 通知士兵回归队列
-     */
-    UFUNCTION(BlueprintCallable, Category = "XB|Combat")
-    void ExitCombat();
-
-    /**
-     * @brief 检查是否处于战斗状态
-     */
-    UFUNCTION(BlueprintCallable, Category = "XB|Combat")
-    bool IsInCombat() const;
-
-    // ============ 缩放与成长 ============
-
-    /**
-     * @brief 根据士兵数量更新角色模型缩放
-     * * 公式：Base + (Count * Rate)，采用加法叠加
-     */
-    UFUNCTION(BlueprintCallable, Category = "XB|Growth")
-    void UpdateScaleFromSoldierCount();
-    
-
-    // ============ 隐身 ============
-
-    // 🔧 修改 - 避免与 AActor::SetHidden 参数名冲突，重命名函数明确意图
-    /**
-     * @brief 设置角色隐身状态（草丛逻辑）
-     * * @param bNewHidden 是否隐身
-     * 隐身时半透显示，取消碰撞，且被敌人忽略
-     */
-    UFUNCTION(BlueprintCallable, Category = "XB|Stealth")
-    void SetCharacterHidden(bool bNewHidden);  
-
-    /**
-     * @brief 检查是否因草丛而隐身
-     */
-    UFUNCTION(BlueprintCallable, Category = "XB|Stealth")
-    bool IsHiddenInGrass() const { return bIsHiddenInGrass; }
-
-protected:
-    // ============ 组件 ============
-
-    
-    /** 技能系统组件 (GAS)，处理所有技能交互 */
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "XB|Ability", meta = (DisplayName = "技能系统组件"))
-    TObjectPtr<UXBAbilitySystemComponent> AbilitySystemComponent;
-
-    /** 属性集，存储 Health, AttackPower 等数值 (GAS 内部对象，无需 DisplayName) */
-    UPROPERTY()
-    TObjectPtr<UXBAttributeSet> AttributeSet;
-
-    // ============ 配置 ============
-
-    
-    /** 当前所属阵营 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Faction", meta = (DisplayName = "所属阵营"))
-    EXBFaction Faction = EXBFaction::Neutral;
-
-    
-    /** 游戏开始时自动赋予的技能列表 */
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XB|Ability", meta = (DisplayName = "初始技能列表"))
-    TArray<TSubclassOf<UGameplayAbility>> StartupAbilities;
-
-    
-    /** 游戏开始时自动应用的 GameplayEffect（用于初始化属性） */
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XB|Ability", meta = (DisplayName = "初始效果列表"))
-    TArray<TSubclassOf<UGameplayEffect>> StartupEffects;
-
-    
-    /** 将领成长配置（缩放倍率、血量加成等） */
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XB|Growth", meta = (DisplayName = "成长配置"))
-    FXBLeaderConfig GrowthConfig;
-
-    
-    /** 默认携带的兵种类型 */
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XB|Army", meta = (DisplayName = "默认携带兵种"))
-    EXBSoldierType DefaultSoldierType = EXBSoldierType::Infantry;
-
-    // ============ 状态 ============
-
-    
-    /** 是否正在草丛中隐身 */
-    UPROPERTY(BlueprintReadOnly, Category = "XB|Stealth", meta = (DisplayName = "是否在草丛中"))
-    bool bIsHiddenInGrass = false;
-    
-    
-    /** 初始基础缩放值 */
-    UPROPERTY(BlueprintReadOnly, Category = "XB|Growth", meta = (DisplayName = "基础缩放值"))
-    float BaseScale = 1.0f;
 
     // ============ 初始化 ============
 
     /**
-     * @brief 初始化 GAS 组件
-     * * 绑定 ActorInfo，初始化属性
+     * @brief 从数据表初始化角色
+     * @param DataTable 数据表
+     * @param RowName 行名
      */
-    virtual void InitializeAbilitySystem();
+    UFUNCTION(BlueprintCallable, Category = "初始化")
+    virtual void InitializeFromDataTable(UDataTable* DataTable, FName RowName);
 
     /**
-     * @brief 授予初始技能
+     * @brief 应用属性到ASC
      */
-    virtual void AddStartupAbilities();
+    UFUNCTION(BlueprintCallable, Category = "属性")
+    void ApplyInitialAttributes();
+
+    // ============ 阵营系统 ============
 
     /**
-     * @brief 应用初始 GameplayEffect
+     * @brief 获取阵营
+     * @return 当前阵营
      */
-    virtual void ApplyStartupEffects();
-
-    // ============ 事件回调 ============
+    UFUNCTION(BlueprintPure, Category = "阵营")
+    EXBFaction GetFaction() const { return Faction; }
 
     /**
-     * @brief GAS 属性：血量变化回调
+     * @brief 设置阵营
+     * @param NewFaction 新阵营
      */
-    virtual void OnHealthChanged(float OldValue, float NewValue);
+    UFUNCTION(BlueprintCallable, Category = "阵营")
+    void SetFaction(EXBFaction NewFaction) { Faction = NewFaction; }
 
     /**
-     * @brief 自定义逻辑：缩放变化回调
+     * @brief 检查是否对目标敌对
+     * @param Other 目标角色
+     * @return 是否敌对
      */
-    virtual void OnScaleChanged(float OldValue, float NewValue);
+    UFUNCTION(BlueprintPure, Category = "阵营")
+    bool IsHostileTo(const AXBCharacterBase* Other) const;
 
     /**
-     * @brief 死亡事件（可蓝图重写）
-     * * 处理布娃娃、特效播放、游戏结束逻辑
+     * @brief 检查是否对目标友好
+     * @param Other 目标角色
+     * @return 是否友好
      */
-    UFUNCTION(BlueprintNativeEvent, Category = "XB|Death")
-    void OnDeath();
-    virtual void OnDeath_Implementation();
+    UFUNCTION(BlueprintPure, Category = "阵营")
+    bool IsFriendlyTo(const AXBCharacterBase* Other) const;
 
-
-public:
-    /**
-     * @brief 获取当前士兵数量
-     * @return 士兵数量
-     */
-    UFUNCTION(BlueprintCallable, Category = "XB|Army", meta = (DisplayName = "获取士兵数量"))
-    int32 GetSoldierCount() const { return OwnedSoldiers.Num(); }
+    // ============ 士兵管理 ============
 
     /**
      * @brief 添加士兵
      * @param Soldier 士兵Actor
      */
-    UFUNCTION(BlueprintCallable, Category = "XB|Army", meta = (DisplayName = "添加士兵"))
-    void AddSoldier(AXBSoldierActor* Soldier);
+    UFUNCTION(BlueprintCallable, Category = "士兵")
+    virtual void AddSoldier(AXBSoldierActor* Soldier);
 
     /**
      * @brief 移除士兵
      * @param Soldier 士兵Actor
      */
-    UFUNCTION(BlueprintCallable, Category = "XB|Army", meta = (DisplayName = "移除士兵"))
-    void RemoveSoldier(AXBSoldierActor* Soldier);
+    UFUNCTION(BlueprintCallable, Category = "士兵")
+    virtual void RemoveSoldier(AXBSoldierActor* Soldier);
+
+    /**
+     * @brief 获取士兵数量
+     * @return 当前士兵数量
+     */
+    UFUNCTION(BlueprintPure, Category = "士兵")
+    int32 GetSoldierCount() const { return Soldiers.Num(); }
 
     /**
      * @brief 获取所有士兵
      * @return 士兵数组
      */
-    UFUNCTION(BlueprintCallable, Category = "XB|Army", meta = (DisplayName = "获取所有士兵"))
-    TArray<AXBSoldierActor*> GetAllSoldiers() const { return OwnedSoldiers; }
-
-    /**
-     * @brief 召回所有士兵
-     */
-    UFUNCTION(BlueprintCallable, Category = "XB|Army", meta = (DisplayName = "召回所有士兵"))
-    void RecallAllSoldiers();
-
-    /**
-     * @brief 让所有士兵进入战斗
-     */
-    UFUNCTION(BlueprintCallable, Category = "XB|Army", meta = (DisplayName = "士兵进入战斗"))
-    void SoldiersEnterCombat();
-
-    /**
-     * @brief 设置士兵逃跑状态（将领冲刺时）
-     * @param bEscaping 是否逃跑
-     */
-    UFUNCTION(BlueprintCallable, Category = "XB|Army", meta = (DisplayName = "设置士兵逃跑"))
-    void SetSoldiersEscaping(bool bEscaping);
+    UFUNCTION(BlueprintPure, Category = "士兵")
+    const TArray<AXBSoldierActor*>& GetSoldiers() const { return Soldiers; }
 
     /**
      * @brief 士兵死亡回调
      */
-    UFUNCTION(BlueprintCallable, Category = "XB|Army", meta = (DisplayName = "士兵死亡回调"))
-    void OnSoldierDied();
+    UFUNCTION(BlueprintCallable, Category = "士兵")
+    virtual void OnSoldierDied();
 
     /**
-     * @brief 士兵招募回调（拾取士兵后）
+     * @brief 添加士兵时更新属性
+     * @param SoldierCount 添加的士兵数量
      */
-    UFUNCTION(BlueprintCallable, Category = "XB|Army", meta = (DisplayName = "士兵招募回调"))
-    void OnSoldierRecruited();
+    UFUNCTION(BlueprintCallable, Category = "成长")
+    void OnSoldiersAdded(int32 SoldierCount);
+
+    // ============ 战斗组件 ============
+
+    /**
+     * @brief 获取战斗组件
+     * @return 战斗组件指针
+     */
+    UFUNCTION(BlueprintPure, Category = "战斗")
+    UXBCombatComponent* GetCombatComponent() const { return CombatComponent; }
+
+    // ============ 召回系统 ============
+
+    /**
+     * @brief 召回所有士兵
+     */
+    UFUNCTION(BlueprintCallable, Category = "士兵")
+    virtual void RecallAllSoldiers();
+
+    /**
+     * @brief 设置士兵逃跑状态
+     * @param bEscaping 是否逃跑
+     */
+    UFUNCTION(BlueprintCallable, Category = "士兵")
+    virtual void SetSoldiersEscaping(bool bEscaping);
 
 protected:
-    /** 拥有的士兵列表 */
-    UPROPERTY(BlueprintReadOnly, Category = "XB|Army", meta = (DisplayName = "士兵列表"))
-    TArray<TObjectPtr<AXBSoldierActor>> OwnedSoldiers;
+    virtual void BeginPlay() override;
+    virtual void PossessedBy(AController* NewController) override;
 
-    /** 重新分配士兵槽位 */
-    void ReorganizeSoldierFormation();
+    /** @brief 初始化ASC */
+    virtual void InitializeAbilitySystem();
 
-    /** 更新将领缩放和属性 */
-    void UpdateLeaderScaleAndAttributes();
-    
+protected:
+    // ============ 组件 ============
+
+    /** @brief 能力系统组件 */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "能力系统组件"))
+    TObjectPtr<UXBAbilitySystemComponent> AbilitySystemComponent;
+
+    /** @brief 属性集 */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "属性集"))
+    TObjectPtr<UXBAttributeSet> AttributeSet;
+
+    /** @brief 战斗组件 */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "战斗组件"))
+    TObjectPtr<UXBCombatComponent> CombatComponent;
+
+    // ============ 阵营 ============
+
+    /** @brief 阵营 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "阵营", meta = (DisplayName = "阵营"))
+    EXBFaction Faction = EXBFaction::Neutral;
+
+    // ============ 士兵管理 ============
+
+    /** @brief 士兵列表 */
+    UPROPERTY(BlueprintReadOnly, Category = "士兵")
+    TArray<AXBSoldierActor*> Soldiers;
+
+    /** @brief 当前士兵数量（用于成长计算） */
+    UPROPERTY(BlueprintReadOnly, Category = "成长")
+    int32 CurrentSoldierCount = 0;
+
+    // ============ 配置 ============
+
+    /** @brief 配置数据表 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "配置", meta = (DisplayName = "配置数据表"))
+    TObjectPtr<UDataTable> ConfigDataTable;
+
+    /** @brief 配置行名 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "配置", meta = (DisplayName = "配置行名"))
+    FName ConfigRowName;
+
+    /** @brief 缓存的数据表行数据 */
+    UPROPERTY(BlueprintReadOnly, Category = "配置")
+    FXBLeaderTableRow CachedLeaderData;
+
+    /** @brief 成长配置缓存 */
+    UPROPERTY(BlueprintReadOnly, Category = "成长")
+    FXBGrowthConfigCache GrowthConfigCache;
 };

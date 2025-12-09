@@ -82,6 +82,27 @@ AXBPlayerCharacter::AXBPlayerCharacter()
     Faction = EXBFaction::Player;
 }
 
+void AXBPlayerCharacter::RecallAllSoldiers()
+{
+    Super::RecallAllSoldiers();
+    
+}
+
+void AXBPlayerCharacter::SetSoldiersEscaping(bool bEscaping)
+{
+    Super::SetSoldiersEscaping(bEscaping);
+
+    // 玩家角色的特殊逃跑逻辑
+    for (AXBSoldierActor* Soldier : Soldiers)
+    {
+        if (Soldier)
+        {
+            // 设置士兵的逃跑状态
+            // Soldier->SetEscaping(bEscaping);
+        }
+    }
+}
+
 void AXBPlayerCharacter::BeginPlay()
 {
     // 调用父类BeginPlay

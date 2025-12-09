@@ -22,6 +22,11 @@ UXBGameplayAbility_Skill::UXBGameplayAbility_Skill()
     // 设置激活策略
     InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
     NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalOnly;
+
+    // ✨ 新增 - 使用新API
+    FGameplayTagContainer Tags;
+    Tags.AddTag(FGameplayTag::RequestGameplayTag(FName("Ability.Skill")));
+    SetAssetTags(Tags);
 }
 
 void UXBGameplayAbility_Skill::ActivateAbility(
@@ -172,22 +177,23 @@ void UXBGameplayAbility_Skill::ApplyDamageToTarget(AActor* Target)
 
     if (SpecHandle.IsValid())
     {
-        // 计算伤害
+        // ✨ 新增 - 技能使用倍率计算额外伤害
+        // 从属性集读取基础伤害，乘以技能倍率作为额外伤害
         float BaseDamage = 50.0f;
         if (const UXBAttributeSet* AttributeSet = SourceASC->GetSet<UXBAttributeSet>())
         {
-            BaseDamage = AttributeSet->GetBaseDamage() * AttributeSet->GetDamageMultiplier();
+            BaseDamage = AttributeSet->GetBaseDamage();
         }
-
-        // 技能伤害 = 基础伤害 * 技能倍率 * 缩放
-        float ScaledDamage = BaseDamage * DamageMultiplier * GetOwnerScale();
-
+        
+        // 技能额外伤害 = 基础伤害 * (倍率 - 1)，因为 Execution 已经计算了一次基础伤害
+        float SkillBonusDamage = BaseDamage * (DamageMultiplier - 1.0f) * GetOwnerScale();
+        
         SpecHandle.Data->SetSetByCallerMagnitude(
             FGameplayTag::RequestGameplayTag(FName("Data.Damage")),
-            ScaledDamage);
+            SkillBonusDamage);
 
         SourceASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);
 
-        UE_LOG(LogTemp, Log, TEXT("Skill applied %.1f damage to %s"), ScaledDamage, *Target->GetName());
+        UE_LOG(LogTemp, Log, TEXT("技能对 %s 造成额外伤害: %.1f"), *Target->GetName(), SkillBonusDamage);
     }
 }

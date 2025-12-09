@@ -46,6 +46,12 @@ public:
     FGameplayAttributeData MaxHealth;
     ATTRIBUTE_ACCESSORS(UXBAttributeSet, MaxHealth)
 
+    
+    /** 生命值倍率 */
+    UPROPERTY(BlueprintReadOnly, Category = "XB|Attribute|Health", ReplicatedUsing = OnRep_HealthMultiplier)
+    FGameplayAttributeData HealthMultiplier;
+    ATTRIBUTE_ACCESSORS(UXBAttributeSet, HealthMultiplier)
+
     /** 基础伤害 */
     UPROPERTY(BlueprintReadOnly, Category = "XB|Attribute|Damage", ReplicatedUsing = OnRep_BaseDamage)
     FGameplayAttributeData BaseDamage;
@@ -84,6 +90,9 @@ protected:
 
     UFUNCTION()
     virtual void OnRep_MaxHealth(const FGameplayAttributeData& OldValue);
+
+    UFUNCTION()
+    virtual void OnRep_HealthMultiplier(const FGameplayAttributeData& OldValue);
 
     UFUNCTION()
     virtual void OnRep_BaseDamage(const FGameplayAttributeData& OldValue);

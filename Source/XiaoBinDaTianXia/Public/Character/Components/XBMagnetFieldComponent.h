@@ -6,6 +6,9 @@
 #include "Components/SphereComponent.h"
 #include "XBMagnetFieldComponent.generated.h"
 
+class UGameplayEffect;
+class AXBCharacterBase;
+class AXBSoldierActor;
 // 定义委托，用于通知外部 Actor 进入或离开磁场
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FXBOnActorEnteredField, AActor*, Actor);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FXBOnActorExitedField, AActor*, Actor);
@@ -136,4 +139,19 @@ private:
     
     /** 内部标记：防止重复绑定重叠事件 */
     bool bOverlapEventsBound = false;
+
+
+    
+protected:
+    // ✨ 新增 - 招募效果配置
+    /** 招募士兵时应用的 GameplayEffect 类 */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XB|MagnetField", meta = (DisplayName = "招募增益效果"))
+    TSubclassOf<UGameplayEffect> RecruitBonusEffectClass;
+
+    /**
+     * @brief 应用招募效果到将领
+     * @param Leader 将领角色
+     * @param Soldier 被招募的士兵
+     */
+    void ApplyRecruitEffect(AXBCharacterBase* Leader, AXBSoldierActor* Soldier);
 };

@@ -8,6 +8,7 @@
 #include "Character/XBCharacterBase.h"
 #include "GAS/XBAttributeSet.h"
 #include "NiagaraFunctionLibrary.h"
+#include "Character/XBCharacterBase.h"
 
 UXBGameplayAbility_Attack::UXBGameplayAbility_Attack()
 {
@@ -18,6 +19,11 @@ UXBGameplayAbility_Attack::UXBGameplayAbility_Attack()
     // 设置激活策略
     InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
     NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalOnly;
+
+    // ✨ 新增 - 使用新API
+    FGameplayTagContainer Tags;
+    Tags.AddTag(FGameplayTag::RequestGameplayTag(FName("Ability.Attack")));
+    SetAssetTags(Tags);
 }
 
 void UXBGameplayAbility_Attack::ActivateAbility(
@@ -206,31 +212,30 @@ void UXBGameplayAbility_Attack::ApplyDamageToTarget(AActor* Target)
     // 创建效果上下文
     FGameplayEffectContextHandle ContextHandle = SourceASC->MakeEffectContext();
     ContextHandle.AddSourceObject(GetAvatarActorFromActorInfo());
+    
+    // ✨ 新增 - 添加命中结果信息（可用于 GameplayCue 播放位置）
+    // ContextHandle.AddHitResult(HitResult); // 如果有碰撞检测结果
 
     // 创建效果规格
     FGameplayEffectSpecHandle SpecHandle = SourceASC->MakeOutgoingSpec(DamageEffectClass, GetAbilityLevel(), ContextHandle);
 
     if (SpecHandle.IsValid())
     {
-        // 获取伤害值（从属性集读取基础伤害 * 缩放）
-        float BaseDamage = 50.0f; // 默认值
-        if (const UXBAttributeSet* AttributeSet = SourceASC->GetSet<UXBAttributeSet>())
-        {
-            BaseDamage = AttributeSet->GetBaseDamage() * AttributeSet->GetDamageMultiplier();
-        }
-
-        // 根据缩放调整伤害
-        float ScaledDamage = BaseDamage * GetOwnerScale();
-
-        // 设置伤害值到效果规格
+        // 🔧 修改 - 设置额外伤害（如果需要技能本身添加额外伤害）
+        // 这个值会在 ExecutionCalculation 中通过 SetByCaller 读取
+        float BonusDamage = 0.0f; // 普攻不加额外伤害，技能可以加
         SpecHandle.Data->SetSetByCallerMagnitude(
             FGameplayTag::RequestGameplayTag(FName("Data.Damage")), 
-            ScaledDamage);
+            BonusDamage);
 
-        // 应用效果
-        SourceASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);
+        // 应用效果到目标
+        FActiveGameplayEffectHandle ActiveHandle = SourceASC->ApplyGameplayEffectSpecToTarget(
+            *SpecHandle.Data.Get(), TargetASC);
 
-        UE_LOG(LogTemp, Log, TEXT("Applied %.1f damage to %s"), ScaledDamage, *Target->GetName());
+        if (ActiveHandle.IsValid())
+        {
+            UE_LOG(LogTemp, Log, TEXT("成功对 %s 应用伤害效果"), *Target->GetName());
+        }
     }
 }
 

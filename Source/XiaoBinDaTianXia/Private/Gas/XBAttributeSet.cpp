@@ -10,6 +10,7 @@ UXBAttributeSet::UXBAttributeSet()
     // 初始化默认值
     InitHealth(100.0f);
     InitMaxHealth(100.0f);
+    InitHealthMultiplier(1.0f);
     InitBaseDamage(10.0f);
     InitDamageMultiplier(1.0f);
     InitMoveSpeed(600.0f);
@@ -22,6 +23,7 @@ void UXBAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 
     DOREPLIFETIME_CONDITION_NOTIFY(UXBAttributeSet, Health, COND_None, REPNOTIFY_Always);
     DOREPLIFETIME_CONDITION_NOTIFY(UXBAttributeSet, MaxHealth, COND_None, REPNOTIFY_Always);
+    DOREPLIFETIME_CONDITION_NOTIFY(UXBAttributeSet, HealthMultiplier, COND_None, REPNOTIFY_Always);
     DOREPLIFETIME_CONDITION_NOTIFY(UXBAttributeSet, BaseDamage, COND_None, REPNOTIFY_Always);
     DOREPLIFETIME_CONDITION_NOTIFY(UXBAttributeSet, DamageMultiplier, COND_None, REPNOTIFY_Always);
     DOREPLIFETIME_CONDITION_NOTIFY(UXBAttributeSet, MoveSpeed, COND_None, REPNOTIFY_Always);
@@ -126,6 +128,11 @@ void UXBAttributeSet::OnRep_Health(const FGameplayAttributeData& OldValue)
 void UXBAttributeSet::OnRep_MaxHealth(const FGameplayAttributeData& OldValue)
 {
     GAMEPLAYATTRIBUTE_REPNOTIFY(UXBAttributeSet, MaxHealth, OldValue);
+}
+
+void UXBAttributeSet::OnRep_HealthMultiplier(const FGameplayAttributeData& OldValue)
+{
+    GAMEPLAYATTRIBUTE_REPNOTIFY(UXBAttributeSet, HealthMultiplier, OldValue);
 }
 
 void UXBAttributeSet::OnRep_BaseDamage(const FGameplayAttributeData& OldValue)

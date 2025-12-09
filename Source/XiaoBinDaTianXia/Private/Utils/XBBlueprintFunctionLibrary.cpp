@@ -54,12 +54,11 @@ FString UXBBlueprintFunctionLibrary::GetFactionDisplayName(EXBFaction Faction)
         return TEXT("中立");
     case EXBFaction::Player:
         return TEXT("玩家");
-    case EXBFaction::Enemy1:
-        return TEXT("敌方1");
-    case EXBFaction::Enemy2:
-        return TEXT("敌方2");
-    case EXBFaction::Enemy3:
-        return TEXT("敌方3");
+    case EXBFaction::Enemy:
+        return TEXT("敌方");
+    case EXBFaction::Ally:
+        return TEXT("友方");
+
     default:
         return TEXT("未知");
     }
@@ -73,13 +72,11 @@ FLinearColor UXBBlueprintFunctionLibrary::GetFactionColor(EXBFaction Faction)
         return FLinearColor::White;
     case EXBFaction::Player:
         return FLinearColor::Blue;
-    case EXBFaction::Enemy: // 兼容旧枚举
-    case EXBFaction::Enemy1:
+    case EXBFaction::Enemy:
         return FLinearColor::Red;
-    case EXBFaction::Enemy2:
+    case EXBFaction::Ally:
         return FLinearColor(1.0f, 0.5f, 0.0f); // 橙色
-    case EXBFaction::Enemy3:
-        return FLinearColor(0.5f, 0.0f, 0.5f); // 紫色
+
     default:
         return FLinearColor::Gray;
     }

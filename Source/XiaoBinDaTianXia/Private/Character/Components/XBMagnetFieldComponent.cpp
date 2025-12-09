@@ -1,8 +1,11 @@
 ﻿// XBMagnetFieldComponent.cpp
 #include "Character/Components/XBMagnetFieldComponent.h"
 
+#include "GameplayEffectTypes.h"
 #include "Character/XBCharacterBase.h"
 #include "Soldier/XBSoldierActor.h"
+#include "GAS/XBAbilitySystemComponent.h"
+#include "AbilitySystemBlueprintLibrary.h"
 
 UXBMagnetFieldComponent::UXBMagnetFieldComponent()
 {
@@ -76,7 +79,7 @@ void UXBMagnetFieldComponent::OnSphereBeginOverlap(UPrimitiveComponent* Overlapp
         return;
     }
 
-    // 检查是否是可招募的士兵
+    // ✨ 新增 - 完善士兵招募逻辑
     if (AXBSoldierActor* Soldier = Cast<AXBSoldierActor>(OtherActor))
     {
         // 只招募中立或待机状态的士兵
@@ -86,13 +89,14 @@ void UXBMagnetFieldComponent::OnSphereBeginOverlap(UPrimitiveComponent* Overlapp
             // 获取将领
             if (AXBCharacterBase* Leader = Cast<AXBCharacterBase>(GetOwner()))
             {
-                // 设置士兵阵营为将领阵营
-                // 注意：需要在 AXBSoldierActor 中添加 SetFaction 方法
-                
-                // 添加士兵到将领
+                // 添加士兵到将领（内部会处理血量加成和缩放）
                 Leader->AddSoldier(Soldier);
                 
-                UE_LOG(LogTemp, Log, TEXT("Soldier recruited by leader"));
+                // ✨ 新增 - 应用招募效果（血量增益）
+                ApplyRecruitEffect(Leader, Soldier);
+                
+                int32 SoldierCount = Leader->GetSoldierCount();
+                UE_LOG(LogTemp, Log, TEXT("士兵被招募，将领当前士兵数: %d"), SoldierCount);
             }
         }
     }
@@ -144,4 +148,43 @@ bool UXBMagnetFieldComponent::IsActorDetectable(AActor* Actor) const
     }
 
     return false;
+}
+
+void UXBMagnetFieldComponent::ApplyRecruitEffect(AXBCharacterBase* Leader, AXBSoldierActor* Soldier)
+{
+    if (!Leader)
+    {
+        return;
+    }
+
+    // 获取将领的 ASC
+    UAbilitySystemComponent* LeaderASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Leader);
+    if (!LeaderASC)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("将领没有 AbilitySystemComponent"));
+        return;
+    }
+
+    // 如果配置了招募效果，应用它
+    if (RecruitBonusEffectClass)
+    {
+        FGameplayEffectContextHandle ContextHandle = LeaderASC->MakeEffectContext();
+        ContextHandle.AddSourceObject(Soldier);
+
+        FGameplayEffectSpecHandle SpecHandle = LeaderASC->MakeOutgoingSpec(
+            RecruitBonusEffectClass, 1, ContextHandle);
+
+        if (SpecHandle.IsValid())
+        {
+            LeaderASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+            UE_LOG(LogTemp, Log, TEXT("已应用招募增益效果"));
+        }
+    }
+
+    // 发送招募事件（供其他系统监听）
+    FGameplayEventData EventData;
+    EventData.Instigator = Leader;
+    EventData.Target = Soldier;
+    LeaderASC->HandleGameplayEvent(
+        FGameplayTag::RequestGameplayTag(FName("Event.Soldier.Recruited")), &EventData);
 }

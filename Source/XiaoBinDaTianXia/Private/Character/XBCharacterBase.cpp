@@ -1,39 +1,32 @@
-﻿// Copyright XiaoBing Project. All Rights Reserved.
+﻿/* --- 完整文件代码 --- */
+// Source/XiaoBinDaTianXia/Private/Character/XBCharacterBase.cpp
+
+/**
+ * @file XBCharacterBase.cpp
+ * @brief 角色基类实现
+ */
 
 #include "Character/XBCharacterBase.h"
+#include "Character/Components/XBCombatComponent.h"
 #include "GAS/XBAbilitySystemComponent.h"
 #include "GAS/XBAttributeSet.h"
-#include "Army/XBArmySubsystem.h"
-#include "GameFramework/CharacterMovementComponent.h"
+#include "Data/XBLeaderDataTable.h"
 #include "Soldier/XBSoldierActor.h"
-#include "Components/CapsuleComponent.h"
+#include "Engine/DataTable.h"
+#include "GameFramework/CharacterMovementComponent.h"
 
 AXBCharacterBase::AXBCharacterBase()
 {
     PrimaryActorTick.bCanEverTick = true;
 
-    // 创建 ASC
+    // 创建ASC
     AbilitySystemComponent = CreateDefaultSubobject<UXBAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
-    AbilitySystemComponent->SetIsReplicated(true);
-    AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Mixed);
 
     // 创建属性集
     AttributeSet = CreateDefaultSubobject<UXBAttributeSet>(TEXT("AttributeSet"));
 
-    // 配置移动组件
-    if (UCharacterMovementComponent* CMC = GetCharacterMovement())
-    {
-        CMC->bOrientRotationToMovement = true;
-        CMC->RotationRate = FRotator(0.0f, 500.0f, 0.0f);
-        CMC->MaxWalkSpeed = 600.0f;
-        CMC->BrakingDecelerationWalking = 2000.0f;
-    }
-
-    // 配置胶囊碰撞
-    if (UCapsuleComponent* Capsule = GetCapsuleComponent())
-    {
-        Capsule->SetCollisionProfileName(TEXT("Pawn"));
-    }
+    // 创建战斗组件
+    CombatComponent = CreateDefaultSubobject<UXBCombatComponent>(TEXT("CombatComponent"));
 }
 
 UAbilitySystemComponent* AXBCharacterBase::GetAbilitySystemComponent() const
@@ -45,26 +38,24 @@ void AXBCharacterBase::BeginPlay()
 {
     Super::BeginPlay();
 
-    BaseScale = GetActorScale3D().X;
+    // 初始化ASC
+    InitializeAbilitySystem();
+
+    // 从配置的数据表初始化
+    if (ConfigDataTable && !ConfigRowName.IsNone())
+    {
+        InitializeFromDataTable(ConfigDataTable, ConfigRowName);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("%s: 未配置数据表或行名，跳过数据表初始化"), *GetName());
+    }
 }
 
 void AXBCharacterBase::PossessedBy(AController* NewController)
 {
     Super::PossessedBy(NewController);
 
-    // 服务器端初始化 ASC
-    if (AbilitySystemComponent)
-    {
-        AbilitySystemComponent->InitAbilityActorInfo(this, this);
-        InitializeAbilitySystem();
-    }
-}
-
-void AXBCharacterBase::OnRep_PlayerState()
-{
-    Super::OnRep_PlayerState();
-
-    // 客户端初始化 ASC
     if (AbilitySystemComponent)
     {
         AbilitySystemComponent->InitAbilityActorInfo(this, this);
@@ -73,77 +64,105 @@ void AXBCharacterBase::OnRep_PlayerState()
 
 void AXBCharacterBase::InitializeAbilitySystem()
 {
-    if (!AbilitySystemComponent)
-    {
-        return;
-    }
-
-    // 旧代码（已弃用）：
-    // AbilitySystemComponent->GetSpawnedAttributes_Mutable().AddUnique(AttributeSet);
-
-    // 新代码：使用 AddSpawnedAttribute
-    if (AttributeSet)
-    {
-        AbilitySystemComponent->AddSpawnedAttribute(AttributeSet);
-    }
-
-    // 添加初始技能
-    AddStartupAbilities();
-
-    // 应用初始效果
-    ApplyStartupEffects();
-}
-
-void AXBCharacterBase::AddStartupAbilities()
-{
-    if (!AbilitySystemComponent)
-    {
-        return;
-    }
-
-    for (const TSubclassOf<UGameplayAbility>& AbilityClass : StartupAbilities)
-    {
-        if (AbilityClass)
-        {
-            FGameplayAbilitySpec AbilitySpec(AbilityClass, 1, INDEX_NONE, this);
-            AbilitySystemComponent->GiveAbility(AbilitySpec);
-        }
-    }
-}
-
-void AXBCharacterBase::ApplyStartupEffects()
-{
-    if (!AbilitySystemComponent)
-    {
-        return;
-    }
-
-    FGameplayEffectContextHandle EffectContext = AbilitySystemComponent->MakeEffectContext();
-    EffectContext.AddSourceObject(this);
-
-    for (const TSubclassOf<UGameplayEffect>& EffectClass : StartupEffects)
-    {
-        if (EffectClass)
-        {
-            FGameplayEffectSpecHandle SpecHandle = AbilitySystemComponent->MakeOutgoingSpec(
-                EffectClass, 1, EffectContext);
-
-            if (SpecHandle.IsValid())
-            {
-                AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
-            }
-        }
-    }
-}
-
-bool AXBCharacterBase::TryActivateAbilityByTag(const FGameplayTag& AbilityTag)
-{
     if (AbilitySystemComponent)
     {
-        return AbilitySystemComponent->TryActivateAbilityByTag(AbilityTag);
+        AbilitySystemComponent->InitAbilityActorInfo(this, this);
+        UE_LOG(LogTemp, Log, TEXT("%s: ASC初始化完成"), *GetName());
     }
-    return false;
 }
+
+void AXBCharacterBase::InitializeFromDataTable(UDataTable* DataTable, FName RowName)
+{
+    if (!DataTable)
+    {
+        UE_LOG(LogTemp, Error, TEXT("%s: InitializeFromDataTable - 数据表为空"), *GetName());
+        return;
+    }
+
+    if (RowName.IsNone())
+    {
+        UE_LOG(LogTemp, Error, TEXT("%s: InitializeFromDataTable - 行名为空"), *GetName());
+        return;
+    }
+
+    FXBLeaderTableRow* LeaderRow = DataTable->FindRow<FXBLeaderTableRow>(RowName, TEXT("AXBCharacterBase::InitializeFromDataTable"));
+    if (!LeaderRow)
+    {
+        UE_LOG(LogTemp, Error, TEXT("%s: InitializeFromDataTable - 找不到行 '%s'，可用行:"), *GetName(), *RowName.ToString());
+        
+        TArray<FName> RowNames = DataTable->GetRowNames();
+        for (const FName& Name : RowNames)
+        {
+            UE_LOG(LogTemp, Error, TEXT("  - %s"), *Name.ToString());
+        }
+        return;
+    }
+
+    // 缓存数据
+    CachedLeaderData = *LeaderRow;
+
+    // 缓存成长配置
+    GrowthConfigCache.HealthPerSoldier = LeaderRow->HealthPerSoldier;
+    GrowthConfigCache.ScalePerSoldier = LeaderRow->ScalePerSoldier;
+    GrowthConfigCache.MaxScale = LeaderRow->MaxScale;
+
+    UE_LOG(LogTemp, Log, TEXT("%s: 从数据表加载配置成功 - 行: %s, MaxHealth: %.1f, BaseDamage: %.1f"), 
+        *GetName(), *RowName.ToString(), LeaderRow->MaxHealth, LeaderRow->BaseDamage);
+
+    // 初始化战斗组件
+    if (CombatComponent)
+    {
+        CombatComponent->InitializeFromDataTable(DataTable, RowName);
+        UE_LOG(LogTemp, Log, TEXT("%s: 战斗组件初始化完成"), *GetName());
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("%s: 战斗组件为空!"), *GetName());
+    }
+
+    // 应用属性到ASC
+    ApplyInitialAttributes();
+
+    // 应用移动速度
+    if (UCharacterMovementComponent* MovementComp = GetCharacterMovement())
+    {
+        MovementComp->MaxWalkSpeed = LeaderRow->MoveSpeed;
+        UE_LOG(LogTemp, Log, TEXT("%s: 移动速度设置为 %.1f"), *GetName(), LeaderRow->MoveSpeed);
+    }
+}
+
+void AXBCharacterBase::ApplyInitialAttributes()
+{
+    if (!AbilitySystemComponent)
+    {
+        UE_LOG(LogTemp, Error, TEXT("%s: ApplyInitialAttributes - ASC为空"), *GetName());
+        return;
+    }
+
+    const UXBAttributeSet* LocalAttributeSet = AbilitySystemComponent->GetSet<UXBAttributeSet>();
+    if (!LocalAttributeSet)
+    {
+        UE_LOG(LogTemp, Error, TEXT("%s: ApplyInitialAttributes - AttributeSet为空"), *GetName());
+        return;
+    }
+
+    AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetMaxHealthAttribute(), CachedLeaderData.MaxHealth);
+    AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetHealthAttribute(), CachedLeaderData.MaxHealth);
+    AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetHealthMultiplierAttribute(), CachedLeaderData.HealthMultiplier);
+    AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetBaseDamageAttribute(), CachedLeaderData.BaseDamage);
+    AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetDamageMultiplierAttribute(), CachedLeaderData.DamageMultiplier);
+    AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetMoveSpeedAttribute(), CachedLeaderData.MoveSpeed);
+    AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetScaleAttribute(), CachedLeaderData.Scale);
+
+    UE_LOG(LogTemp, Log, TEXT("%s: 属性应用完成 - MaxHealth: %.1f, BaseDamage: %.1f, MoveSpeed: %.1f, Scale: %.1f"),
+        *GetName(),
+        CachedLeaderData.MaxHealth,
+        CachedLeaderData.BaseDamage,
+        CachedLeaderData.MoveSpeed,
+        CachedLeaderData.Scale);
+}
+
+// ============ 阵营系统实现 ============
 
 bool AXBCharacterBase::IsHostileTo(const AXBCharacterBase* Other) const
 {
@@ -152,222 +171,53 @@ bool AXBCharacterBase::IsHostileTo(const AXBCharacterBase* Other) const
         return false;
     }
 
-    // 中立对所有人都不敌对
+    // 相同阵营不敌对
+    if (Faction == Other->Faction)
+    {
+        return false;
+    }
+
+    // 中立对任何人都不敌对
     if (Faction == EXBFaction::Neutral || Other->Faction == EXBFaction::Neutral)
     {
         return false;
     }
 
-    // 不同阵营为敌对
-    return Faction != Other->Faction;
+    // 玩家和友军互相不敌对
+    if ((Faction == EXBFaction::Player && Other->Faction == EXBFaction::Ally) ||
+        (Faction == EXBFaction::Ally && Other->Faction == EXBFaction::Player))
+    {
+        return false;
+    }
+
+    // 其他情况（玩家vs敌人，友军vs敌人）视为敌对
+    return true;
 }
 
-
-
-void AXBCharacterBase::RecruitSoldier(int32 SoldierId)
+bool AXBCharacterBase::IsFriendlyTo(const AXBCharacterBase* Other) const
 {
-    if (UWorld* World = GetWorld())
+    if (!Other)
     {
-        if (UXBArmySubsystem* ArmySubsystem = World->GetSubsystem<UXBArmySubsystem>())
-        {
-            int32 NewSlotIndex = GetSoldierCount();
-            if (ArmySubsystem->AssignSoldierToLeader(SoldierId, this, NewSlotIndex))
-            {
-                OnSoldierRecruited();
-            }
-        }
-    }
-}
-
-void AXBCharacterBase::RecallAllSoldiers()
-{
-    for (AXBSoldierActor* Soldier : OwnedSoldiers)
-    {
-        if (Soldier)
-        {
-            Soldier->ExitCombat();
-        }
+        return false;
     }
 
-    // 退出战斗状态
-    if (AbilitySystemComponent)
+    // 相同阵营友好
+    if (Faction == Other->Faction)
     {
-        AbilitySystemComponent->ExitCombat();
-    }
-}
-
-void AXBCharacterBase::EnterCombat()
-{
-    if (AbilitySystemComponent)
-    {
-        AbilitySystemComponent->EnterCombat();
+        return true;
     }
 
-    if (UWorld* World = GetWorld())
+    // 玩家和友军友好
+    if ((Faction == EXBFaction::Player && Other->Faction == EXBFaction::Ally) ||
+        (Faction == EXBFaction::Ally && Other->Faction == EXBFaction::Player))
     {
-        if (UXBArmySubsystem* ArmySubsystem = World->GetSubsystem<UXBArmySubsystem>())
-        {
-            ArmySubsystem->EnterCombatForLeader(const_cast<AXBCharacterBase*>(this));
-        }
+        return true;
     }
-}
 
-void AXBCharacterBase::ExitCombat()
-{
-    RecallAllSoldiers();
-}
-
-bool AXBCharacterBase::IsInCombat() const
-{
-    if (AbilitySystemComponent)
-    {
-        return AbilitySystemComponent->IsInCombat();
-    }
     return false;
 }
 
-void AXBCharacterBase::UpdateScaleFromSoldierCount()
-{
-    const int32 SoldierCount = GetSoldierCount();
-    
-    // 线性叠加：Scale = BaseScale + (SoldierCount * ScalePerSoldier)
-    const float NewScale = FMath::Min(
-        BaseScale + (SoldierCount * GrowthConfig.ScalePerSoldier),
-        GrowthConfig.MaxScale);
-
-    SetActorScale3D(FVector(NewScale));
-
-    // 更新属性集中的 Scale
-    if (AttributeSet)
-    {
-        AttributeSet->SetScale(NewScale);
-    }
-}
-
-void AXBCharacterBase::OnSoldierRecruited()
-{
-    if (!AttributeSet)
-    {
-        return;
-    }
-
-    // 获取成长配置
-    float HealthPerSoldier = GrowthConfig.HealthPerSoldier;
-
-    // 计算新血量
-    float CurrentHealth = AttributeSet->GetHealth();
-    float CurrentMaxHealth = AttributeSet->GetMaxHealth();
-    float NewHealth = CurrentHealth + HealthPerSoldier;
-
-    // 如果新血量超过最大血量，提升最大血量
-    if (NewHealth > CurrentMaxHealth)
-    {
-        AttributeSet->SetMaxHealth(NewHealth);
-    }
-
-    // 设置当前血量（不超过最大血量）
-    AttributeSet->SetHealth(FMath::Min(NewHealth, AttributeSet->GetMaxHealth()));
-
-    // 更新缩放
-    UpdateScaleFromSoldierCount();
-
-    UE_LOG(LogTemp, Log, TEXT("Soldier recruited, Health: %.1f/%.1f, Scale: %.2f"), 
-        AttributeSet->GetHealth(), AttributeSet->GetMaxHealth(), GetActorScale3D().X);
-}
-
-void AXBCharacterBase::OnSoldierDied()
-{
-    // 清理死亡的士兵
-    OwnedSoldiers.RemoveAll([](AXBSoldierActor* Soldier) 
-    {
-        return !Soldier || Soldier->GetSoldierState() == EXBSoldierState::Dead;
-    });
-
-    // 重新分配槽位
-    ReorganizeSoldierFormation();
-
-    // 更新缩放（不扣血量）
-    UpdateScaleFromSoldierCount();
-}
-
-void AXBCharacterBase::SetCharacterHidden(bool bNewHidden)
-{
-    bIsHiddenInGrass = bNewHidden;
-
-    // 通知士兵也隐身
-    if (UWorld* World = GetWorld())
-    {
-        if (UXBArmySubsystem* ArmySubsystem = World->GetSubsystem<UXBArmySubsystem>())
-        {
-            ArmySubsystem->SetHiddenForLeader(const_cast<AXBCharacterBase*>(this), bNewHidden);
-        }
-    }
-
-    // 关闭与敌人的碰撞
-    if (UCapsuleComponent* Capsule = GetCapsuleComponent())
-    {
-        if (bNewHidden)
-        {
-            Capsule->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
-        }
-        else
-        {
-            Capsule->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
-        }
-    }
-}
-
-
-
-void AXBCharacterBase::OnHealthChanged(float OldValue, float NewValue)
-{
-    if (NewValue <= 0.0f && OldValue > 0.0f)
-    {
-        OnDeath();
-    }
-}
-
-void AXBCharacterBase::OnScaleChanged(float OldValue, float NewValue)
-{
-    // 缩放变化时更新碰撞体大小
-    if (UCapsuleComponent* Capsule = GetCapsuleComponent())
-    {
-        const float ScaleRatio = NewValue / BaseScale;
-        Capsule->SetCapsuleSize(
-            Capsule->GetUnscaledCapsuleRadius() * ScaleRatio,
-            Capsule->GetUnscaledCapsuleHalfHeight() * ScaleRatio);
-    }
-}
-
-void AXBCharacterBase::OnDeath_Implementation()
-{
-    // 销毁所有士兵
-    if (UWorld* World = GetWorld())
-    {
-        if (UXBArmySubsystem* ArmySubsystem = World->GetSubsystem<UXBArmySubsystem>())
-        {
-            TArray<int32> Soldiers = ArmySubsystem->GetSoldiersByLeader(this);
-            for (int32 SoldierId : Soldiers)
-            {
-                ArmySubsystem->DestroySoldier(SoldierId);
-            }
-        }
-    }
-
-    // 禁用碰撞
-    if (UCapsuleComponent* Capsule = GetCapsuleComponent())
-    {
-        Capsule->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-    }
-
-    // 禁用移动
-    if (UCharacterMovementComponent* CMC = GetCharacterMovement())
-    {
-        CMC->DisableMovement();
-    }
-
-    // TODO: 播放死亡动画，掉落士兵
-}
+// ============ 士兵管理实现 ============
 
 void AXBCharacterBase::AddSoldier(AXBSoldierActor* Soldier)
 {
@@ -376,24 +226,12 @@ void AXBCharacterBase::AddSoldier(AXBSoldierActor* Soldier)
         return;
     }
 
-    // 检查是否已存在
-    if (OwnedSoldiers.Contains(Soldier))
+    if (!Soldiers.Contains(Soldier))
     {
-        return;
+        Soldiers.Add(Soldier);
+        OnSoldiersAdded(1);
+        UE_LOG(LogTemp, Log, TEXT("%s: 添加士兵，当前数量: %d"), *GetName(), Soldiers.Num());
     }
-
-    // 添加到列表
-    OwnedSoldiers.Add(Soldier);
-
-    // 分配槽位
-    int32 SlotIndex = OwnedSoldiers.Num() - 1;
-    Soldier->SetFollowTarget(this, SlotIndex);
-    Soldier->SetSoldierState(EXBSoldierState::Following);
-
-    // 触发招募回调
-    OnSoldierRecruited();
-
-    UE_LOG(LogTemp, Log, TEXT("Soldier added, total: %d"), OwnedSoldiers.Num());
 }
 
 void AXBCharacterBase::RemoveSoldier(AXBSoldierActor* Soldier)
@@ -403,57 +241,62 @@ void AXBCharacterBase::RemoveSoldier(AXBSoldierActor* Soldier)
         return;
     }
 
-    int32 Index = OwnedSoldiers.Find(Soldier);
-    if (Index != INDEX_NONE)
+    if (Soldiers.Remove(Soldier) > 0)
     {
-        OwnedSoldiers.RemoveAt(Index);
-        
-        // 重新分配槽位
-        ReorganizeSoldierFormation();
-
-        UE_LOG(LogTemp, Log, TEXT("Soldier removed, total: %d"), OwnedSoldiers.Num());
+        UE_LOG(LogTemp, Log, TEXT("%s: 移除士兵，当前数量: %d"), *GetName(), Soldiers.Num());
     }
 }
 
-
-void AXBCharacterBase::SoldiersEnterCombat()
+void AXBCharacterBase::OnSoldierDied()
 {
-    for (AXBSoldierActor* Soldier : OwnedSoldiers)
+    // 士兵死亡时的处理逻辑
+    UE_LOG(LogTemp, Log, TEXT("%s: 一名士兵阵亡，剩余士兵: %d"), *GetName(), Soldiers.Num());
+}
+
+void AXBCharacterBase::OnSoldiersAdded(int32 SoldierCount)
+{
+    if (SoldierCount <= 0)
     {
-        if (Soldier)
-        {
-            Soldier->EnterCombat();
-        }
+        return;
     }
+
+    CurrentSoldierCount += SoldierCount;
+
+    // 计算新的缩放值
+    const float BaseScale = CachedLeaderData.Scale;
+    const float AdditionalScale = CurrentSoldierCount * GrowthConfigCache.ScalePerSoldier;
+    const float NewScale = FMath::Min(BaseScale + AdditionalScale, GrowthConfigCache.MaxScale);
+
+    // 应用缩放
+    if (AbilitySystemComponent)
+    {
+        AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetScaleAttribute(), NewScale);
+    }
+    SetActorScale3D(FVector(NewScale));
+
+    // 增加生命值
+    const float HealthBonus = SoldierCount * GrowthConfigCache.HealthPerSoldier;
+    if (AbilitySystemComponent)
+    {
+        float CurrentMaxHealth = AbilitySystemComponent->GetNumericAttribute(UXBAttributeSet::GetMaxHealthAttribute());
+        float CurrentHealth = AbilitySystemComponent->GetNumericAttribute(UXBAttributeSet::GetHealthAttribute());
+        
+        AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetMaxHealthAttribute(), CurrentMaxHealth + HealthBonus);
+        AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetHealthAttribute(), CurrentHealth + HealthBonus);
+    }
+
+    UE_LOG(LogTemp, Log, TEXT("%s: 士兵添加 +%d, 总数: %d, 新缩放: %.2f, 生命加成: %.1f"),
+        *GetName(), SoldierCount, CurrentSoldierCount, NewScale, HealthBonus);
+}
+
+void AXBCharacterBase::RecallAllSoldiers()
+{
+    UE_LOG(LogTemp, Log, TEXT("%s: 召回所有士兵"), *GetName());
+    // 子类可以重写此方法实现具体的召回逻辑
 }
 
 void AXBCharacterBase::SetSoldiersEscaping(bool bEscaping)
 {
-    for (AXBSoldierActor* Soldier : OwnedSoldiers)
-    {
-        if (Soldier)
-        {
-            Soldier->SetEscaping(bEscaping);
-        }
-    }
+    UE_LOG(LogTemp, Log, TEXT("%s: 设置士兵逃跑状态: %s"), *GetName(), bEscaping ? TEXT("是") : TEXT("否"));
+    // 子类可以重写此方法实现具体的逃跑逻辑
 }
-
-
-void AXBCharacterBase::ReorganizeSoldierFormation()
-{
-    // 重新分配槽位索引
-    for (int32 i = 0; i < OwnedSoldiers.Num(); ++i)
-    {
-        if (OwnedSoldiers[i])
-        {
-            OwnedSoldiers[i]->SetFormationSlotIndex(i);
-        }
-    }
-}
-
-void AXBCharacterBase::UpdateLeaderScaleAndAttributes()
-{
-    UpdateScaleFromSoldierCount();
-}
-
-
