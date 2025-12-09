@@ -14,6 +14,9 @@
 #include "Soldier/XBSoldierActor.h"
 #include "Engine/DataTable.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Components/CapsuleComponent.h"
+#include "Animation/AnimInstance.h"
+#include "TimerManager.h"
 
 AXBCharacterBase::AXBCharacterBase()
 {
@@ -171,26 +174,22 @@ bool AXBCharacterBase::IsHostileTo(const AXBCharacterBase* Other) const
         return false;
     }
 
-    // 相同阵营不敌对
     if (Faction == Other->Faction)
     {
         return false;
     }
 
-    // 中立对任何人都不敌对
     if (Faction == EXBFaction::Neutral || Other->Faction == EXBFaction::Neutral)
     {
         return false;
     }
 
-    // 玩家和友军互相不敌对
     if ((Faction == EXBFaction::Player && Other->Faction == EXBFaction::Ally) ||
         (Faction == EXBFaction::Ally && Other->Faction == EXBFaction::Player))
     {
         return false;
     }
 
-    // 其他情况（玩家vs敌人，友军vs敌人）视为敌对
     return true;
 }
 
@@ -201,13 +200,11 @@ bool AXBCharacterBase::IsFriendlyTo(const AXBCharacterBase* Other) const
         return false;
     }
 
-    // 相同阵营友好
     if (Faction == Other->Faction)
     {
         return true;
     }
 
-    // 玩家和友军友好
     if ((Faction == EXBFaction::Player && Other->Faction == EXBFaction::Ally) ||
         (Faction == EXBFaction::Ally && Other->Faction == EXBFaction::Player))
     {
@@ -249,7 +246,6 @@ void AXBCharacterBase::RemoveSoldier(AXBSoldierActor* Soldier)
 
 void AXBCharacterBase::OnSoldierDied()
 {
-    // 士兵死亡时的处理逻辑
     UE_LOG(LogTemp, Log, TEXT("%s: 一名士兵阵亡，剩余士兵: %d"), *GetName(), Soldiers.Num());
 }
 
@@ -262,19 +258,17 @@ void AXBCharacterBase::OnSoldiersAdded(int32 SoldierCount)
 
     CurrentSoldierCount += SoldierCount;
 
-    // 计算新的缩放值
     const float BaseScale = CachedLeaderData.Scale;
     const float AdditionalScale = CurrentSoldierCount * GrowthConfigCache.ScalePerSoldier;
     const float NewScale = FMath::Min(BaseScale + AdditionalScale, GrowthConfigCache.MaxScale);
 
-    // 应用缩放
     if (AbilitySystemComponent)
     {
         AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetScaleAttribute(), NewScale);
     }
+
     SetActorScale3D(FVector(NewScale));
 
-    // 增加生命值
     const float HealthBonus = SoldierCount * GrowthConfigCache.HealthPerSoldier;
     if (AbilitySystemComponent)
     {
@@ -292,11 +286,169 @@ void AXBCharacterBase::OnSoldiersAdded(int32 SoldierCount)
 void AXBCharacterBase::RecallAllSoldiers()
 {
     UE_LOG(LogTemp, Log, TEXT("%s: 召回所有士兵"), *GetName());
-    // 子类可以重写此方法实现具体的召回逻辑
 }
 
 void AXBCharacterBase::SetSoldiersEscaping(bool bEscaping)
 {
     UE_LOG(LogTemp, Log, TEXT("%s: 设置士兵逃跑状态: %s"), *GetName(), bEscaping ? TEXT("是") : TEXT("否"));
-    // 子类可以重写此方法实现具体的逃跑逻辑
+}
+
+// ============ 死亡系统实现 ============
+
+void AXBCharacterBase::HandleDeath()
+{
+    // 防止重复处理死亡
+    if (bIsDead)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("%s: HandleDeath - 已经死亡，跳过"), *GetName());
+        return;
+    }
+
+    bIsDead = true;
+
+    UE_LOG(LogTemp, Log, TEXT(""));
+    UE_LOG(LogTemp, Log, TEXT("╔══════════════════════════════════════════╗"));
+    UE_LOG(LogTemp, Log, TEXT("║           角色死亡处理开始               ║"));
+    UE_LOG(LogTemp, Log, TEXT("╠══════════════════════════════════════════╣"));
+    UE_LOG(LogTemp, Log, TEXT("║ 角色: %s"), *GetName());
+    UE_LOG(LogTemp, Log, TEXT("║ 阵营: %s"), 
+        Faction == EXBFaction::Player ? TEXT("玩家") :
+        Faction == EXBFaction::Enemy ? TEXT("敌人") :
+        Faction == EXBFaction::Ally ? TEXT("友军") : TEXT("中立"));
+    UE_LOG(LogTemp, Log, TEXT("║ 死亡蒙太奇: %s"), DeathMontage ? *DeathMontage->GetName() : TEXT("未配置"));
+    UE_LOG(LogTemp, Log, TEXT("║ 消失延迟: %.2f秒"), DeathDestroyDelay);
+    UE_LOG(LogTemp, Log, TEXT("╚══════════════════════════════════════════╝"));
+
+    // 广播死亡事件
+    OnCharacterDeath.Broadcast(this);
+
+    // 禁用角色移动
+    if (UCharacterMovementComponent* MovementComp = GetCharacterMovement())
+    {
+        MovementComp->DisableMovement();
+        MovementComp->StopMovementImmediately();
+        UE_LOG(LogTemp, Log, TEXT("%s: 移动已禁用"), *GetName());
+    }
+
+    // 禁用碰撞（可选，根据需求调整）
+    if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+    {
+        Capsule->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        UE_LOG(LogTemp, Log, TEXT("%s: 碰撞已禁用"), *GetName());
+    }
+
+    // 停止所有能力
+    if (AbilitySystemComponent)
+    {
+        AbilitySystemComponent->CancelAllAbilities();
+        UE_LOG(LogTemp, Log, TEXT("%s: 所有能力已取消"), *GetName());
+    }
+
+    // 播放死亡蒙太奇
+    bool bMontageStarted = false;
+    if (DeathMontage)
+    {
+        if (USkeletalMeshComponent* MeshComp = GetMesh())
+        {
+            if (UAnimInstance* AnimInstance = MeshComp->GetAnimInstance())
+            {
+                // 停止当前播放的蒙太奇
+                AnimInstance->StopAllMontages(0.2f);
+
+                // 播放死亡蒙太奇
+                float Duration = AnimInstance->Montage_Play(DeathMontage, 1.0f);
+                if (Duration > 0.0f)
+                {
+                    bMontageStarted = true;
+                    UE_LOG(LogTemp, Log, TEXT("%s: 死亡蒙太奇开始播放，时长: %.2f秒"), *GetName(), Duration);
+
+                    // 绑定蒙太奇结束回调
+                    FOnMontageEnded EndDelegate;
+                    EndDelegate.BindUObject(this, &AXBCharacterBase::OnDeathMontageEnded);
+                    AnimInstance->Montage_SetEndDelegate(EndDelegate, DeathMontage);
+
+                    // 如果不需要等蒙太奇结束，立即开始计时
+                    if (!bDelayAfterMontage)
+                    {
+                        GetWorldTimerManager().SetTimer(
+                            DeathDestroyTimerHandle,
+                            this,
+                            &AXBCharacterBase::OnDestroyTimerExpired,
+                            DeathDestroyDelay,
+                            false
+                        );
+                        UE_LOG(LogTemp, Log, TEXT("%s: 销毁计时器已启动（与蒙太奇并行）"), *GetName());
+                    }
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("%s: 死亡蒙太奇播放失败"), *GetName());
+                }
+            }
+        }
+    }
+
+    // 如果没有蒙太奇或播放失败，直接开始延迟销毁计时
+    if (!bMontageStarted)
+    {
+        UE_LOG(LogTemp, Log, TEXT("%s: 无死亡蒙太奇，直接开始销毁倒计时"), *GetName());
+        GetWorldTimerManager().SetTimer(
+            DeathDestroyTimerHandle,
+            this,
+            &AXBCharacterBase::OnDestroyTimerExpired,
+            DeathDestroyDelay,
+            false
+        );
+    }
+}
+
+void AXBCharacterBase::OnDeathMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+    UE_LOG(LogTemp, Log, TEXT("%s: 死亡蒙太奇结束 - 被打断: %s"), 
+        *GetName(), bInterrupted ? TEXT("是") : TEXT("否"));
+
+    // 如果配置为蒙太奇结束后才开始计时
+    if (bDelayAfterMontage)
+    {
+        UE_LOG(LogTemp, Log, TEXT("%s: 开始销毁倒计时 %.2f秒"), *GetName(), DeathDestroyDelay);
+        GetWorldTimerManager().SetTimer(
+            DeathDestroyTimerHandle,
+            this,
+            &AXBCharacterBase::OnDestroyTimerExpired,
+            DeathDestroyDelay,
+            false
+        );
+    }
+}
+
+void AXBCharacterBase::OnDestroyTimerExpired()
+{
+    UE_LOG(LogTemp, Log, TEXT("%s: 销毁计时器到期，准备销毁角色"), *GetName());
+
+    // 执行销毁前清理
+    PreDestroyCleanup();
+
+    // 销毁Actor
+    Destroy();
+}
+
+void AXBCharacterBase::PreDestroyCleanup()
+{
+    UE_LOG(LogTemp, Log, TEXT("%s: 执行销毁前清理"), *GetName());
+
+    // 清除所有士兵的引用
+    for (AXBSoldierActor* Soldier : Soldiers)
+    {
+        if (Soldier)
+        {
+            // 通知士兵主将已死亡，可以在这里处理士兵的后续行为
+            // Soldier->OnLeaderDied();
+        }
+    }
+    Soldiers.Empty();
+
+    // 清除定时器
+    GetWorldTimerManager().ClearTimer(DeathDestroyTimerHandle);
+
+    // 子类可以重写此方法添加额外的清理逻辑
 }

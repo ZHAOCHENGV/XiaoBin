@@ -120,7 +120,36 @@ void UXBCombatComponent::InitializeFromDataTable(UDataTable* DataTable, FName Ro
     }
     // ✨ 新增 - 输出普攻冷却时间
     UE_LOG(LogTemp, Log, TEXT("普攻冷却时间: %.2f秒"), BasicAttackConfig.Cooldown);
+// =========================================================
+    // 🔧 修复核心问题：将配置的 GA 赋予给 ASC
+    // =========================================================
+    
+    // 确保拥有者有权限（服务端或单机），且 ASC 有效
+    if (GetOwner()->HasAuthority() && CachedASC.IsValid())
+    {
+        // 1. 赋予普攻技能
+        if (BasicAttackConfig.AbilityClass)
+        {
+            // 创建技能 Spec (等级默认为1)
+            FGameplayAbilitySpec Spec(BasicAttackConfig.AbilityClass, 1, INDEX_NONE, this);
+            CachedASC->GiveAbility(Spec);
+            
+            UE_LOG(LogTemp, Log, TEXT("已赋予普攻GA: %s"), *BasicAttackConfig.AbilityClass->GetName());
+        }
 
+        // 2. 赋予特殊技能
+        if (SpecialSkillConfig.AbilityClass)
+        {
+            FGameplayAbilitySpec Spec(SpecialSkillConfig.AbilityClass, 1, INDEX_NONE, this);
+            CachedASC->GiveAbility(Spec);
+            
+            UE_LOG(LogTemp, Log, TEXT("已赋予技能GA: %s"), *SpecialSkillConfig.AbilityClass->GetName());
+        }
+    }
+    else if (!CachedASC.IsValid())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("尝试赋予技能失败：CachedASC 无效，请确保在 BeginPlay 中正确获取了 ASC"));
+    }
     // 检查技能配置
     if (SpecialSkillConfig.AbilityMontage.IsNull())
     {
@@ -143,6 +172,38 @@ void UXBCombatComponent::InitializeFromDataTable(UDataTable* DataTable, FName Ro
     // ✨ 新增 - 输出技能冷却时间
     UE_LOG(LogTemp, Log, TEXT("技能冷却时间: %.2f秒"), SpecialSkillConfig.Cooldown);
 
+    // =========================================================
+    // 🔧 修复核心问题：将配置的 GA 赋予给 ASC
+    // =========================================================
+    
+    // 确保拥有者有权限（服务端或单机），且 ASC 有效
+    if (GetOwner()->HasAuthority() && CachedASC.IsValid())
+    {
+        // 1. 赋予普攻技能
+        if (BasicAttackConfig.AbilityClass)
+        {
+            // 创建技能 Spec (等级默认为1)
+            FGameplayAbilitySpec Spec(BasicAttackConfig.AbilityClass, 1, INDEX_NONE, this);
+            CachedASC->GiveAbility(Spec);
+            
+            UE_LOG(LogTemp, Log, TEXT("已赋予普攻GA: %s"), *BasicAttackConfig.AbilityClass->GetName());
+        }
+
+        // 2. 赋予特殊技能
+        if (SpecialSkillConfig.AbilityClass)
+        {
+            FGameplayAbilitySpec Spec(SpecialSkillConfig.AbilityClass, 1, INDEX_NONE, this);
+            CachedASC->GiveAbility(Spec);
+            
+            UE_LOG(LogTemp, Log, TEXT("已赋予技能GA: %s"), *SpecialSkillConfig.AbilityClass->GetName());
+        }
+    }
+    else if (!CachedASC.IsValid())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("尝试赋予技能失败：CachedASC 无效，请确保在 BeginPlay 中正确获取了 ASC"));
+    }
+
+    
     // 检查GA类
     if (BasicAttackConfig.AbilityClass)
     {

@@ -1,6 +1,16 @@
-﻿#include "Army/XBArmySubsystem.h"
+﻿/* --- 完整文件代码 --- */
+// Source/XiaoBinDaTianXia/Private/Army/XBArmySubsystem.cpp
+
+#include "Army/XBArmySubsystem.h"
 #include "Army/XBSoldierRenderer.h"
 #include "Engine/World.h"
+// 在文件顶部添加
+#include "NavigationSystem.h"
+#include "Navigation/PathFollowingComponent.h"
+
+// ✨ 新增 - 引入性能分析宏
+DECLARE_STATS_GROUP(TEXT("XBArmy"), STATGROUP_XBArmy, STATCAT_Advanced);
+DECLARE_CYCLE_STAT(TEXT("Soldier Logic Tick"), STAT_SoldierLogicTick, STATGROUP_XBArmy);
 
 UXBArmySubsystem::UXBArmySubsystem()
 {
@@ -41,7 +51,11 @@ void UXBArmySubsystem::Deinitialize()
 }
 
 bool UXBArmySubsystem::TickSubsystem(float DeltaTime)
-{UpdateSoldierLogic(DeltaTime);
+{
+    // 🔧 修改 - 增加性能统计范围
+    SCOPE_CYCLE_COUNTER(STAT_SoldierLogicTick);
+    
+    UpdateSoldierLogic(DeltaTime);
     return true;
 }
 
@@ -52,8 +66,6 @@ void UXBArmySubsystem::UpdateRenderer()
         SoldierRenderer->UpdateInstancesFromData(SoldierMap);
     }
 }
-
-
 
 int32 UXBArmySubsystem::CreateSoldier(EXBSoldierType SoldierType, EXBFaction Faction, const FVector& Position)
 {
@@ -161,6 +173,7 @@ TArray<int32> UXBArmySubsystem::GetSoldiersByLeader(const AActor* LeaderActor) c
     if (!LeaderActor) return TArray<int32>();
     return GetSoldiersByLeader(LeaderActor->GetUniqueID());
 }
+
 void UXBArmySubsystem::RemoveSoldierFromLeader(int32 SoldierId)
 {
     if (FXBSoldierData* Soldier = GetSoldierDataInternal(SoldierId))
@@ -352,6 +365,7 @@ const FXBSoldierData* UXBArmySubsystem::GetSoldierDataInternal(int32 SoldierId) 
 
 void UXBArmySubsystem::UpdateSoldierLogic(float DeltaTime)
 {
+    // 🔧 修改 - 遍历 Map 可能较慢，如果是海量单位，建议维护一个活动的 Array 索引
     for (auto& Pair : SoldierMap)
     {
         FXBSoldierData& Soldier = Pair.Value;
@@ -380,18 +394,68 @@ void UXBArmySubsystem::UpdateSoldierLogic(float DeltaTime)
 
 void UXBArmySubsystem::UpdateSoldierMovement(FXBSoldierData& Soldier, float DeltaTime)
 {
-    FVector Direction = Soldier.TargetPosition - Soldier.Position;
-    float Distance = Direction.Size2D();
-
-    if (Distance > 10.0f)
+    // 1. 获取导航系统实例
+    UNavigationSystemV1* NavSys = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
+    if (!NavSys)
     {
-        Direction.Normalize();
-        float MoveSpeed = Soldier.bIsSprinting ? 600.0f : 400.0f;
-        FVector NewPosition = Soldier.Position + Direction * MoveSpeed * DeltaTime;
-        Soldier.Position = NewPosition;
-        Soldier.Rotation = Direction.Rotation();
+        return;
     }
-}
+
+    // 2. 计算理想的移动向量（不考虑障碍）
+    FVector Direction = Soldier.TargetPosition - Soldier.Position;
+    float DistanceSq = Direction.SizeSquared2D(); // 忽略Z轴差异
+
+    // 停止距离阈值 (例如 100平方 = 10cm)
+    if (DistanceSq <= 100.0f)
+    {
+        return; 
+    }
+
+    Direction.Normalize();
+    float MoveSpeed = Soldier.bIsSprinting ? 600.0f : 400.0f;
+    
+    // 计算这一帧的位移
+    FVector ProposedOffset = Direction * MoveSpeed * DeltaTime;
+    FVector ProposedPosition = Soldier.Position + ProposedOffset;
+
+    // =========================================================
+    // 核心技术点：NavMesh 投影 (Projection)
+    // =========================================================
+    // 这步操作会将计算出的位置"吸附"到最近的 NavMesh 表面上
+    // 从而自动处理上下坡、阶梯，并防止穿过 NavMesh 边界
+    
+    FNavLocation ProjectedLocation;
+    
+    // Extent 是搜索范围，(500, 500, 500) 表示在目标点周围 500单位内搜索 NavMesh
+    FVector QueryExtent(500.0f, 500.0f, 500.0f); 
+
+    // ProjectPointToNavigation: 将点投影到 NavMesh 上
+    // 如果投影成功，说明该位置有效且在可行走区域内
+    bool bOnNavMesh = NavSys->ProjectPointToNavigation(ProposedPosition, ProjectedLocation, QueryExtent);
+
+    if (bOnNavMesh)
+    {
+        // 如果在 NavMesh 上，直接应用修正后的位置（包含了正确的高度 Z）
+        Soldier.Position = ProjectedLocation.Location;
+    }
+    else
+    {
+        // 如果投影失败（比如走出了地图边缘），我们可以：
+        // A. 阻止移动 (撞墙效果)
+        // B. 仅应用 XY 移动，保持原来的 Z (回退方案)
+        // 这里我们选择简单的"贴墙滑动"逻辑：尝试再次投影当前位置，只更新高度
+        if (NavSys->ProjectPointToNavigation(Soldier.Position, ProjectedLocation, QueryExtent))
+        {
+            // 保持原地，但更新高度以防掉坑
+            Soldier.Position.Z = ProjectedLocation.Location.Z;
+        }
+    }
+
+    // 3. 更新朝向 (平滑旋转)
+    FRotator TargetRot = Direction.Rotation();
+    Soldier.Rotation = FMath::RInterpTo(Soldier.Rotation, TargetRot, DeltaTime, 10.0f);
+ }
+
 
 void UXBArmySubsystem::ProcessSoldierDeath(int32 SoldierId)
 {

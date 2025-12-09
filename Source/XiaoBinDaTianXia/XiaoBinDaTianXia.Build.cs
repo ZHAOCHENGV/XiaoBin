@@ -14,7 +14,6 @@ public class XiaoBinDaTianXia : ModuleRules
 			"Engine",
 			"InputCore",
 			"EnhancedInput",
-			"AIModule",
 			"StateTreeModule",
 			"GameplayStateTreeModule",
 			"UMG",
@@ -37,12 +36,7 @@ public class XiaoBinDaTianXia : ModuleRules
 
 		PrivateDependencyModuleNames.AddRange(new string[]
 		{
-			
-			"Slate",
-			"SlateCore",
-			"UMG", "Niagara",
-			
-			
+			"SlateCore"
 		});
 
 		PublicIncludePaths.AddRange(new string[] {

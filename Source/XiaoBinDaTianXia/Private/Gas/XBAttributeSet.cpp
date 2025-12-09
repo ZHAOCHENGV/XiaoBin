@@ -4,6 +4,7 @@
 #include "Net/UnrealNetwork.h"
 #include "GameplayEffectExtension.h"
 #include "AbilitySystemBlueprintLibrary.h"
+#include "Character/XBCharacterBase.h"
 
 UXBAttributeSet::UXBAttributeSet()
 {
@@ -60,25 +61,33 @@ void UXBAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallback
 {
     Super::PostGameplayEffectExecute(Data);
 
-    // 处理受到伤害
+    // 处理受到的伤害
     if (Data.EvaluatedData.Attribute == GetIncomingDamageAttribute())
     {
         HandleHealthChanged(Data);
     }
-    // 处理受到治疗
-    else if (Data.EvaluatedData.Attribute == GetIncomingHealingAttribute())
+
+    // 处理受到的治疗
+    if (Data.EvaluatedData.Attribute == GetIncomingHealingAttribute())
     {
         const float HealingDone = GetIncomingHealing();
         SetIncomingHealing(0.0f);
 
         if (HealingDone > 0.0f)
         {
-            const float NewHealth = FMath::Min(GetHealth() + HealingDone, GetMaxHealth());
+            const float OldHealth = GetHealth();
+            const float NewHealth = FMath::Clamp(OldHealth + HealingDone, 0.0f, GetMaxHealth());
             SetHealth(NewHealth);
+
+            UE_LOG(LogTemp, Log, TEXT("===== 治疗事件 ====="));
+            UE_LOG(LogTemp, Log, TEXT("目标: %s"), *GetOwningActor()->GetName());
+            UE_LOG(LogTemp, Log, TEXT("治疗量: %.2f"), HealingDone);
+            UE_LOG(LogTemp, Log, TEXT("生命值: %.2f -> %.2f / %.2f"), OldHealth, NewHealth, GetMaxHealth());
         }
     }
+
     // 处理缩放变化
-    else if (Data.EvaluatedData.Attribute == GetScaleAttribute())
+    if (Data.EvaluatedData.Attribute == GetScaleAttribute())
     {
         HandleScaleChanged(Data);
     }
@@ -91,20 +100,116 @@ void UXBAttributeSet::HandleHealthChanged(const FGameplayEffectModCallbackData& 
 
     if (DamageDone > 0.0f)
     {
-        const float NewHealth = FMath::Max(GetHealth() - DamageDone, 0.0f);
+        const float OldHealth = GetHealth();
+        const float NewHealth = FMath::Clamp(OldHealth - DamageDone, 0.0f, GetMaxHealth());
         SetHealth(NewHealth);
+
+        // ✨ 新增 - 详细的伤害日志
+        UE_LOG(LogTemp, Log, TEXT(""));
+        UE_LOG(LogTemp, Log, TEXT("╔══════════════════════════════════════════╗"));
+        UE_LOG(LogTemp, Log, TEXT("║           伤害事件详细日志               ║"));
+        UE_LOG(LogTemp, Log, TEXT("╠══════════════════════════════════════════╣"));
+
+        // 获取攻击者信息
+        AActor* TargetActor = GetOwningActor();
+        AActor* SourceActor = nullptr;
+        AController* SourceController = nullptr;
+        
+        if (Data.EffectSpec.GetContext().GetEffectCauser())
+        {
+            SourceActor = Data.EffectSpec.GetContext().GetEffectCauser();
+        }
+        
+        if (Data.EffectSpec.GetContext().GetInstigator())
+        {
+            SourceController = Cast<AController>(Data.EffectSpec.GetContext().GetInstigator());
+            if (!SourceActor && SourceController)
+            {
+                SourceActor = SourceController->GetPawn();
+            }
+        }
+
+        // 输出攻击者信息
+        if (SourceActor)
+        {
+            UE_LOG(LogTemp, Log, TEXT("║ 攻击者: %s"), *SourceActor->GetName());
+            
+            // 尝试获取攻击者的阵营
+            if (AXBCharacterBase* SourceCharacter = Cast<AXBCharacterBase>(SourceActor))
+            {
+                FString FactionName;
+                switch (SourceCharacter->GetFaction())
+                {
+                case EXBFaction::Player:
+                    FactionName = TEXT("玩家");
+                    break;
+                case EXBFaction::Enemy:
+                    FactionName = TEXT("敌人");
+                    break;
+                case EXBFaction::Ally:
+                    FactionName = TEXT("友军");
+                    break;
+                default:
+                    FactionName = TEXT("中立");
+                    break;
+                }
+                UE_LOG(LogTemp, Log, TEXT("║ 攻击者阵营: %s"), *FactionName);
+            }
+        }
+        else
+        {
+            UE_LOG(LogTemp, Log, TEXT("║ 攻击者: 未知"));
+        }
+
+        // 输出目标信息
+        if (TargetActor)
+        {
+            UE_LOG(LogTemp, Log, TEXT(  "║ 目标: %s"), *TargetActor->GetName());
+            
+            // 尝试获取目标的阵营
+            if (AXBCharacterBase* TargetCharacter = Cast<AXBCharacterBase>(TargetActor))
+            {
+                FString FactionName;
+                switch (TargetCharacter->GetFaction())
+                {
+                case EXBFaction::Player:
+                    FactionName = TEXT("玩家");
+                    break;
+                case EXBFaction::Enemy:
+                    FactionName = TEXT("敌人");
+                    break;
+                case EXBFaction::Ally:
+                    FactionName = TEXT("友军");
+                    break;
+                default:
+                    FactionName = TEXT("中立");
+                    break;
+                }
+                UE_LOG(LogTemp, Log, TEXT("║ 目标阵营: %s"), *FactionName);
+            }
+        }
+
+        UE_LOG(LogTemp, Log, TEXT("╠══════════════════════════════════════════╣"));
+        UE_LOG(LogTemp, Log, TEXT("║ 伤害数值: %.2f"), DamageDone);
+        UE_LOG(LogTemp, Log, TEXT("║ 生命值变化: %.2f -> %.2f"), OldHealth, NewHealth);
+        UE_LOG(LogTemp, Log, TEXT("║ 最大生命值: %.2f"), GetMaxHealth());
+        UE_LOG(LogTemp, Log, TEXT("║ 剩余生命百分比: %.1f%%"), (NewHealth / GetMaxHealth()) * 100.0f);
 
         // 检查是否死亡
         if (NewHealth <= 0.0f)
         {
-            // 通知 ASC 触发死亡事件
-            if (UAbilitySystemComponent* ASC = GetOwningAbilitySystemComponent())
+            UE_LOG(LogTemp, Log, TEXT("╠══════════════════════════════════════════╣"));
+            UE_LOG(LogTemp, Warning, TEXT("║ ★★★ 目标已死亡! ★★★"));
+            
+            // ✨ 新增 - 调用角色死亡处理
+            if (AXBCharacterBase* TargetCharacter = Cast<AXBCharacterBase>(GetOwningActor()))
             {
-                FGameplayEventData EventData;
-                EventData.EventMagnitude = DamageDone;
-                ASC->HandleGameplayEvent(FGameplayTag::RequestGameplayTag(FName("Event.Leader.Died")), &EventData);
+                TargetCharacter->HandleDeath();
             }
         }
+
+        UE_LOG(LogTemp, Log, TEXT("╚══════════════════════════════════════════╝"));
+        UE_LOG(LogTemp, Log, TEXT(""));
     }
 }
 
