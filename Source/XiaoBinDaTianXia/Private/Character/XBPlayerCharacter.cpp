@@ -22,6 +22,7 @@
 #include "Components/CapsuleComponent.h"
 #include "Character/Components/XBMagnetFieldComponent.h"
 #include "Character/Components/XBFormationComponent.h"
+#include "GAS/XBAbilitySystemComponent.h"
 
 AXBPlayerCharacter::AXBPlayerCharacter()
 {
@@ -85,6 +86,16 @@ AXBPlayerCharacter::AXBPlayerCharacter()
 void AXBPlayerCharacter::RecallAllSoldiers()
 {
     Super::RecallAllSoldiers();
+
+    // 添加玩家主将Tag
+    if (AbilitySystemComponent)
+    {
+        FGameplayTag PlayerLeaderTag = FGameplayTag::RequestGameplayTag(FName("Character.Leader.Player"));
+        AbilitySystemComponent->AddLooseGameplayTag(PlayerLeaderTag);
+        
+        FGameplayTag LeaderTag = FGameplayTag::RequestGameplayTag(FName("Character.Leader"));
+        AbilitySystemComponent->AddLooseGameplayTag(LeaderTag);
+    }
     
 }
 
