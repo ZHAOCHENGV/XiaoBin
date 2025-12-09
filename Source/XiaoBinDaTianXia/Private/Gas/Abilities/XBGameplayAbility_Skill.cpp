@@ -1,199 +1,44 @@
-﻿// Copyright XiaoBing Project. All Rights Reserved.
+﻿/* --- 完整文件代码 --- */
+// Source/XiaoBinDaTianXia/Private/AbilitySystem/Abilities/XBGameplayAbility_Skill.cpp
 
 /**
  * @file XBGameplayAbility_Skill.cpp
- * @brief 将领特殊技能实现
+ * @brief 技能GA实现 - 简化版
  */
 
 #include "GAS/Abilities/XBGameplayAbility_Skill.h"
 #include "AbilitySystemComponent.h"
-#include "AbilitySystemBlueprintLibrary.h"
-#include "GameFramework/Character.h"
-#include "Kismet/KismetSystemLibrary.h"
-#include "Character/XBCharacterBase.h"
-#include "GAS/XBAttributeSet.h"
-#include "NiagaraFunctionLibrary.h"
+#include "GameplayTagContainer.h"
 
 UXBGameplayAbility_Skill::UXBGameplayAbility_Skill()
 {
-    // 设置技能标签
-    AbilityTags.AddTag(FGameplayTag::RequestGameplayTag(FName("Ability.Skill")));
-    
-    // 设置激活策略
-    InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
-    NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalOnly;
-
-    // ✨ 新增 - 使用新API
+    // ✨ 新增 - 使用新API设置标签
     FGameplayTagContainer Tags;
-    Tags.AddTag(FGameplayTag::RequestGameplayTag(FName("Ability.Skill")));
+    Tags.AddTag(FGameplayTag::RequestGameplayTag(FName("Ability.Skill"), false));
     SetAssetTags(Tags);
+
+    // 设置能力的基本属性
+    InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
+    NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
 }
 
-void UXBGameplayAbility_Skill::ActivateAbility(
-    const FGameplayAbilitySpecHandle Handle,
-    const FGameplayAbilityActorInfo* ActorInfo,
-    const FGameplayAbilityActivationInfo ActivationInfo,
-    const FGameplayEventData* TriggerEventData)
+void UXBGameplayAbility_Skill::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
 {
-    Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
-
-    // 检查是否可以提交技能消耗
     if (!CommitAbility(Handle, ActorInfo, ActivationInfo))
     {
         EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
         return;
     }
 
-    // 获取角色
-    ACharacter* Character = Cast<ACharacter>(ActorInfo->AvatarActor.Get());
-    if (!Character)
-    {
-        EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
-        return;
-    }
+    UE_LOG(LogTemp, Log, TEXT("技能GA激活"));
 
-    // 播放技能动画
-    if (SkillMontage)
-    {
-        UAnimInstance* AnimInstance = Character->GetMesh()->GetAnimInstance();
-        if (AnimInstance)
-        {
-            AnimInstance->Montage_Play(SkillMontage);
-        }
-    }
-
-    // 播放技能特效
-    if (SkillVFX)
-    {
-        float ScaledRange = GetScaledRadius(SkillRange);
-        FVector SpawnLocation = Character->GetActorLocation();
-        
-        UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-            Character->GetWorld(),
-            SkillVFX,
-            SpawnLocation,
-            FRotator::ZeroRotator,
-            FVector(ScaledRange / SkillRange)); // 缩放特效
-    }
-
-    // 执行技能效果
-    PerformSkill();
-
-    // 结束技能
-    EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+    // 蒙太奇播放和伤害检测由XBCombatComponent和ANS_XBMeleeDetection处理
+    // 这里只负责GA的生命周期管理
 }
 
-void UXBGameplayAbility_Skill::PerformSkill()
+void UXBGameplayAbility_Skill::EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled)
 {
-    // 获取范围内的目标
-    TArray<AActor*> Targets;
-    GetTargetsInRadius(Targets);
+    UE_LOG(LogTemp, Log, TEXT("技能GA结束 - 被取消: %s"), bWasCancelled ? TEXT("是") : TEXT("否"));
 
-    // 对每个目标应用伤害
-    for (AActor* Target : Targets)
-    {
-        ApplyDamageToTarget(Target);
-    }
-
-    // 如果命中了目标，通知进入战斗状态
-    if (Targets.Num() > 0)
-    {
-        NotifyAbilityHit(Targets[0]);
-    }
-
-    UE_LOG(LogTemp, Log, TEXT("Skill hit %d targets"), Targets.Num());
-}
-
-void UXBGameplayAbility_Skill::GetTargetsInRadius(TArray<AActor*>& OutTargets) const
-{
-    AActor* AvatarActor = GetAvatarActorFromActorInfo();
-    if (!AvatarActor)
-    {
-        return;
-    }
-
-    FVector Origin = AvatarActor->GetActorLocation();
-
-    // 获取施法者阵营
-    EXBFaction MyFaction = EXBFaction::Neutral;
-    if (AXBCharacterBase* CharacterBase = Cast<AXBCharacterBase>(AvatarActor))
-    {
-        MyFaction = CharacterBase->GetFaction();
-    }
-
-    // 球形检测
-    TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
-    ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn));
-
-    TArray<AActor*> ActorsToIgnore;
-    ActorsToIgnore.Add(AvatarActor);
-
-    TArray<AActor*> OverlappedActors;
-
-    // 使用缩放后的技能范围
-    float ScaledRange = GetScaledRadius(SkillRange);
-
-    UKismetSystemLibrary::SphereOverlapActors(
-        AvatarActor->GetWorld(),
-        Origin,
-        ScaledRange,
-        ObjectTypes,
-        AXBCharacterBase::StaticClass(),
-        ActorsToIgnore,
-        OverlappedActors);
-
-    // 过滤敌对阵营
-    for (AActor* Actor : OverlappedActors)
-    {
-        if (AXBCharacterBase* TargetCharacter = Cast<AXBCharacterBase>(Actor))
-        {
-            if (TargetCharacter->IsHostileTo(Cast<AXBCharacterBase>(AvatarActor)))
-            {
-                OutTargets.Add(Actor);
-            }
-        }
-    }
-}
-
-void UXBGameplayAbility_Skill::ApplyDamageToTarget(AActor* Target)
-{
-    if (!Target || !DamageEffectClass)
-    {
-        return;
-    }
-
-    UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Target);
-    UAbilitySystemComponent* SourceASC = GetAbilitySystemComponentFromActorInfo();
-
-    if (!TargetASC || !SourceASC)
-    {
-        return;
-    }
-
-    FGameplayEffectContextHandle ContextHandle = SourceASC->MakeEffectContext();
-    ContextHandle.AddSourceObject(GetAvatarActorFromActorInfo());
-
-    FGameplayEffectSpecHandle SpecHandle = SourceASC->MakeOutgoingSpec(DamageEffectClass, GetAbilityLevel(), ContextHandle);
-
-    if (SpecHandle.IsValid())
-    {
-        // ✨ 新增 - 技能使用倍率计算额外伤害
-        // 从属性集读取基础伤害，乘以技能倍率作为额外伤害
-        float BaseDamage = 50.0f;
-        if (const UXBAttributeSet* AttributeSet = SourceASC->GetSet<UXBAttributeSet>())
-        {
-            BaseDamage = AttributeSet->GetBaseDamage();
-        }
-        
-        // 技能额外伤害 = 基础伤害 * (倍率 - 1)，因为 Execution 已经计算了一次基础伤害
-        float SkillBonusDamage = BaseDamage * (DamageMultiplier - 1.0f) * GetOwnerScale();
-        
-        SpecHandle.Data->SetSetByCallerMagnitude(
-            FGameplayTag::RequestGameplayTag(FName("Data.Damage")),
-            SkillBonusDamage);
-
-        SourceASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);
-
-        UE_LOG(LogTemp, Log, TEXT("技能对 %s 造成额外伤害: %.1f"), *Target->GetName(), SkillBonusDamage);
-    }
+    Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
 }
