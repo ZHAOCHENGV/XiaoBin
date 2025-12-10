@@ -25,12 +25,10 @@ void UXBCombatComponent::BeginPlay()
 {
     Super::BeginPlay();
 
-    // 缓存ASC
     if (AActor* Owner = GetOwner())
     {
         CachedASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Owner);
 
-        // 缓存AnimInstance
         if (ACharacter* Character = Cast<ACharacter>(Owner))
         {
             if (USkeletalMeshComponent* Mesh = Character->GetMesh())
@@ -49,7 +47,6 @@ void UXBCombatComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 {
     Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-    // ✨ 新增 - 更新普攻冷却
     if (BasicAttackCooldownTimer > 0.0f)
     {
         BasicAttackCooldownTimer -= DeltaTime;
@@ -59,7 +56,6 @@ void UXBCombatComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAc
         }
     }
 
-    // 更新技能冷却
     if (SkillCooldownTimer > 0.0f)
     {
         SkillCooldownTimer -= DeltaTime;
@@ -70,6 +66,15 @@ void UXBCombatComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAc
     }
 }
 
+/**
+ * @brief 从数据表初始化战斗组件
+ * @param DataTable 数据表资源
+ * @param RowName 行名称
+ * @note 核心流程：
+ *       1. 加载配置数据（普攻/技能）
+ *       2. 预加载蒙太奇资源
+ *       3. 🔧 修改 - 自动赋予 GA 到 ASC
+ */
 void UXBCombatComponent::InitializeFromDataTable(UDataTable* DataTable, FName RowName)
 {
     if (!DataTable)
@@ -95,132 +100,100 @@ void UXBCombatComponent::InitializeFromDataTable(UDataTable* DataTable, FName Ro
     BasicAttackConfig = Row->BasicAttackConfig;
     SpecialSkillConfig = Row->SpecialSkillConfig;
 
-    // 详细的调试日志
     UE_LOG(LogTemp, Log, TEXT("===== 战斗组件配置加载 ====="));
     UE_LOG(LogTemp, Log, TEXT("数据表: %s, 行: %s"), *DataTable->GetName(), *RowName.ToString());
     
-    // 检查普攻配置
-    if (BasicAttackConfig.AbilityMontage.IsNull())
-    {
-        UE_LOG(LogTemp, Warning, TEXT("普攻蒙太奇路径为空!"));
-    }
-    else
+    // 加载普攻蒙太奇
+    if (!BasicAttackConfig.AbilityMontage.IsNull())
     {
         UE_LOG(LogTemp, Log, TEXT("普攻蒙太奇路径: %s"), *BasicAttackConfig.AbilityMontage.ToString());
-        
         LoadedBasicAttackMontage = BasicAttackConfig.AbilityMontage.LoadSynchronous();
+        
         if (LoadedBasicAttackMontage)
         {
             UE_LOG(LogTemp, Log, TEXT("普攻蒙太奇加载成功: %s"), *LoadedBasicAttackMontage->GetName());
         }
         else
         {
-            UE_LOG(LogTemp, Error, TEXT("普攻蒙太奇加载失败! 路径可能错误: %s"), *BasicAttackConfig.AbilityMontage.ToString());
+            UE_LOG(LogTemp, Error, TEXT("普攻蒙太奇加载失败!"));
         }
-    }
-    // ✨ 新增 - 输出普攻冷却时间
-    UE_LOG(LogTemp, Log, TEXT("普攻冷却时间: %.2f秒"), BasicAttackConfig.Cooldown);
-// =========================================================
-    // 🔧 修复核心问题：将配置的 GA 赋予给 ASC
-    // =========================================================
-    
-    // 确保拥有者有权限（服务端或单机），且 ASC 有效
-    if (GetOwner()->HasAuthority() && CachedASC.IsValid())
-    {
-        // 1. 赋予普攻技能
-        if (BasicAttackConfig.AbilityClass)
-        {
-            // 创建技能 Spec (等级默认为1)
-            FGameplayAbilitySpec Spec(BasicAttackConfig.AbilityClass, 1, INDEX_NONE, this);
-            CachedASC->GiveAbility(Spec);
-            
-            UE_LOG(LogTemp, Log, TEXT("已赋予普攻GA: %s"), *BasicAttackConfig.AbilityClass->GetName());
-        }
-
-        // 2. 赋予特殊技能
-        if (SpecialSkillConfig.AbilityClass)
-        {
-            FGameplayAbilitySpec Spec(SpecialSkillConfig.AbilityClass, 1, INDEX_NONE, this);
-            CachedASC->GiveAbility(Spec);
-            
-            UE_LOG(LogTemp, Log, TEXT("已赋予技能GA: %s"), *SpecialSkillConfig.AbilityClass->GetName());
-        }
-    }
-    else if (!CachedASC.IsValid())
-    {
-        UE_LOG(LogTemp, Warning, TEXT("尝试赋予技能失败：CachedASC 无效，请确保在 BeginPlay 中正确获取了 ASC"));
-    }
-    // 检查技能配置
-    if (SpecialSkillConfig.AbilityMontage.IsNull())
-    {
-        UE_LOG(LogTemp, Warning, TEXT("技能蒙太奇路径为空!"));
     }
     else
     {
+        UE_LOG(LogTemp, Warning, TEXT("普攻蒙太奇路径为空"));
+    }
+    
+    UE_LOG(LogTemp, Log, TEXT("普攻冷却时间: %.2f秒"), BasicAttackConfig.Cooldown);
+
+    // 加载技能蒙太奇
+    if (!SpecialSkillConfig.AbilityMontage.IsNull())
+    {
         UE_LOG(LogTemp, Log, TEXT("技能蒙太奇路径: %s"), *SpecialSkillConfig.AbilityMontage.ToString());
-        
         LoadedSkillMontage = SpecialSkillConfig.AbilityMontage.LoadSynchronous();
+        
         if (LoadedSkillMontage)
         {
             UE_LOG(LogTemp, Log, TEXT("技能蒙太奇加载成功: %s"), *LoadedSkillMontage->GetName());
         }
         else
         {
-            UE_LOG(LogTemp, Error, TEXT("技能蒙太奇加载失败! 路径可能错误: %s"), *SpecialSkillConfig.AbilityMontage.ToString());
+            UE_LOG(LogTemp, Error, TEXT("技能蒙太奇加载失败!"));
         }
     }
-    // ✨ 新增 - 输出技能冷却时间
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("技能蒙太奇路径为空"));
+    }
+    
     UE_LOG(LogTemp, Log, TEXT("技能冷却时间: %.2f秒"), SpecialSkillConfig.Cooldown);
 
-    // =========================================================
-    // 🔧 修复核心问题：将配置的 GA 赋予给 ASC
-    // =========================================================
-    
-    // 确保拥有者有权限（服务端或单机），且 ASC 有效
+    // 🔧 修改 - 核心修复：自动赋予 GA 到 ASC
+    /**
+     * @note 修复原因：
+     *       之前仅配置了 GA 类，但未调用 GiveAbility，导致运行时激活失败。
+     *       现在在初始化时自动赋予，确保技能系统完整。
+     * @note 权限检查：
+     *       只有服务端或单机模式下才能赋予 GA。
+     */
     if (GetOwner()->HasAuthority() && CachedASC.IsValid())
     {
-        // 1. 赋予普攻技能
+        // 赋予普攻技能
         if (BasicAttackConfig.AbilityClass)
         {
-            // 创建技能 Spec (等级默认为1)
-            FGameplayAbilitySpec Spec(BasicAttackConfig.AbilityClass, 1, INDEX_NONE, this);
-            CachedASC->GiveAbility(Spec);
+            FGameplayAbilitySpec BasicAttackSpec(BasicAttackConfig.AbilityClass, 1, INDEX_NONE, this);
+            FGameplayAbilitySpecHandle BasicAttackHandle = CachedASC->GiveAbility(BasicAttackSpec);
             
-            UE_LOG(LogTemp, Log, TEXT("已赋予普攻GA: %s"), *BasicAttackConfig.AbilityClass->GetName());
+            UE_LOG(LogTemp, Log, TEXT("已赋予普攻GA: %s (Handle: %s)"), 
+                *BasicAttackConfig.AbilityClass->GetName(),
+                *BasicAttackHandle.ToString());
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("普攻GA类未配置"));
         }
 
-        // 2. 赋予特殊技能
+        // 赋予特殊技能
         if (SpecialSkillConfig.AbilityClass)
         {
-            FGameplayAbilitySpec Spec(SpecialSkillConfig.AbilityClass, 1, INDEX_NONE, this);
-            CachedASC->GiveAbility(Spec);
+            FGameplayAbilitySpec SkillSpec(SpecialSkillConfig.AbilityClass, 1, INDEX_NONE, this);
+            FGameplayAbilitySpecHandle SkillHandle = CachedASC->GiveAbility(SkillSpec);
             
-            UE_LOG(LogTemp, Log, TEXT("已赋予技能GA: %s"), *SpecialSkillConfig.AbilityClass->GetName());
+            UE_LOG(LogTemp, Log, TEXT("已赋予技能GA: %s (Handle: %s)"), 
+                *SpecialSkillConfig.AbilityClass->GetName(),
+                *SkillHandle.ToString());
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("技能GA类未配置"));
         }
     }
     else if (!CachedASC.IsValid())
     {
-        UE_LOG(LogTemp, Warning, TEXT("尝试赋予技能失败：CachedASC 无效，请确保在 BeginPlay 中正确获取了 ASC"));
+        UE_LOG(LogTemp, Error, TEXT("尝试赋予技能失败：CachedASC 无效，请确保在 BeginPlay 后调用 InitializeFromDataTable"));
     }
-
-    
-    // 检查GA类
-    if (BasicAttackConfig.AbilityClass)
+    else if (!GetOwner()->HasAuthority())
     {
-        UE_LOG(LogTemp, Log, TEXT("普攻GA类: %s"), *BasicAttackConfig.AbilityClass->GetName());
-    }
-    else
-    {
-        UE_LOG(LogTemp, Log, TEXT("普攻GA类: 未配置"));
-    }
-
-    if (SpecialSkillConfig.AbilityClass)
-    {
-        UE_LOG(LogTemp, Log, TEXT("技能GA类: %s"), *SpecialSkillConfig.AbilityClass->GetName());
-    }
-    else
-    {
-        UE_LOG(LogTemp, Log, TEXT("技能GA类: 未配置"));
+        UE_LOG(LogTemp, Warning, TEXT("客户端无法赋予GA，技能系统将由服务端同步"));
     }
 
     UE_LOG(LogTemp, Log, TEXT("===== 配置加载完成 ====="));
@@ -234,14 +207,12 @@ bool UXBCombatComponent::PerformBasicAttack()
         bIsAttacking ? TEXT("true") : TEXT("false"),
         BasicAttackCooldownTimer);
 
-    // ✨ 新增 - 检查普攻冷却
     if (BasicAttackCooldownTimer > 0.0f)
     {
         UE_LOG(LogTemp, Log, TEXT("普攻冷却中: %.2f秒"), BasicAttackCooldownTimer);
         return false;
     }
 
-    // 检查是否正在攻击
     if (bIsAttacking)
     {
         if (CachedAnimInstance.IsValid() && LoadedBasicAttackMontage)
@@ -263,7 +234,6 @@ bool UXBCombatComponent::PerformBasicAttack()
         }
     }
 
-    // 使用已加载的蒙太奇
     UAnimMontage* MontageToPlay = LoadedBasicAttackMontage;
     if (!MontageToPlay)
     {
@@ -285,7 +255,6 @@ bool UXBCombatComponent::PerformBasicAttack()
         }
     }
 
-    // 播放蒙太奇
     if (!PlayMontage(MontageToPlay))
     {
         UE_LOG(LogTemp, Warning, TEXT("普攻蒙太奇播放失败"));
@@ -293,11 +262,8 @@ bool UXBCombatComponent::PerformBasicAttack()
     }
 
     bIsAttacking = true;
-
-    // ✨ 新增 - 设置普攻冷却
     BasicAttackCooldownTimer = BasicAttackConfig.Cooldown;
 
-    // 激活GA (如果配置了)
     if (BasicAttackConfig.AbilityClass)
     {
         TryActivateAbility(BasicAttackConfig.AbilityClass);
@@ -312,14 +278,12 @@ bool UXBCombatComponent::PerformSpecialSkill()
     UE_LOG(LogTemp, Log, TEXT("尝试使用技能 - bIsAttacking: %s, Cooldown: %.2f"), 
         bIsAttacking ? TEXT("true") : TEXT("false"), SkillCooldownTimer);
 
-    // 检查技能冷却
     if (SkillCooldownTimer > 0.0f)
     {
         UE_LOG(LogTemp, Log, TEXT("技能冷却中: %.2f秒"), SkillCooldownTimer);
         return false;
     }
 
-    // 如果正在普攻，打断它
     if (bIsAttacking && CachedAnimInstance.IsValid())
     {
         CachedAnimInstance->Montage_Stop(0.2f);
@@ -327,7 +291,6 @@ bool UXBCombatComponent::PerformSpecialSkill()
         UE_LOG(LogTemp, Log, TEXT("技能打断了普攻"));
     }
 
-    // 使用已加载的蒙太奇
     UAnimMontage* MontageToPlay = LoadedSkillMontage;
     if (!MontageToPlay)
     {
@@ -349,7 +312,6 @@ bool UXBCombatComponent::PerformSpecialSkill()
         }
     }
 
-    // 播放蒙太奇
     if (!PlayMontage(MontageToPlay))
     {
         UE_LOG(LogTemp, Warning, TEXT("技能蒙太奇播放失败"));
@@ -357,11 +319,8 @@ bool UXBCombatComponent::PerformSpecialSkill()
     }
 
     bIsAttacking = true;
-    
-    // ✨ 新增 - 使用配置中的冷却时间
     SkillCooldownTimer = SpecialSkillConfig.Cooldown;
 
-    // 激活GA
     if (SpecialSkillConfig.AbilityClass)
     {
         TryActivateAbility(SpecialSkillConfig.AbilityClass);
@@ -425,6 +384,12 @@ void UXBCombatComponent::OnMontageEnded(UAnimMontage* Montage, bool bInterrupted
     ResetAttackState();
 }
 
+/**
+ * @brief 尝试激活 GameplayAbility
+ * @param AbilityClass GA 类
+ * @return 是否成功激活
+ * @note 核心逻辑：通过 ASC 的 TryActivateAbilityByClass 激活技能
+ */
 bool UXBCombatComponent::TryActivateAbility(TSubclassOf<UGameplayAbility> AbilityClass)
 {
     if (!AbilityClass)

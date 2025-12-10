@@ -1,4 +1,5 @@
-﻿// Source/XiaoBinDaTianXia/Private/Army/XBSoldierRenderer.cpp
+﻿/* --- 完整文件代码 --- */
+// Source/XiaoBinDaTianXia/Private/Army/XBSoldierRenderer.cpp
 
 #include "Army/XBSoldierRenderer.h"
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
@@ -6,10 +7,8 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 
-// 构造函数
 UXBSoldierRenderer::UXBSoldierRenderer()
 {
-    // 初始化默认动画数据 (示例数据)
     FXBVATAnimationData IdleAnim;
     IdleAnim.AnimationId = 0;
     IdleAnim.FrameCount = 30;
@@ -21,17 +20,14 @@ UXBSoldierRenderer::UXBSoldierRenderer()
     AnimationData.Add(WalkAnim);
 }
 
-// 初始化
 void UXBSoldierRenderer::Initialize(UWorld* InWorld)
 {
     WorldRef = InWorld;
     UE_LOG(LogTemp, Log, TEXT("士兵渲染器已初始化"));
 }
 
-// 清理资源
 void UXBSoldierRenderer::Cleanup()
 {
-    // 遍历并清理所有 HISM 组件
     for (auto& Pair : HISMComponents)
     {
         if (Pair.Value)
@@ -41,121 +37,99 @@ void UXBSoldierRenderer::Cleanup()
         }
     }
     
-    // 清空容器
     HISMComponents.Empty();
-    SoldierIdToInstanceIndex.Empty();
-    InstanceIndexToSoldierId.Empty();
-    SoldierIdToType.Empty();
+    SoldierIdToInstance.Empty();
+    FreeInstanceIndices.Empty();
     
     UE_LOG(LogTemp, Log, TEXT("士兵渲染器资源已清理"));
 }
 
-// 添加实例（默认步兵）
 int32 UXBSoldierRenderer::AddInstance(int32 SoldierId, const FVector& Location)
 {
-    // 调用带类型的添加函数
     return AddInstanceWithType(SoldierId, Location, EXBSoldierType::Infantry);
 }
 
-// 添加指定类型的实例
 int32 UXBSoldierRenderer::AddInstanceWithType(int32 SoldierId, const FVector& Location, EXBSoldierType Type)
 {
-    // 获取或创建 HISM 组件
-    UHierarchicalInstancedStaticMeshComponent* HISM = GetOrCreateHISM(Type);
-    if (!HISM)
+    // 🔧 修改 - 使用新的索引分配机制
+    FTransform InstanceTransform(FRotator::ZeroRotator, Location, FVector::OneVector);
+    int32 InstanceIndex = AcquireInstanceIndex(Type, InstanceTransform);
+
+    if (InstanceIndex == INDEX_NONE)
     {
-        UE_LOG(LogTemp, Warning, TEXT("无法为士兵 %d 创建 HISM 组件，类型: %d"), SoldierId, (int32)Type);
+        UE_LOG(LogTemp, Warning, TEXT("无法为士兵 %d 分配实例索引"), SoldierId);
         return INDEX_NONE;
     }
 
-    // 创建初始变换
-    FTransform InstanceTransform(FRotator::ZeroRotator, Location, FVector::OneVector);
-    
-    // 添加实例并获得索引
-    int32 InstanceIndex = HISM->AddInstance(InstanceTransform, true);
+    // 🔧 修改 - 使用简化的单一映射表
+    SoldierIdToInstance.Add(SoldierId, TPair<EXBSoldierType, int32>(Type, InstanceIndex));
 
-    // 记录映射关系
-    SoldierIdToInstanceIndex.Add(SoldierId, InstanceIndex);
-    InstanceIndexToSoldierId.Add(InstanceIndex, SoldierId);
-    SoldierIdToType.Add(SoldierId, Type);
-
-    // 初始化自定义数据 (Custom Data 0-2)
-    if (HISM->NumCustomDataFloats >= 3)
+    // 初始化 CustomData
+    if (UHierarchicalInstancedStaticMeshComponent* HISM = HISMComponents.FindRef(Type))
     {
-        HISM->SetCustomDataValue(InstanceIndex, 0, 0.0f, false); // 动画时间
-        HISM->SetCustomDataValue(InstanceIndex, 1, 0.0f, false); // 动画ID
-        HISM->SetCustomDataValue(InstanceIndex, 2, 1.0f, false); // 播放速率
+        if (HISM->NumCustomDataFloats >= 3)
+        {
+            HISM->SetCustomDataValue(InstanceIndex, 0, 0.0f, false);
+            HISM->SetCustomDataValue(InstanceIndex, 1, 0.0f, false);
+            HISM->SetCustomDataValue(InstanceIndex, 2, 1.0f, false);
+        }
     }
 
     return InstanceIndex;
 }
 
-// 移除实例
 void UXBSoldierRenderer::RemoveInstance(int32 SoldierId)
 {
-    // 检查是否存在
-    if (!SoldierIdToInstanceIndex.Contains(SoldierId))
+    // 🔧 修改 - 使用新的索引回收机制
+    TPair<EXBSoldierType, int32>* InstanceInfo = SoldierIdToInstance.Find(SoldierId);
+    if (!InstanceInfo)
     {
         return;
     }
-    
-    int32 InstanceIndex = SoldierIdToInstanceIndex[SoldierId];
-    EXBSoldierType Type = SoldierIdToType[SoldierId];
-    
-    if (UHierarchicalInstancedStaticMeshComponent* HISM = HISMComponents.FindRef(Type))
-    {
-        HISM->RemoveInstance(InstanceIndex);
-    }
-    
+
+    EXBSoldierType Type = InstanceInfo->Key;
+    int32 InstanceIndex = InstanceInfo->Value;
+
+    // 回收索引到空闲池（不立即从 HISM 移除）
+    ReleaseInstanceIndex(Type, InstanceIndex);
+
     // 移除映射
-    SoldierIdToInstanceIndex.Remove(SoldierId);
-    InstanceIndexToSoldierId.Remove(InstanceIndex);
-    SoldierIdToType.Remove(SoldierId);
-    
-    // 注意：HISM RemoveInstance 会导致后续索引移动，实际项目中需要更复杂的索引重映射逻辑
-    // 这里为了简化暂不处理索引移位问题，仅作演示
+    SoldierIdToInstance.Remove(SoldierId);
+
+    UE_LOG(LogTemp, Verbose, TEXT("士兵 %d 的实例索引 %d 已回收"), SoldierId, InstanceIndex);
 }
 
-// 批量更新实例
 void UXBSoldierRenderer::UpdateInstancesFromData(const TMap<int32, FXBSoldierData>& SoldierMap)
 {
-    // 1. 遍历逻辑层数据，更新渲染层
     for (const auto& Pair : SoldierMap)
     {
         const FXBSoldierData& Soldier = Pair.Value;
         
-        // 跳过死亡单位
         if (!Soldier.IsAlive())
         {
             continue;
         }
         
-        // 如果是新兵，先添加
-        if (!SoldierIdToInstanceIndex.Contains(Soldier.SoldierId))
+        if (!SoldierIdToInstance.Contains(Soldier.SoldierId))
         {
             AddInstanceForSoldier(Soldier);
         }
 
-        // 更新变换
-        if (int32* IdxPtr = SoldierIdToInstanceIndex.Find(Soldier.SoldierId))
+        // 🔧 修改 - 使用新的映射表结构
+        if (TPair<EXBSoldierType, int32>* InstanceInfo = SoldierIdToInstance.Find(Soldier.SoldierId))
         {
-            int32 InstanceIndex = *IdxPtr;
-            EXBSoldierType Type = SoldierIdToType[Soldier.SoldierId];
+            int32 InstanceIndex = InstanceInfo->Value;
+            EXBSoldierType Type = InstanceInfo->Key;
             
             if (UHierarchicalInstancedStaticMeshComponent* HISM = HISMComponents.FindRef(Type))
             {
                 FTransform NewTransform(Soldier.Rotation, Soldier.Position, FVector::OneVector);
-                // 更新变换，只标记脏，不立即重建树
                 HISM->UpdateInstanceTransform(InstanceIndex, NewTransform, true, true, false);
-                
-                // 更新动画状态
                 UpdateInstanceCustomData(HISM, InstanceIndex, Soldier);
             }
         }
     }
     
-    // 2. 标记渲染状态脏，触发批量渲染更新
-    // 🔧 修正：之前错误使用了 MeshComponents，现更正为 HISMComponents
     for (auto& Pair : HISMComponents)
     {
         if (Pair.Value)
@@ -165,14 +139,12 @@ void UXBSoldierRenderer::UpdateInstancesFromData(const TMap<int32, FXBSoldierDat
     }
 }
 
-// 设置特定兵种的网格体
 void UXBSoldierRenderer::SetMeshForType(EXBSoldierType SoldierType, UStaticMesh* Mesh, UMaterialInterface* Material)
 {
     if (Mesh)
     {
         MeshAssets.Add(SoldierType, Mesh);
         
-        // 如果组件已存在，立即更新
         if (UHierarchicalInstancedStaticMeshComponent* HISM = GetOrCreateHISM(SoldierType))
         {
             HISM->SetStaticMesh(Mesh);
@@ -184,21 +156,17 @@ void UXBSoldierRenderer::SetMeshForType(EXBSoldierType SoldierType, UStaticMesh*
     }
 }
 
-// 设置士兵网格体（蓝图调用）
 void UXBSoldierRenderer::SetSoldierMesh(EXBSoldierType Type, UStaticMesh* Mesh)
 {
     SetMeshForType(Type, Mesh, nullptr);
 }
 
-// 设置全局 VAT 材质
 void UXBSoldierRenderer::SetVATMaterial(UMaterialInterface* Material)
 {
     if (!Material) return;
 
-    // 创建动态材质实例
     VATMaterialInstance = UMaterialInstanceDynamic::Create(Material, this);
     
-    // 应用到所有已存在的 HISM
     for (auto& Pair : HISMComponents)
     {
         if (Pair.Value) 
@@ -208,10 +176,123 @@ void UXBSoldierRenderer::SetVATMaterial(UMaterialInterface* Material)
     }
 }
 
-// 获取或创建 HISM 组件
+// ✨ 新增 - 索引分配函数
+/**
+ * @brief 从空闲池获取索引或创建新实例
+ * @param Type 兵种类型
+ * @param Transform 初始变换
+ * @return 实例索引
+ * @note 优先复用空闲索引，减少 HISM 实例数量增长
+ */
+int32 UXBSoldierRenderer::AcquireInstanceIndex(EXBSoldierType Type, const FTransform& Transform)
+{
+    UHierarchicalInstancedStaticMeshComponent* HISM = GetOrCreateHISM(Type);
+    if (!HISM)
+    {
+        return INDEX_NONE;
+    }
+
+    // 检查是否有空闲索引可复用
+    TArray<int32>& FreeIndices = FreeInstanceIndices.FindOrAdd(Type);
+    if (FreeIndices.Num() > 0)
+    {
+        // 从池中取出最后一个索引（LIFO，缓存友好）
+        int32 ReusedIndex = FreeIndices.Pop();
+        
+        // 更新该索引的变换（复用实例）
+        HISM->UpdateInstanceTransform(ReusedIndex, Transform, true, true, false);
+        
+        UE_LOG(LogTemp, Verbose, TEXT("复用空闲索引 %d（兵种 %d）"), ReusedIndex, (int32)Type);
+        return ReusedIndex;
+    }
+
+    // 没有空闲索引，创建新实例
+    int32 NewIndex = HISM->AddInstance(Transform, true);
+    UE_LOG(LogTemp, Verbose, TEXT("创建新实例索引 %d（兵种 %d）"), NewIndex, (int32)Type);
+    return NewIndex;
+}
+
+// ✨ 新增 - 索引回收函数
+/**
+ * @brief 将索引标记为空闲
+ * @param Type 兵种类型
+ * @param InstanceIndex 实例索引
+ * @note 不立即从 HISM 移除，避免索引移位
+ */
+void UXBSoldierRenderer::ReleaseInstanceIndex(EXBSoldierType Type, int32 InstanceIndex)
+{
+    if (UHierarchicalInstancedStaticMeshComponent* HISM = HISMComponents.FindRef(Type))
+    {
+        // 将实例移动到地下（隐藏但不删除）
+        FTransform HiddenTransform(FRotator::ZeroRotator, FVector(0, 0, -100000), FVector::ZeroVector);
+        HISM->UpdateInstanceTransform(InstanceIndex, HiddenTransform, true, true, false);
+    }
+
+    // 加入空闲池
+    TArray<int32>& FreeIndices = FreeInstanceIndices.FindOrAdd(Type);
+    FreeIndices.Add(InstanceIndex);
+}
+
+// ✨ 新增 - 碎片整理函数
+/**
+ * @brief 整理 HISM 实例，消除空洞
+ * @param SoldierType 要整理的兵种类型
+ * @note 该操作会重建 HISM，性能开销较大，建议在关卡切换时调用
+ */
+void UXBSoldierRenderer::DefragmentInstances(EXBSoldierType SoldierType)
+{
+    UHierarchicalInstancedStaticMeshComponent* HISM = HISMComponents.FindRef(SoldierType);
+    if (!HISM)
+    {
+        return;
+    }
+
+    TArray<int32>& FreeIndices = FreeInstanceIndices.FindOrAdd(SoldierType);
+    if (FreeIndices.Num() == 0)
+    {
+        UE_LOG(LogTemp, Log, TEXT("兵种 %d 无需碎片整理"), (int32)SoldierType);
+        return;
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("开始整理兵种 %d 的实例，空闲索引数: %d"), (int32)SoldierType, FreeIndices.Num());
+
+    // 按索引降序排序，从后往前删除，避免索引移位影响
+    FreeIndices.Sort([](int32 A, int32 B) { return A > B; });
+
+    for (int32 FreeIndex : FreeIndices)
+    {
+        HISM->RemoveInstance(FreeIndex);
+    }
+
+    // 清空空闲池
+    FreeIndices.Empty();
+
+    // 🔧 修改 - 重建士兵ID到索引的映射
+    // 因为删除操作会导致后续索引前移，需要重新计算
+    TArray<int32> SoldierIdsToUpdate;
+    for (auto& Pair : SoldierIdToInstance)
+    {
+        if (Pair.Value.Key == SoldierType)
+        {
+            SoldierIdsToUpdate.Add(Pair.Key);
+        }
+    }
+
+    // 重新映射（假设 HISM 内部按顺序压缩了索引）
+    // 注意：这里简化处理，实际项目中需要更复杂的索引重映射逻辑
+    for (int32 SoldierId : SoldierIdsToUpdate)
+    {
+        // TODO: 实际项目中需要从 HISM 反查实例的新索引
+        // 这里暂时标记为待重建
+        SoldierIdToInstance.Remove(SoldierId);
+    }
+
+    HISM->MarkRenderStateDirty();
+    UE_LOG(LogTemp, Warning, TEXT("兵种 %d 整理完成，需要重新添加 %d 个士兵"), (int32)SoldierType, SoldierIdsToUpdate.Num());
+}
+
 UHierarchicalInstancedStaticMeshComponent* UXBSoldierRenderer::GetOrCreateHISM(EXBSoldierType SoldierType)
 {
-    // 如果已存在直接返回
     if (HISMComponents.Contains(SoldierType))
     {
         return HISMComponents[SoldierType];
@@ -220,7 +301,6 @@ UHierarchicalInstancedStaticMeshComponent* UXBSoldierRenderer::GetOrCreateHISM(E
     UWorld* World = WorldRef.Get();
     if (!World) return nullptr;
     
-    // 创建一个新的 Actor 来承载 HISM（防止拥挤在一个 Actor 上）
     AActor* HISMOwner = World->SpawnActor<AActor>();
     if (!HISMOwner) return nullptr;
     
@@ -228,90 +308,78 @@ UHierarchicalInstancedStaticMeshComponent* UXBSoldierRenderer::GetOrCreateHISM(E
     HISMOwner->SetActorLabel(FString::Printf(TEXT("HISM_Soldier_%d"), (int32)SoldierType));
 #endif
 
-    // 创建组件
     UHierarchicalInstancedStaticMeshComponent* NewHISM = NewObject<UHierarchicalInstancedStaticMeshComponent>(HISMOwner);
     NewHISM->RegisterComponent();
     NewHISM->SetMobility(EComponentMobility::Movable);
+    NewHISM->SetNumCustomDataFloats(3);
     
-    // 关键：分配自定义数据槽位（用于 VAT）
-    NewHISM->SetNumCustomDataFloats(3); 
-    
-    // 如果有预设的网格体，应用它
     if (MeshAssets.Contains(SoldierType))
     {
         NewHISM->SetStaticMesh(MeshAssets[SoldierType]);
     }
     
-    // 如果有预设的材质，应用它
     if (VATMaterialInstance)
     {
         NewHISM->SetMaterial(0, VATMaterialInstance);
     }
     
-    // 存入映射
     HISMComponents.Add(SoldierType, NewHISM);
     
     return NewHISM;
 }
 
-// 为士兵添加实例（内部辅助）
 void UXBSoldierRenderer::AddInstanceForSoldier(const FXBSoldierData& Soldier)
 {
     AddInstanceWithType(Soldier.SoldierId, Soldier.Position, Soldier.SoldierType);
 }
 
-// 更新实例变换（内部辅助）
 void UXBSoldierRenderer::UpdateInstanceTransform(int32 SoldierId, const FTransform& NewTransform)
 {
-    if (int32* IdxPtr = SoldierIdToInstanceIndex.Find(SoldierId))
+    // 🔧 修改 - 使用新的映射表结构
+    if (TPair<EXBSoldierType, int32>* InstanceInfo = SoldierIdToInstance.Find(SoldierId))
     {
-        EXBSoldierType Type = SoldierIdToType[SoldierId];
+        EXBSoldierType Type = InstanceInfo->Key;
+        int32 InstanceIndex = InstanceInfo->Value;
+        
         if (UHierarchicalInstancedStaticMeshComponent* HISM = HISMComponents.FindRef(Type))
         {
-            HISM->UpdateInstanceTransform(*IdxPtr, NewTransform, true, true);
+            HISM->UpdateInstanceTransform(InstanceIndex, NewTransform, true, true);
         }
     }
 }
 
-// 更新自定义数据（VAT 动画核心）
 void UXBSoldierRenderer::UpdateInstanceCustomData(UHierarchicalInstancedStaticMeshComponent* HISM, int32 InstanceIndex, const FXBSoldierData& Soldier)
 {
     if (!HISM || HISM->NumCustomDataFloats < 3) return;
 
-    // 简单的状态映射逻辑
-    float AnimId = 0.0f; // 默认 Idle
+    float AnimId = 0.0f;
     
-    // 🔧 修正：显式处理枚举比较
     if (Soldier.State == EXBSoldierState::Following) 
     {
-        AnimId = 1.0f; // Walk
+        AnimId = 1.0f;
     }
     else if (Soldier.State == EXBSoldierState::Combat) 
     {
-        AnimId = 2.0f; // Attack
+        AnimId = 2.0f;
     }
     else if (Soldier.State == EXBSoldierState::Dead) 
     {
-        AnimId = 3.0f; // Death
+        AnimId = 3.0f;
     }
     
-    // 冲刺时播放速度加快
     float PlayRate = Soldier.bIsSprinting ? 1.5f : 1.0f;
 
-    // 设置数据到 GPU
-    HISM->SetCustomDataValue(InstanceIndex, 0, 0.0f, false); // Time (这里暂时传0，实际需要传入 GameTime)
+    HISM->SetCustomDataValue(InstanceIndex, 0, 0.0f, false);
     HISM->SetCustomDataValue(InstanceIndex, 1, AnimId, false);
     HISM->SetCustomDataValue(InstanceIndex, 2, PlayRate, false);
 }
 
-// 设置将领士兵可见性（空实现，防止链接错误）
 void UXBSoldierRenderer::SetVisibilityForLeader(AActor* Leader, bool bVisible) 
 {
-    // TODO: 实现逻辑 - 遍历该 Leader 下属的所有小兵，将 Scale 设置为 0 或 1
+    // TODO: 实现逻辑
 }
 
-// 更新将领士兵网格（空实现，防止链接错误）
 void UXBSoldierRenderer::UpdateMeshForLeader(AActor* Leader, EXBSoldierType NewType) 
 {
-    // TODO: 实现逻辑 - 将实例从旧 HISM 移除，添加到新 HISM
+    // TODO: 实现逻辑
 }

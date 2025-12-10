@@ -295,6 +295,7 @@ void AXBCharacterBase::SetSoldiersEscaping(bool bEscaping)
 
 // ============ 死亡系统实现 ============
 
+
 void AXBCharacterBase::HandleDeath()
 {
     // 防止重复处理死亡
@@ -441,14 +442,26 @@ void AXBCharacterBase::PreDestroyCleanup()
     {
         if (Soldier)
         {
-            // 通知士兵主将已死亡，可以在这里处理士兵的后续行为
+            // 通知士兵主将已死亡
             // Soldier->OnLeaderDied();
         }
     }
     Soldiers.Empty();
 
+   
+
+    // ✨ 新增 - 清理 ASC 的所有激活状态
+    if (AbilitySystemComponent)
+    {
+        AbilitySystemComponent->CancelAllAbilities();
+        AbilitySystemComponent->RemoveAllGameplayCues();
+        
+        // 清除所有 GameplayEffects
+        AbilitySystemComponent->RemoveActiveEffectsWithTags(FGameplayTagContainer());
+        
+        UE_LOG(LogTemp, Log, TEXT("%s: ASC 状态已清理"), *GetName());
+    }
+
     // 清除定时器
     GetWorldTimerManager().ClearTimer(DeathDestroyTimerHandle);
-
-    // 子类可以重写此方法添加额外的清理逻辑
 }

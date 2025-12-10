@@ -1,4 +1,5 @@
-﻿// Source/XiaoBinDaTianXia/Public/Army/XBSoldierRenderer.h
+﻿/* --- 完整文件代码 --- */
+// Source/XiaoBinDaTianXia/Public/Army/XBSoldierRenderer.h
 
 #pragma once
 
@@ -7,50 +8,41 @@
 #include "Army/XBSoldierTypes.h"
 #include "XBSoldierRenderer.generated.h"
 
-// 前向声明，减少编译依赖
 class UHierarchicalInstancedStaticMeshComponent;
 class UStaticMesh;
 class UMaterialInterface;
 class UMaterialInstanceDynamic;
 
 /**
- * @brief VAT (Vertex Animation Texture) 动画数据结构
- * 用于驱动 HISM 实例的动画播放
+ * @brief VAT 动画数据结构
  */
 USTRUCT(BlueprintType)
 struct FXBVATAnimationData
 {
     GENERATED_BODY()
 
-    // 动画ID，对应材质中的行号或索引
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "动画ID"))
     int32 AnimationId = 0;
 
-    // 动画总帧数
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "总帧数"))
     int32 FrameCount = 0;
 
-    // 播放帧率
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "帧率"))
     float FrameRate = 30.0f;
 
-    // 是否循环播放
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "循环播放"))
     bool bLoop = true;
 
-    // 起始帧偏移
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "起始帧"))
     int32 StartFrame = 0;
 };
 
 /**
- * @brief 士兵渲染器 (Soldier Renderer)
- * @details 负责管理海量士兵的视觉表现。
- * 核心技术：使用 HISM (Hierarchical Instanced Static Mesh) 配合 VAT 技术实现高性能万人同屏。
- * 职责：
- * 1. 维护士兵ID到HISM实例索引的映射。
- * 2. 根据士兵状态更新位置、旋转和动画参数(CustomData)。
- * 3. 管理不同兵种的网格体资源。
+ * @brief 士兵渲染器 - 使用稀疏索引池管理 HISM 实例
+ * @note 核心优化：
+ *       1. 引入空闲索引池，避免 RemoveInstance 导致的索引移位
+ *       2. 移除时将索引标记为空闲，下次添加时优先复用
+ *       3. 定期执行碎片整理（Defragmentation）
  */
 UCLASS(BlueprintType)
 class XIAOBINDATIANXIA_API UXBSoldierRenderer : public UObject
@@ -58,144 +50,95 @@ class XIAOBINDATIANXIA_API UXBSoldierRenderer : public UObject
     GENERATED_BODY()
 
 public:
-    /**
-     * @brief 构造函数
-     */
     UXBSoldierRenderer();
 
-    /**
-     * @brief 初始化渲染器
-     * @param InWorld 游戏世界上下文
-     */
     void Initialize(UWorld* InWorld);
-
-    /**
-     * @brief 清理资源
-     * 销毁所有组件和清空映射
-     */
     void Cleanup();
 
     // ============ 实例管理接口 ============
 
-    /**
-     * @brief 添加一个士兵实例（默认步兵）
-     * @param SoldierId 士兵唯一ID
-     * @param Location 初始位置
-     * @return 实例索引
-     */
     int32 AddInstance(int32 SoldierId, const FVector& Location);
-
-    /**
-     * @brief 添加指定类型的士兵实例
-     * @param SoldierId 士兵唯一ID
-     * @param Location 初始位置
-     * @param Type 兵种类型
-     * @return 实例索引
-     */
     int32 AddInstanceWithType(int32 SoldierId, const FVector& Location, EXBSoldierType Type);
-
-    /**
-     * @brief 移除士兵实例
-     * @param SoldierId 士兵唯一ID
-     */
     void RemoveInstance(int32 SoldierId);
 
     // ============ 批量更新接口 ============
 
-    /**
-     * @brief 根据数据批量更新所有实例
-     * @param SoldierMap 士兵数据映射表
-     * 这是每帧调用的核心函数，负责同步逻辑数据到渲染层
-     */
     void UpdateInstancesFromData(const TMap<int32, FXBSoldierData>& SoldierMap);
 
     // ============ 资源设置接口 ============
 
-    /**
-     * @brief 为特定兵种设置网格体
-     */
     void SetMeshForType(EXBSoldierType SoldierType, UStaticMesh* Mesh, UMaterialInterface* Material = nullptr);
-
-    /**
-     * @brief 设置全局 VAT 材质（用于创建动态实例）
-     */
     void SetVATMaterial(UMaterialInterface* Material);
 
-    /**
-     * @brief 设置士兵网格体（蓝图封装版）
-     */
     UFUNCTION(BlueprintCallable, Category = "XB|Renderer")
     void SetSoldierMesh(EXBSoldierType Type, UStaticMesh* Mesh);
 
+    // ✨ 新增 - 碎片整理接口（在性能允许时调用）
+    /**
+     * @brief 整理 HISM 实例索引，消除碎片
+     * @param SoldierType 要整理的兵种类型
+     * @note 该操作开销较大，建议在关卡切换或过场时调用
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Renderer")
+    void DefragmentInstances(EXBSoldierType SoldierType);
+
     // ============ 可见性与状态接口 ============
 
-    /**
-     * @brief 设置将领麾下士兵的可见性
-     * @param Leader 将领Actor
-     * @param bVisible 是否可见
-     */
     void SetVisibilityForLeader(AActor* Leader, bool bVisible);
-
-    /**
-     * @brief 更新将领麾下士兵的网格体类型
-     */
     void UpdateMeshForLeader(AActor* Leader, EXBSoldierType NewType);
 
 protected:
-    // ============ 内部辅助函数 ============
-
-    /**
-     * @brief 获取或创建对应兵种的 HISM 组件
-     */
     UHierarchicalInstancedStaticMeshComponent* GetOrCreateHISM(EXBSoldierType SoldierType);
-
-    /**
-     * @brief 为士兵数据添加实例（内部调用）
-     */
     void AddInstanceForSoldier(const FXBSoldierData& Soldier);
-
-    /**
-     * @brief 更新实例变换
-     */
     void UpdateInstanceTransform(int32 SoldierId, const FTransform& NewTransform);
-    
-    /**
-     * @brief 更新实例自定义数据（用于驱动 VAT 动画）
-     * CustomData 0: 动画时间/帧偏移
-     * CustomData 1: 动画状态ID
-     * CustomData 2: 播放速率
-     */
     void UpdateInstanceCustomData(UHierarchicalInstancedStaticMeshComponent* HISM, int32 InstanceIndex, const FXBSoldierData& Soldier);
 
+    // ✨ 新增 - 获取或复用空闲索引
+    /**
+     * @brief 从空闲池获取索引，如果池空则创建新实例
+     * @param Type 兵种类型
+     * @param Transform 初始变换
+     * @return 实例索引
+     */
+    int32 AcquireInstanceIndex(EXBSoldierType Type, const FTransform& Transform);
+
+    // ✨ 新增 - 回收索引到空闲池
+    /**
+     * @brief 将索引标记为空闲，不立即从 HISM 移除
+     * @param Type 兵种类型
+     * @param InstanceIndex 实例索引
+     */
+    void ReleaseInstanceIndex(EXBSoldierType Type, int32 InstanceIndex);
+
 protected:
-    // 弱引用持有世界上下文
     UPROPERTY()
     TWeakObjectPtr<UWorld> WorldRef;
 
-    // 兵种类型到 HISM 组件的映射
     UPROPERTY()
     TMap<EXBSoldierType, TObjectPtr<UHierarchicalInstancedStaticMeshComponent>> HISMComponents;
 
-    // 兵种类型到静态网格体资源的映射
     UPROPERTY()
     TMap<EXBSoldierType, TObjectPtr<UStaticMesh>> MeshAssets;
 
-    // 动画配置数据
     UPROPERTY()
     TArray<FXBVATAnimationData> AnimationData;
     
-    // 全局 VAT 动态材质实例
     UPROPERTY()
     TObjectPtr<UMaterialInstanceDynamic> VATMaterialInstance;
 
     // ============ 索引映射 ============
     
-    // 士兵ID -> HISM 实例索引
-    TMap<int32, int32> SoldierIdToInstanceIndex;
-    
-    // HISM 实例索引 -> 士兵ID (用于反向查找)
-    TMap<int32, int32> InstanceIndexToSoldierId;
-    
-    // 士兵ID -> 兵种类型 (用于快速查找对应的 HISM)
-    TMap<int32, EXBSoldierType> SoldierIdToType;
+    // 🔧 修改 - 简化为单一映射，移除冗余的反向映射
+    /**
+     * @brief 士兵ID -> (兵种类型, HISM实例索引) 映射
+     * @note 单一数据源，避免多映射表不同步问题
+     */
+    TMap<int32, TPair<EXBSoldierType, int32>> SoldierIdToInstance;
+
+    // ✨ 新增 - 空闲索引池
+    /**
+     * @brief 每个兵种类型的空闲索引池
+     * @note 移除实例时将索引加入池中，添加实例时优先从池中取
+     */
+    TMap<EXBSoldierType, TArray<int32>> FreeInstanceIndices;
 };
