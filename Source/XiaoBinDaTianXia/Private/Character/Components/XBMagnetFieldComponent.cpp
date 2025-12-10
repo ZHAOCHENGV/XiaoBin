@@ -6,6 +6,8 @@
 #include "Soldier/XBSoldierActor.h"
 #include "GAS/XBAbilitySystemComponent.h"
 #include "AbilitySystemBlueprintLibrary.h"
+#include "Data/XBSoldierDataTable.h"
+#include "Engine/DataTable.h"
 
 UXBMagnetFieldComponent::UXBMagnetFieldComponent()
 {
@@ -89,6 +91,24 @@ void UXBMagnetFieldComponent::OnSphereBeginOverlap(UPrimitiveComponent* Overlapp
             // 获取将领
             if (AXBCharacterBase* Leader = Cast<AXBCharacterBase>(GetOwner()))
             {
+                // ✨ 新增 - 从将领配置的数据表初始化士兵
+                UDataTable* SoldierDT = Leader->GetSoldierDataTable();
+                FName SoldierRowName = Leader->GetRecruitSoldierRowName();
+                
+                if (SoldierDT && !SoldierRowName.IsNone())
+                {
+                    // 使用将领配置的士兵类型初始化
+                    Soldier->InitializeFromDataTable(SoldierDT, SoldierRowName, Leader->GetFaction());
+                    UE_LOG(LogTemp, Log, TEXT("士兵从数据表初始化: %s"), *SoldierRowName.ToString());
+                }
+                else
+                {
+                    // 没有配置数据表，使用默认配置
+                    FXBSoldierConfig DefaultConfig;
+                    Soldier->InitializeSoldier(DefaultConfig, Leader->GetFaction());
+                    UE_LOG(LogTemp, Warning, TEXT("将领未配置士兵数据表，使用默认配置"));
+                }
+                
                 // 添加士兵到将领（内部会处理血量加成和缩放）
                 Leader->AddSoldier(Soldier);
                 

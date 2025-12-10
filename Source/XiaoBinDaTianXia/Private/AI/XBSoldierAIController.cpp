@@ -42,28 +42,38 @@ void AXBSoldierAIController::OnPossess(APawn* InPawn)
 {
     Super::OnPossess(InPawn);
     
-    // 缓存士兵引用
-    // 说明: 在控制器接管Pawn时缓存引用，避免重复Cast
-    CachedSoldier = Cast<AXBSoldierActor>(InPawn);
-    
-    if (!CachedSoldier.IsValid())
+    // 空指针检查
+    if (!InPawn)
     {
-        UE_LOG(LogTemp, Warning, TEXT("AI控制器 %s 无法识别被控制的Pawn为士兵类型"), *GetName());
+        UE_LOG(LogTemp, Warning, TEXT("AI控制器 %s OnPossess: InPawn 为空"), *GetName());
         return;
     }
     
+    // 缓存士兵引用
+    // 说明: 在控制器接管Pawn时缓存引用，避免重复Cast
+    AXBSoldierActor* Soldier = Cast<AXBSoldierActor>(InPawn);
+    if (!Soldier)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("AI控制器 %s 无法识别被控制的Pawn为士兵类型: %s"), 
+            *GetName(), *InPawn->GetName());
+        return;
+    }
+    
+    CachedSoldier = Soldier;
+    
     // 获取士兵配置的行为树
     // 说明: 优先使用士兵Actor上配置的行为树，否则使用控制器默认行为树
-    AXBSoldierActor* Soldier = CachedSoldier.Get();
     UBehaviorTree* BTToUse = nullptr;
     
     // 检查士兵是否有配置行为树（从数据表加载）
-    if (Soldier->BehaviorTreeAsset)
+    // 注意: BehaviorTreeAsset 可能为空，需要安全检查
+    if (Soldier->BehaviorTreeAsset != nullptr)
     {
         BTToUse = Soldier->BehaviorTreeAsset;
-        UE_LOG(LogTemp, Log, TEXT("使用士兵 %s 配置的行为树"), *Soldier->GetName());
+        UE_LOG(LogTemp, Log, TEXT("使用士兵 %s 配置的行为树: %s"), 
+            *Soldier->GetName(), *BTToUse->GetName());
     }
-    else if (DefaultBehaviorTree)
+    else if (DefaultBehaviorTree != nullptr)
     {
         BTToUse = DefaultBehaviorTree;
         UE_LOG(LogTemp, Log, TEXT("使用默认行为树控制士兵 %s"), *Soldier->GetName());

@@ -25,6 +25,7 @@ class UXBAbilitySystemComponent;
 class UXBAttributeSet;
 class UXBCombatComponent;
 class UDataTable;
+struct FXBSoldierTableRow;
 class AXBSoldierActor;
 class UAnimMontage;
 
@@ -126,6 +127,20 @@ public:
      */
     UFUNCTION(BlueprintCallable, Category = "士兵")
     virtual void AddSoldier(AXBSoldierActor* Soldier);
+
+    /**
+     * @brief 获取招募士兵的数据表行名
+     * @return 士兵数据表行名
+     * @note ✨ 新增 - 用于确定招募时创建什么类型的士兵
+     */
+    UFUNCTION(BlueprintCallable, Category = "士兵")
+    FName GetRecruitSoldierRowName() const { return RecruitSoldierRowName; }
+
+    /**
+     * @brief 获取士兵数据表
+     */
+    UFUNCTION(BlueprintCallable, Category = "士兵")
+    UDataTable* GetSoldierDataTable() const { return SoldierDataTable; }
 
     /**
      * @brief 从队列移除士兵
@@ -329,6 +344,30 @@ protected:
     // ✨ 新增 - 士兵掉落配置
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "掉落", meta = (DisplayName = "士兵掉落配置"))
     FXBSoldierDropConfig SoldierDropConfig;
+
+    // ============ 招募配置 ============
+
+    /**
+     * @brief 士兵数据表
+     * @note ✨ 新增 - 用于初始化招募的士兵
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "招募", meta = (DisplayName = "士兵数据表"))
+    TObjectPtr<UDataTable> SoldierDataTable;
+
+    /**
+     * @brief 招募士兵的数据表行名
+     * @note ✨ 新增 - 决定招募时创建哪种类型的士兵
+     *       例如: "Infantry_Default", "Archer_Default", "Cavalry_Default"
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "招募", meta = (DisplayName = "招募士兵行名"))
+    FName RecruitSoldierRowName;
+
+    /**
+     * @brief 士兵Actor类
+     * @note ✨ 新增 - 生成士兵时使用的类
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "招募", meta = (DisplayName = "士兵Actor类"))
+    TSubclassOf<AXBSoldierActor> SoldierActorClass;
 
     // ============ 死亡系统 ============
 
