@@ -5,7 +5,10 @@
  * @file XBSoldierAIController.cpp
  * @brief 士兵AI控制器实现
  * 
- * @note ✨ 新增文件
+ * @note 🔧 修改记录:
+ *       1. 修复 OnPossess 中访问未初始化组件导致的崩溃
+ *       2. 将所有行为树初始化延迟到 OnPossess 完成后
+ *       3. 添加安全的黑板更新方法
  */
 
 #include "AI/XBSoldierAIController.h"
@@ -15,6 +18,8 @@
 #include "Soldier/XBSoldierActor.h"
 #include "Character/XBCharacterBase.h"
 #include "Kismet/GameplayStatics.h"
+#include "TimerManager.h"
+#include "GameFramework/CharacterMovementComponent.h"
 
 AXBSoldierAIController::AXBSoldierAIController()
 {
@@ -26,9 +31,10 @@ AXBSoldierAIController::AXBSoldierAIController()
     // 说明: 黑板组件存储行为树所需的共享数据
     BlackboardComp = CreateDefaultSubobject<UBlackboardComponent>(TEXT("BlackboardComponent"));
     
-    // 启用Tick用于定期更新黑板值
+    // 🔧 修改 - 禁用初始Tick，等待初始化完成后再启用
+    // 说明: 避免在组件未就绪时执行Tick逻辑
     PrimaryActorTick.bCanEverTick = true;
-    PrimaryActorTick.TickInterval = 0.0f;
+    PrimaryActorTick.bStartWithTickEnabled = false;
 }
 
 void AXBSoldierAIController::BeginPlay()
@@ -38,10 +44,14 @@ void AXBSoldierAIController::BeginPlay()
     UE_LOG(LogTemp, Log, TEXT("士兵AI控制器 %s BeginPlay"), *GetName());
 }
 
+/**
+ * @brief AI控制器接管Pawn时的回调
+ * @param InPawn 被接管的Pawn
+ * @note 🔧 修改 - 只做最基本操作，所有初始化延迟到下一帧
+ *       避免在组件未完全初始化时触发移动系统
+ */
 void AXBSoldierAIController::OnPossess(APawn* InPawn)
 {
-    Super::OnPossess(InPawn);
-    
     // 空指针检查
     if (!InPawn)
     {
@@ -49,24 +59,80 @@ void AXBSoldierAIController::OnPossess(APawn* InPawn)
         return;
     }
     
-    // 缓存士兵引用
-    // 说明: 在控制器接管Pawn时缓存引用，避免重复Cast
+    // 🔧 修改 - 先缓存士兵引用，再调用父类
+    // 说明: 在调用 Super::OnPossess 之前缓存，确保后续能访问
     AXBSoldierActor* Soldier = Cast<AXBSoldierActor>(InPawn);
-    if (!Soldier)
+    if (Soldier)
     {
-        UE_LOG(LogTemp, Warning, TEXT("AI控制器 %s 无法识别被控制的Pawn为士兵类型: %s"), 
+        CachedSoldier = Soldier;
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("AI控制器 %s: 被控制的Pawn不是士兵类型: %s"), 
             *GetName(), *InPawn->GetName());
+    }
+    
+    // 调用父类 OnPossess
+    // 注意: 父类实现会设置 Pawn 引用等基本操作
+    Super::OnPossess(InPawn);
+    
+    // 🔧 修改 - 将所有行为树初始化延迟到下一帧
+    // 说明: 确保 Possess 完全完成、物理世界同步后再进行初始化
+    if (Soldier)
+    {
+        GetWorldTimerManager().SetTimerForNextTick(this, &AXBSoldierAIController::DelayedOnPossess);
+        
+        UE_LOG(LogTemp, Log, TEXT("AI控制器 %s: Possess 成功，已安排延迟初始化"), *GetName());
+    }
+}
+
+/**
+ * @brief 延迟的 OnPossess 初始化
+ * @note ✨ 新增 - 在 Possess 完成后的下一帧执行
+ *       此时所有组件应该已完全初始化
+ */
+void AXBSoldierAIController::DelayedOnPossess()
+{
+    // 安全检查: 控制器是否有效
+    if (!IsValid(this))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("DelayedOnPossess: 控制器已无效"));
         return;
     }
     
-    CachedSoldier = Soldier;
+    // 安全检查: 是否有Pawn
+    APawn* MyPawn = GetPawn();
+    if (!MyPawn)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("DelayedOnPossess: Pawn 为空"));
+        return;
+    }
     
-    // 获取士兵配置的行为树
-    // 说明: 优先使用士兵Actor上配置的行为树，否则使用控制器默认行为树
+    // 安全检查: 缓存的士兵是否有效
+    if (!CachedSoldier.IsValid())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("DelayedOnPossess: 缓存的士兵引用无效"));
+        return;
+    }
+    
+    AXBSoldierActor* Soldier = CachedSoldier.Get();
+    if (!Soldier || !IsValid(Soldier))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("DelayedOnPossess: 士兵Actor无效"));
+        return;
+    }
+    
+    // 安全检查: 士兵是否正在销毁
+    if (Soldier->IsPendingKillPending())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("DelayedOnPossess: 士兵正在销毁中"));
+        return;
+    }
+    
+    // 获取要使用的行为树
+    // 说明: 优先使用士兵配置的行为树，否则使用控制器默认行为树
     UBehaviorTree* BTToUse = nullptr;
     
-    // 检查士兵是否有配置行为树（从数据表加载）
-    // 注意: BehaviorTreeAsset 可能为空，需要安全检查
     if (Soldier->BehaviorTreeAsset != nullptr)
     {
         BTToUse = Soldier->BehaviorTreeAsset;
@@ -82,28 +148,67 @@ void AXBSoldierAIController::OnPossess(APawn* InPawn)
     // 启动行为树
     if (BTToUse)
     {
-        StartBehaviorTree(BTToUse);
+        if (StartBehaviorTree(BTToUse))
+        {
+            // 标记初始化完成
+            bIsInitialized = true;
+            
+            // 启用Tick
+            SetActorTickEnabled(true);
+            
+            UE_LOG(LogTemp, Log, TEXT("AI控制器 %s: 行为树启动成功，Tick已启用"), *GetName());
+        }
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("AI控制器 %s: 行为树启动失败"), *GetName());
+        }
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("士兵 %s 没有配置行为树，将使用简单状态机"), *Soldier->GetName());
+        // 没有行为树，也启用Tick用于状态更新
+        bIsInitialized = true;
+        SetActorTickEnabled(true);
+        
+        UE_LOG(LogTemp, Log, TEXT("士兵 %s 没有配置行为树，使用简单状态机"), *Soldier->GetName());
     }
 }
 
 void AXBSoldierAIController::OnUnPossess()
 {
+    // 清除所有定时器
+    // 说明: 避免在 UnPossess 后定时器回调访问无效数据
+    GetWorldTimerManager().ClearAllTimersForObject(this);
+    
     // 停止行为树
-    // 说明: 在控制器释放Pawn时停止行为树，清理资源
     StopBehaviorTreeLogic();
     
+    // 禁用Tick
+    SetActorTickEnabled(false);
+    
+    // 重置状态
+    bIsInitialized = false;
     CachedSoldier.Reset();
     
     Super::OnUnPossess();
+    
+    UE_LOG(LogTemp, Log, TEXT("AI控制器 %s: UnPossess 完成"), *GetName());
 }
 
 void AXBSoldierAIController::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
+    
+    // 安全检查: 是否已初始化
+    if (!bIsInitialized)
+    {
+        return;
+    }
+    
+    // 安全检查: 士兵是否有效
+    if (!CachedSoldier.IsValid())
+    {
+        return;
+    }
     
     // 定期更新黑板值
     // 说明: 避免每帧更新，使用间隔更新提高性能
@@ -111,12 +216,17 @@ void AXBSoldierAIController::Tick(float DeltaTime)
     if (BlackboardUpdateTimer >= BlackboardUpdateInterval)
     {
         BlackboardUpdateTimer = 0.0f;
-        UpdateDistanceValues();
+        UpdateDistanceValuesSafe();
     }
 }
 
 // ==================== 行为树控制实现 ====================
 
+/**
+ * @brief 启动行为树
+ * @param BehaviorTreeAsset 行为树资产
+ * @return 是否成功启动
+ */
 bool AXBSoldierAIController::StartBehaviorTree(UBehaviorTree* BehaviorTreeAsset)
 {
     if (!BehaviorTreeAsset)
@@ -133,12 +243,11 @@ bool AXBSoldierAIController::StartBehaviorTree(UBehaviorTree* BehaviorTreeAsset)
         return false;
     }
     
-    // 刷新黑板初始值
-    RefreshBlackboardValues();
+    // 安全地刷新黑板初始值
+    // 说明: 使用安全版本，不触发移动组件
+    RefreshBlackboardValuesSafe();
     
     // 启动行为树
-    // 说明: 使用行为树组件运行行为树
-    // 注意: StartTree 返回 void，通过检查行为树是否正在运行来判断成功
     BehaviorTreeComp->StartTree(*BehaviorTreeAsset);
     
     // 检查行为树是否成功启动
@@ -160,7 +269,7 @@ bool AXBSoldierAIController::StartBehaviorTree(UBehaviorTree* BehaviorTreeAsset)
 
 void AXBSoldierAIController::StopBehaviorTreeLogic()
 {
-    if (BehaviorTreeComp)
+    if (BehaviorTreeComp && BehaviorTreeComp->IsRunning())
     {
         BehaviorTreeComp->StopTree(EBTStopMode::Safe);
         UE_LOG(LogTemp, Log, TEXT("AI控制器 %s 停止行为树"), *GetName());
@@ -182,6 +291,11 @@ void AXBSoldierAIController::PauseBehaviorTree(bool bPause)
     }
 }
 
+/**
+ * @brief 初始化士兵黑板
+ * @param BT 行为树资产
+ * @return 是否成功初始化
+ */
 bool AXBSoldierAIController::SetupSoldierBlackboard(UBehaviorTree* BT)
 {
     if (!BT || !BT->BlackboardAsset)
@@ -191,8 +305,6 @@ bool AXBSoldierAIController::SetupSoldierBlackboard(UBehaviorTree* BT)
     }
     
     // 使用行为树的黑板资产初始化黑板组件
-    // 说明: 黑板组件需要黑板资产来定义可用的键
-    // 注意: UseBlackboard 第二个参数是原始指针引用
     UBlackboardComponent* BBCompRaw = BlackboardComp.Get();
     if (UseBlackboard(BT->BlackboardAsset, BBCompRaw))
     {
@@ -221,7 +333,7 @@ void AXBSoldierAIController::SetTargetActor(AActor* Target)
     BlackboardComp->SetValueAsBool(XBSoldierBBKeys::HasTarget, Target != nullptr);
     
     // 如果有目标，更新目标位置
-    if (Target)
+    if (Target && IsValid(Target))
     {
         BlackboardComp->SetValueAsVector(XBSoldierBBKeys::TargetLocation, Target->GetActorLocation());
     }
@@ -247,7 +359,6 @@ void AXBSoldierAIController::SetSoldierState(uint8 NewState)
     BlackboardComp->SetValueAsEnum(XBSoldierBBKeys::SoldierState, NewState);
     
     // 更新战斗状态
-    // 说明: 根据状态枚举值判断是否在战斗中
     bool bInCombat = (NewState == static_cast<uint8>(EXBSoldierState::Combat));
     BlackboardComp->SetValueAsBool(XBSoldierBBKeys::IsInCombat, bInCombat);
 }
@@ -282,38 +393,41 @@ void AXBSoldierAIController::UpdateCombatState(bool bInCombat)
     BlackboardComp->SetValueAsBool(XBSoldierBBKeys::IsInCombat, bInCombat);
 }
 
-void AXBSoldierAIController::RefreshBlackboardValues()
+/**
+ * @brief 安全地刷新黑板值
+ * @note 不访问任何可能触发移动组件的函数
+ *       只使用简单的 Get 方法获取数据
+ */
+void AXBSoldierAIController::RefreshBlackboardValuesSafe()
 {
     if (!BlackboardComp)
     {
-        UE_LOG(LogTemp, Warning, TEXT("RefreshBlackboardValues: BlackboardComp 为空"));
+        UE_LOG(LogTemp, Warning, TEXT("RefreshBlackboardValuesSafe: BlackboardComp 为空"));
         return;
     }
     
     if (!CachedSoldier.IsValid())
     {
-        UE_LOG(LogTemp, Warning, TEXT("RefreshBlackboardValues: CachedSoldier 无效"));
+        UE_LOG(LogTemp, Warning, TEXT("RefreshBlackboardValuesSafe: CachedSoldier 无效"));
         return;
     }
     
     AXBSoldierActor* Soldier = CachedSoldier.Get();
-    if (!Soldier)
+    if (!Soldier || !IsValid(Soldier))
     {
         return;
     }
     
-    // 🔧 修复 - 安全检查: 确保Actor完全初始化
-    if (!IsValid(Soldier) || Soldier->IsPendingKillPending())
+    // 安全检查: 士兵是否正在销毁
+    if (Soldier->IsPendingKillPending())
     {
-        UE_LOG(LogTemp, Warning, TEXT("RefreshBlackboardValues: Soldier 正在销毁中"));
         return;
     }
     
     // 设置自身引用
-    // 说明: 方便行为树节点访问士兵Actor
     BlackboardComp->SetValueAsObject(XBSoldierBBKeys::Self, Soldier);
     
-    // 设置将领 - 安全检查
+    // 设置将领（只获取引用，不计算位置）
     AActor* Leader = Soldier->GetFollowTarget();
     SetLeader(Leader);
     
@@ -324,42 +438,40 @@ void AXBSoldierAIController::RefreshBlackboardValues()
     int32 SlotIndex = Soldier->GetFormationSlotIndex();
     BlackboardComp->SetValueAsInt(XBSoldierBBKeys::FormationSlot, SlotIndex);
     
-    // 🔧 修复 - 设置编队位置 - 增强安全检查
-    // 说明: 在初始化早期可能组件未就绪，使用当前位置作为回退
-    FVector FormationPos = Soldier->GetActorLocation();
-    if (Leader && IsValid(Leader) && SlotIndex != INDEX_NONE)
-    {
-        // 只有有跟随目标且有有效槽位时才计算编队位置
-        FVector SafeFormationPos = Soldier->GetFormationWorldPositionSafe();
-        if (!SafeFormationPos.IsZero())
-        {
-            FormationPos = SafeFormationPos;
-        }
-    }
-    SetFormationPosition(FormationPos);
+    // 🔧 修改 - 使用士兵当前位置作为初始编队位置
+    // 说明: 避免调用可能触发移动组件的 GetFormationWorldPosition
+    FVector CurrentPosition = Soldier->GetActorLocation();
+    SetFormationPosition(CurrentPosition);
     
     // 设置攻击范围
-    // 说明: 从士兵配置中获取攻击范围
     float AttackRange = Soldier->GetSoldierConfig().AttackRange;
     SetAttackRange(AttackRange);
     
     // 设置检测范围
-    // 说明: 检测范围用于寻敌
     BlackboardComp->SetValueAsFloat(XBSoldierBBKeys::DetectionRange, 800.0f);
     
-    // 检查是否可以攻击
-    BlackboardComp->SetValueAsBool(XBSoldierBBKeys::CanAttack, Soldier->CanAttack());
+    // 设置默认值
+    BlackboardComp->SetValueAsBool(XBSoldierBBKeys::CanAttack, true);
+    BlackboardComp->SetValueAsBool(XBSoldierBBKeys::IsAtFormation, true);
+    BlackboardComp->SetValueAsFloat(XBSoldierBBKeys::DistanceToTarget, MAX_FLT);
+    BlackboardComp->SetValueAsFloat(XBSoldierBBKeys::DistanceToLeader, 0.0f);
+    BlackboardComp->SetValueAsBool(XBSoldierBBKeys::ShouldRetreat, false);
+    BlackboardComp->SetValueAsBool(XBSoldierBBKeys::HasTarget, false);
     
-    // 🔧 修复 - 检查是否在编队位置 - 增强安全检查
-    bool bAtFormation = true;
-    if (Leader && IsValid(Leader) && SlotIndex != INDEX_NONE)
-    {
-        bAtFormation = Soldier->IsAtFormationPositionSafe();
-    }
-    BlackboardComp->SetValueAsBool(XBSoldierBBKeys::IsAtFormation, bAtFormation);
+    UE_LOG(LogTemp, Verbose, TEXT("AI控制器 %s: 黑板值安全刷新完成"), *GetName());
 }
 
-void AXBSoldierAIController::UpdateDistanceValues()
+void AXBSoldierAIController::RefreshBlackboardValues()
+{
+    // 直接调用安全版本
+    RefreshBlackboardValuesSafe();
+}
+
+/**
+ * @brief 安全地更新距离值
+ * @note 只使用简单的位置计算，不触发移动组件
+ */
+void AXBSoldierAIController::UpdateDistanceValuesSafe()
 {
     if (!BlackboardComp)
     {
@@ -372,21 +484,15 @@ void AXBSoldierAIController::UpdateDistanceValues()
     }
     
     AXBSoldierActor* Soldier = CachedSoldier.Get();
-    if (!Soldier || !IsValid(Soldier))
+    if (!Soldier || !IsValid(Soldier) || Soldier->IsPendingKillPending())
     {
         return;
     }
     
-    // 🔧 修复 - 安全检查: 确保Actor完全初始化
-    if (Soldier->IsPendingKillPending())
-    {
-        return;
-    }
-    
+    // 获取士兵当前位置（简单操作，不触发移动组件）
     FVector SoldierLocation = Soldier->GetActorLocation();
     
-    // 更新到目标的距离
-    // 说明: 用于行为树中的距离判断
+    // ========== 更新到目标的距离 ==========
     UObject* TargetObj = BlackboardComp->GetValueAsObject(XBSoldierBBKeys::CurrentTarget);
     if (AActor* Target = Cast<AActor>(TargetObj))
     {
@@ -394,11 +500,14 @@ void AXBSoldierAIController::UpdateDistanceValues()
         {
             float DistToTarget = FVector::Dist(SoldierLocation, Target->GetActorLocation());
             BlackboardComp->SetValueAsFloat(XBSoldierBBKeys::DistanceToTarget, DistToTarget);
+            
+            // 更新目标位置
+            BlackboardComp->SetValueAsVector(XBSoldierBBKeys::TargetLocation, Target->GetActorLocation());
         }
         else
         {
+            // 目标无效，清除
             BlackboardComp->SetValueAsFloat(XBSoldierBBKeys::DistanceToTarget, MAX_FLT);
-            // 目标无效，清空目标引用
             BlackboardComp->SetValueAsObject(XBSoldierBBKeys::CurrentTarget, nullptr);
             BlackboardComp->SetValueAsBool(XBSoldierBBKeys::HasTarget, false);
         }
@@ -408,8 +517,7 @@ void AXBSoldierAIController::UpdateDistanceValues()
         BlackboardComp->SetValueAsFloat(XBSoldierBBKeys::DistanceToTarget, MAX_FLT);
     }
     
-    // 更新到将领的距离
-    // 说明: 用于判断是否应该脱离战斗返回
+    // ========== 更新到将领的距离 ==========
     UObject* LeaderObj = BlackboardComp->GetValueAsObject(XBSoldierBBKeys::Leader);
     if (AActor* Leader = Cast<AActor>(LeaderObj))
     {
@@ -418,22 +526,27 @@ void AXBSoldierAIController::UpdateDistanceValues()
             float DistToLeader = FVector::Dist(SoldierLocation, Leader->GetActorLocation());
             BlackboardComp->SetValueAsFloat(XBSoldierBBKeys::DistanceToLeader, DistToLeader);
             
-            // 更新是否应该撤退
-            // 说明: 超过1000距离时应该返回将领身边
+            // 更新是否应该撤退（超过1000距离）
             BlackboardComp->SetValueAsBool(XBSoldierBBKeys::ShouldRetreat, DistToLeader > 1000.0f);
         }
     }
     
-    // 🔧 修复 - 更新编队位置相关 - 增强安全检查
-    // 说明: 检查是否到达编队位置
-    bool bAtFormation = true;
-    AActor* FollowTarget = Soldier->GetFollowTarget();
-    int32 SlotIndex = Soldier->GetFormationSlotIndex();
-    if (FollowTarget && IsValid(FollowTarget) && SlotIndex != INDEX_NONE)
+    // ========== 更新是否可以攻击 ==========
+    BlackboardComp->SetValueAsBool(XBSoldierBBKeys::CanAttack, Soldier->CanAttack());
+    
+    // ========== 更新编队位置（使用安全方法）==========
+    FVector FormationPos = Soldier->GetFormationWorldPositionSafe();
+    if (!FormationPos.IsZero() && !FormationPos.ContainsNaN())
     {
-        bAtFormation = Soldier->IsAtFormationPositionSafe();
+        SetFormationPosition(FormationPos);
+        
+        // 计算到编队位置的距离
+        float DistToFormation = FVector::Dist2D(SoldierLocation, FormationPos);
+        BlackboardComp->SetValueAsBool(XBSoldierBBKeys::IsAtFormation, DistToFormation <= 50.0f);
     }
-    BlackboardComp->SetValueAsBool(XBSoldierBBKeys::IsAtFormation, bAtFormation);
+    
+    // ========== 更新状态 ==========
+    SetSoldierState(static_cast<uint8>(Soldier->GetSoldierState()));
 }
 
 // ==================== 访问器实现 ====================

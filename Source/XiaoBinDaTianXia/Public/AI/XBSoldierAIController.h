@@ -5,24 +5,21 @@
  * @file XBSoldierAIController.h
  * @brief 士兵AI控制器 - 支持行为树和黑板系统
  * 
- * @note ✨ 新增文件
- *       1. 专门为士兵设计的AI控制器
- *       2. 集成行为树和黑板组件
- *       3. 提供常用的黑板键名常量
- *       4. 支持数据驱动配置
+ * @note 🔧 修改记录:
+ *       1. 修复 OnPossess 中访问未初始化组件导致的崩溃
+ *       2. 将所有行为树初始化延迟到 OnPossess 完成后
+ *       3. 添加安全的黑板更新方法
  */
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "AIController.h"
-#include "Perception/AIPerceptionTypes.h"
 #include "XBSoldierAIController.generated.h"
 
 // 前向声明
 class UBehaviorTreeComponent;
 class UBlackboardComponent;
-class UAIPerceptionComponent;
 class UBehaviorTree;
 class AXBSoldierActor;
 
@@ -33,31 +30,31 @@ class AXBSoldierActor;
 namespace XBSoldierBBKeys
 {
     // 对象类型键
-    const FName Leader = TEXT("Leader");                    // 将领Actor
-    const FName CurrentTarget = TEXT("CurrentTarget");      // 当前攻击目标
-    const FName Self = TEXT("Self");                        // 自身引用
+    const FName Leader = TEXT("Leader");
+    const FName CurrentTarget = TEXT("CurrentTarget");
+    const FName Self = TEXT("Self");
     
     // 位置类型键
-    const FName TargetLocation = TEXT("TargetLocation");    // 目标位置
-    const FName FormationPosition = TEXT("FormationPosition"); // 编队位置
-    const FName HomeLocation = TEXT("HomeLocation");        // 初始位置
+    const FName TargetLocation = TEXT("TargetLocation");
+    const FName FormationPosition = TEXT("FormationPosition");
+    const FName HomeLocation = TEXT("HomeLocation");
     
     // 枚举/整数类型键
-    const FName SoldierState = TEXT("SoldierState");        // 士兵状态枚举
-    const FName FormationSlot = TEXT("FormationSlot");      // 编队槽位索引
+    const FName SoldierState = TEXT("SoldierState");
+    const FName FormationSlot = TEXT("FormationSlot");
     
     // 浮点类型键
-    const FName AttackRange = TEXT("AttackRange");          // 攻击范围
-    const FName DetectionRange = TEXT("DetectionRange");    // 检测范围
-    const FName DistanceToTarget = TEXT("DistanceToTarget"); // 到目标的距离
-    const FName DistanceToLeader = TEXT("DistanceToLeader"); // 到将领的距离
+    const FName AttackRange = TEXT("AttackRange");
+    const FName DetectionRange = TEXT("DetectionRange");
+    const FName DistanceToTarget = TEXT("DistanceToTarget");
+    const FName DistanceToLeader = TEXT("DistanceToLeader");
     
     // 布尔类型键
-    const FName HasTarget = TEXT("HasTarget");              // 是否有目标
-    const FName IsInCombat = TEXT("IsInCombat");            // 是否在战斗中
-    const FName ShouldRetreat = TEXT("ShouldRetreat");      // 是否应该撤退
-    const FName IsAtFormation = TEXT("IsAtFormation");      // 是否在编队位置
-    const FName CanAttack = TEXT("CanAttack");              // 是否可以攻击
+    const FName HasTarget = TEXT("HasTarget");
+    const FName IsInCombat = TEXT("IsInCombat");
+    const FName ShouldRetreat = TEXT("ShouldRetreat");
+    const FName IsAtFormation = TEXT("IsAtFormation");
+    const FName CanAttack = TEXT("CanAttack");
 }
 
 /**
@@ -66,8 +63,7 @@ namespace XBSoldierBBKeys
  * @note 功能说明:
  *       - 管理士兵的行为树和黑板
  *       - 提供黑板值的便捷更新方法
- *       - 处理感知系统回调
- *       - 支持动态切换行为树
+ *       - 支持延迟初始化，避免组件未就绪时崩溃
  */
 UCLASS()
 class XIAOBINDATIANXIA_API AXBSoldierAIController : public AAIController
@@ -153,11 +149,18 @@ public:
     void UpdateCombatState(bool bInCombat);
 
     /**
-     * @brief 刷新所有黑板值
-     * @note 从控制的士兵Actor同步所有必要数据
+     * @brief 刷新所有黑板值（安全版本）
+     * @note 不访问可能触发移动组件的函数
      */
     UFUNCTION(BlueprintCallable, Category = "XB|AI", meta = (DisplayName = "刷新黑板"))
     void RefreshBlackboardValues();
+
+    /**
+     * @brief 安全地刷新黑板值
+     * @note 用于初始化阶段，避免访问未就绪的组件
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|AI", meta = (DisplayName = "安全刷新黑板"))
+    void RefreshBlackboardValuesSafe();
 
     // ==================== 访问器 ====================
 
@@ -209,18 +212,28 @@ private:
     /** @brief 黑板更新计时器 */
     float BlackboardUpdateTimer = 0.0f;
 
+    /** @brief 是否已完成初始化 */
+    bool bIsInitialized = false;
+
     // ==================== 内部方法 ====================
 
     /**
      * @brief 初始化士兵黑板
      * @param BT 行为树资产
      * @return 是否成功初始化
-     * @note 使用不同名称避免隐藏基类的 InitializeBlackboard
      */
     bool SetupSoldierBlackboard(UBehaviorTree* BT);
 
     /**
-     * @brief 更新距离相关的黑板值
+     * @brief 安全地更新距离值
+     * @note 只使用简单的位置计算，不触发移动组件
      */
-    void UpdateDistanceValues();
+    void UpdateDistanceValuesSafe();
+
+    /**
+     * @brief 延迟的 OnPossess 初始化
+     * @note 在 Possess 完成后的下一帧执行，确保组件就绪
+     */
+    UFUNCTION()
+    void DelayedOnPossess();
 };

@@ -75,53 +75,52 @@ void UXBMagnetFieldComponent::OnSphereBeginOverlap(UPrimitiveComponent* Overlapp
         return;
     }
 
-    // 忽略自身
     if (OtherActor == GetOwner())
     {
         return;
     }
 
-    // ✨ 新增 - 完善士兵招募逻辑
+    // 🔧 修改 - 使用新的招募流程
     if (AXBSoldierActor* Soldier = Cast<AXBSoldierActor>(OtherActor))
     {
-        // 只招募中立或待机状态的士兵
-        if (Soldier->GetFaction() == EXBFaction::Neutral && 
-            Soldier->GetSoldierState() == EXBSoldierState::Idle)
+        // 使用新的 CanBeRecruited 检查
+        if (Soldier->CanBeRecruited())
         {
-            // 获取将领
             if (AXBCharacterBase* Leader = Cast<AXBCharacterBase>(GetOwner()))
             {
-                // ✨ 新增 - 从将领配置的数据表初始化士兵
+                // 从将领配置的数据表初始化士兵
                 UDataTable* SoldierDT = Leader->GetSoldierDataTable();
                 FName SoldierRowName = Leader->GetRecruitSoldierRowName();
                 
                 if (SoldierDT && !SoldierRowName.IsNone())
                 {
-                    // 使用将领配置的士兵类型初始化
                     Soldier->InitializeFromDataTable(SoldierDT, SoldierRowName, Leader->GetFaction());
                     UE_LOG(LogTemp, Log, TEXT("士兵从数据表初始化: %s"), *SoldierRowName.ToString());
                 }
                 else
                 {
-                    // 没有配置数据表，使用默认配置
                     FXBSoldierConfig DefaultConfig;
                     Soldier->InitializeSoldier(DefaultConfig, Leader->GetFaction());
                     UE_LOG(LogTemp, Warning, TEXT("将领未配置士兵数据表，使用默认配置"));
                 }
                 
-                // 添加士兵到将领（内部会处理血量加成和缩放）
+                // ✨ 核心改动 - 获取槽位并调用 OnRecruited
+                int32 SlotIndex = Leader->GetSoldierCount();  // 当前数量即为新槽位
+                
+                // 调用新的招募方法（内部会启动AI控制器）
+                Soldier->OnRecruited(Leader, SlotIndex);
+                
+                // 添加到将领的士兵列表
                 Leader->AddSoldier(Soldier);
                 
-                // ✨ 新增 - 应用招募效果（血量增益）
+                // 应用招募效果
                 ApplyRecruitEffect(Leader, Soldier);
                 
-                int32 SoldierCount = Leader->GetSoldierCount();
-                UE_LOG(LogTemp, Log, TEXT("士兵被招募，将领当前士兵数: %d"), SoldierCount);
+                UE_LOG(LogTemp, Log, TEXT("士兵被招募，将领当前士兵数: %d"), Leader->GetSoldierCount());
             }
         }
     }
 
-    // 广播事件
     if (IsActorDetectable(OtherActor))
     {
         OnActorEnteredField.Broadcast(OtherActor);

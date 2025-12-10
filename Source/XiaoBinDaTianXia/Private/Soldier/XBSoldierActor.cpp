@@ -3,13 +3,12 @@
 
 /**
  * @file XBSoldierActor.cpp
- * @brief 士兵Actor实现 - 数据驱动 + 行为树AI
+ * @brief 士兵Actor实现
  * 
  * @note 🔧 修改记录:
- *       1. 重构为Character基类支持AI移动
- *       2. 实现数据表驱动配置
- *       3. 完善战斗系统（寻敌/攻击/撤退）
- *       4. 弓手特殊逻辑实现
+ *       1. 修复组件初始化问题导致的崩溃
+ *       2. 添加组件有效性检查
+ *       3. 延迟启用移动组件Tick
  */
 
 #include "Soldier/XBSoldierActor.h"
@@ -27,34 +26,94 @@
 #include "BehaviorTree/BlackboardComponent.h"
 #include "Engine/DataTable.h"
 #include "Animation/AnimInstance.h"
+#include "TimerManager.h"
 
 AXBSoldierActor::AXBSoldierActor()
 {
     PrimaryActorTick.bCanEverTick = true;
+    // 🔧 修改 - 延迟启用Tick，等待组件初始化
+    PrimaryActorTick.bStartWithTickEnabled = false;
 
     // 配置胶囊体
-    GetCapsuleComponent()->InitCapsuleSize(34.0f, 88.0f);
-    GetCapsuleComponent()->SetCollisionProfileName(TEXT("Pawn"));
+    if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+    {
+        Capsule->InitCapsuleSize(34.0f, 88.0f);
+        Capsule->SetCollisionProfileName(TEXT("Pawn"));
+    }
 
     // 配置网格体
-    GetMesh()->SetRelativeLocation(FVector(0.0f, 0.0f, -88.0f));
+    if (USkeletalMeshComponent* MeshComp = GetMesh())
+    {
+        MeshComp->SetRelativeLocation(FVector(0.0f, 0.0f, -88.0f));
+    }
 
     // 创建跟随组件
     FollowComponent = CreateDefaultSubobject<UXBSoldierFollowComponent>(TEXT("FollowComponent"));
 
-    // 配置移动组件
+    // 🔧 修改 - 配置移动组件，延迟启用
     if (UCharacterMovementComponent* MovementComp = GetCharacterMovement())
     {
         MovementComp->bOrientRotationToMovement = true;
         MovementComp->RotationRate = FRotator(0.0f, 360.0f, 0.0f);
         MovementComp->MaxWalkSpeed = 400.0f;
         MovementComp->BrakingDecelerationWalking = 2000.0f;
+        
+        // 🔧 修改 - 初始时禁用移动组件的某些功能
+        MovementComp->SetComponentTickEnabled(false);
     }
 
-    // 使用士兵专用AI控制器
-    // 说明: 自动使用专门设计的士兵AI控制器，支持行为树
-    AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
-    AIControllerClass = AXBSoldierAIController::StaticClass();
+    // 完全禁用自动AI控制
+    AutoPossessAI = EAutoPossessAI::Disabled;
+    AIControllerClass = nullptr;
+}
+
+/**
+ * @brief 组件初始化完成后的回调
+ * @note ✨ 新增 - 验证所有组件正确初始化
+ */
+void AXBSoldierActor::PostInitializeComponents()
+{
+    Super::PostInitializeComponents();
+    
+    bComponentsInitialized = true;
+    
+    // 验证胶囊体
+    UCapsuleComponent* Capsule = GetCapsuleComponent();
+    if (Capsule)
+    {
+        // 确保 Transform 有效
+        FTransform CapsuleTransform = Capsule->GetComponentTransform();
+        FVector Scale = CapsuleTransform.GetScale3D();
+        
+        if (Scale.IsNearlyZero() || Scale.ContainsNaN())
+        {
+            UE_LOG(LogTemp, Warning, TEXT("士兵 %s: Capsule Scale 无效 (%s)，修正为 (1,1,1)"), 
+                *GetName(), *Scale.ToString());
+            Capsule->SetWorldScale3D(FVector::OneVector);
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("士兵 %s: CapsuleComponent 为空!"), *GetName());
+    }
+    
+    // 验证移动组件
+    UCharacterMovementComponent* MoveComp = GetCharacterMovement();
+    if (MoveComp)
+    {
+        if (!MoveComp->UpdatedComponent)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("士兵 %s: MovementComponent 的 UpdatedComponent 为空"), *GetName());
+            // 尝试设置
+            MoveComp->SetUpdatedComponent(Capsule);
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("士兵 %s: CharacterMovementComponent 为空!"), *GetName());
+    }
+    
+    UE_LOG(LogTemp, Log, TEXT("士兵 %s: PostInitializeComponents 完成"), *GetName());
 }
 
 void AXBSoldierActor::BeginPlay()
@@ -70,9 +129,54 @@ void AXBSoldierActor::BeginPlay()
     {
         CurrentHealth = SoldierConfig.MaxHealth;
     }
+    
+    // 🔧 修改 - 延迟启用移动组件和Tick
+    // 说明: 确保物理世界完全同步后再启用
+    GetWorldTimerManager().SetTimerForNextTick([this]()
+    {
+        EnableMovementAndTick();
+    });
 
-    // 初始化AI
-    InitializeAI();
+    UE_LOG(LogTemp, Log, TEXT("士兵 %s BeginPlay - 阵营: %d, 状态: %d"), 
+        *GetName(), static_cast<int32>(Faction), static_cast<int32>(CurrentState));
+}
+
+/**
+ * @brief 启用移动组件和Tick
+ * @note ✨ 新增 - 延迟启用，确保组件就绪
+ */
+void AXBSoldierActor::EnableMovementAndTick()
+{
+    if (!IsValid(this) || IsPendingKillPending())
+    {
+        return;
+    }
+    
+    // 再次验证组件
+    UCapsuleComponent* Capsule = GetCapsuleComponent();
+    UCharacterMovementComponent* MoveComp = GetCharacterMovement();
+    
+    if (!Capsule || !MoveComp)
+    {
+        UE_LOG(LogTemp, Error, TEXT("士兵 %s: 组件无效，无法启用移动"), *GetName());
+        return;
+    }
+    
+    // 验证 Transform
+    FTransform CapsuleTransform = Capsule->GetComponentTransform();
+    if (!CapsuleTransform.IsValid())
+    {
+        UE_LOG(LogTemp, Error, TEXT("士兵 %s: Capsule Transform 无效"), *GetName());
+        return;
+    }
+    
+    // 启用移动组件
+    MoveComp->SetComponentTickEnabled(true);
+    
+    // 启用Actor Tick
+    SetActorTickEnabled(true);
+    
+    UE_LOG(LogTemp, Log, TEXT("士兵 %s: 移动组件和Tick已启用"), *GetName());
 }
 
 void AXBSoldierActor::Tick(float DeltaTime)
@@ -85,8 +189,15 @@ void AXBSoldierActor::Tick(float DeltaTime)
         AttackCooldownTimer -= DeltaTime;
     }
 
-    // 根据状态更新（如果没有使用行为树，使用简单状态机）
-    if (!BehaviorTreeAsset)
+    // 未招募的士兵跳过状态更新
+    if (!bIsRecruited)
+    {
+        return;
+    }
+
+    // 如果没有行为树或AI控制器，使用简单状态机
+    AAIController* AICtrl = Cast<AAIController>(GetController());
+    if (!BehaviorTreeAsset || !AICtrl)
     {
         switch (CurrentState)
         {
@@ -105,11 +216,237 @@ void AXBSoldierActor::Tick(float DeltaTime)
     }
 }
 
+// ==================== 招募系统实现 ====================
+
+bool AXBSoldierActor::CanBeRecruited() const
+{
+    if (bIsRecruited)
+    {
+        return false;
+    }
+    
+    if (Faction != EXBFaction::Neutral)
+    {
+        return false;
+    }
+    
+    if (CurrentState != EXBSoldierState::Idle)
+    {
+        return false;
+    }
+    
+    if (CurrentHealth <= 0.0f)
+    {
+        return false;
+    }
+    
+    // ✨ 新增 - 检查组件是否就绪
+    if (!bComponentsInitialized)
+    {
+        return false;
+    }
+    
+    return true;
+}
+
+void AXBSoldierActor::OnRecruited(AActor* NewLeader, int32 SlotIndex)
+{
+    if (!NewLeader)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("士兵 %s: 招募失败 - 将领为空"), *GetName());
+        return;
+    }
+    
+    if (bIsRecruited)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("士兵 %s: 已被招募，忽略重复招募"), *GetName());
+        return;
+    }
+    
+    // ✨ 新增 - 检查组件是否就绪
+    if (!bComponentsInitialized)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("士兵 %s: 组件未初始化，延迟招募"), *GetName());
+        // 延迟再试
+        FTimerHandle TempHandle;
+        GetWorldTimerManager().SetTimer(TempHandle, [this, NewLeader, SlotIndex]()
+        {
+            OnRecruited(NewLeader, SlotIndex);
+        }, 0.1f, false);
+        return;
+    }
+    
+    UE_LOG(LogTemp, Log, TEXT("士兵 %s: 被将领 %s 招募，槽位: %d"), 
+        *GetName(), *NewLeader->GetName(), SlotIndex);
+    
+    // 标记为已招募
+    bIsRecruited = true;
+    
+    // 设置跟随目标
+    FollowTarget = NewLeader;
+    FormationSlotIndex = SlotIndex;
+    
+    // 更新跟随组件
+    if (FollowComponent)
+    {
+        FollowComponent->SetFollowTarget(NewLeader);
+        FollowComponent->SetFormationSlotIndex(SlotIndex);
+    }
+    
+    // 更新阵营为将领阵营
+    if (AXBCharacterBase* LeaderChar = Cast<AXBCharacterBase>(NewLeader))
+    {
+        Faction = LeaderChar->GetFaction();
+    }
+    
+    // 设置为跟随状态
+    SetSoldierState(EXBSoldierState::Following);
+    
+    // 🔧 修改 - 延迟启动AI控制器
+    GetWorldTimerManager().SetTimer(
+        DelayedAIStartTimerHandle,
+        this,
+        &AXBSoldierActor::SpawnAndPossessAIController,
+        0.3f,  // 延迟 0.3 秒
+        false
+    );
+    
+    // 广播招募事件
+    OnSoldierRecruited.Broadcast(this, NewLeader);
+}
+
+void AXBSoldierActor::SpawnAndPossessAIController()
+{
+    // 安全检查
+    if (!IsValid(this) || IsPendingKillPending())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("SpawnAndPossessAIController: 士兵已无效"));
+        return;
+    }
+    
+    // ✨ 新增 - 验证组件状态
+    UCapsuleComponent* Capsule = GetCapsuleComponent();
+    UCharacterMovementComponent* MoveComp = GetCharacterMovement();
+    
+    if (!Capsule || !MoveComp)
+    {
+        UE_LOG(LogTemp, Error, TEXT("士兵 %s: 组件无效，无法启动AI"), *GetName());
+        return;
+    }
+    
+    // 验证 Transform
+    FTransform CapsuleTransform = Capsule->GetComponentTransform();
+    if (!CapsuleTransform.IsValid())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("士兵 %s: Transform 无效，再次延迟"), *GetName());
+        GetWorldTimerManager().SetTimer(
+            DelayedAIStartTimerHandle,
+            this,
+            &AXBSoldierActor::SpawnAndPossessAIController,
+            0.1f,
+            false
+        );
+        return;
+    }
+    
+    // 检查是否已有控制器
+    if (GetController())
+    {
+        UE_LOG(LogTemp, Log, TEXT("士兵 %s: 已有控制器，直接初始化AI"), *GetName());
+        InitializeAI();
+        return;
+    }
+    
+    // 获取World
+    UWorld* World = GetWorld();
+    if (!World)
+    {
+        UE_LOG(LogTemp, Error, TEXT("士兵 %s: 无法获取World"), *GetName());
+        return;
+    }
+    
+    // 确定要使用的AI控制器类
+    UClass* ControllerClassToUse = nullptr;
+    if (SoldierAIControllerClass)
+    {
+        ControllerClassToUse = SoldierAIControllerClass.Get();
+    }
+    else
+    {
+        ControllerClassToUse = AXBSoldierAIController::StaticClass();
+    }
+    
+    if (!ControllerClassToUse)
+    {
+        UE_LOG(LogTemp, Error, TEXT("士兵 %s: AI控制器类无效"), *GetName());
+        return;
+    }
+    
+    // 生成AI控制器
+    FActorSpawnParameters SpawnParams;
+    SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+    
+    AAIController* NewController = World->SpawnActor<AAIController>(
+        ControllerClassToUse,
+        GetActorLocation(),
+        GetActorRotation(),
+        SpawnParams
+    );
+    
+    if (NewController)
+    {
+        // Possess
+        NewController->Possess(this);
+        
+        UE_LOG(LogTemp, Log, TEXT("士兵 %s: AI控制器创建成功 - %s"), 
+            *GetName(), *NewController->GetName());
+        
+        // 初始化AI
+        InitializeAI();
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("士兵 %s: 无法创建AI控制器"), *GetName());
+    }
+}
+
+void AXBSoldierActor::InitializeAI()
+{
+    AAIController* AICtrl = Cast<AAIController>(GetController());
+    if (!AICtrl)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("士兵 %s: InitializeAI - 无AI控制器"), *GetName());
+        return;
+    }
+    
+    if (BehaviorTreeAsset)
+    {
+        AICtrl->RunBehaviorTree(BehaviorTreeAsset);
+        
+        if (UBlackboardComponent* BBComp = AICtrl->GetBlackboardComponent())
+        {
+            BBComp->SetValueAsObject(TEXT("Self"), this);
+            BBComp->SetValueAsObject(TEXT("Leader"), FollowTarget.Get());
+            BBComp->SetValueAsEnum(TEXT("SoldierState"), static_cast<uint8>(CurrentState));
+            BBComp->SetValueAsInt(TEXT("FormationSlot"), FormationSlotIndex);
+            
+            float AttackRange = bInitializedFromDataTable ? CachedTableRow.AttackRange : SoldierConfig.AttackRange;
+            BBComp->SetValueAsFloat(TEXT("AttackRange"), AttackRange);
+            BBComp->SetValueAsFloat(TEXT("DetectionRange"), 800.0f);
+            BBComp->SetValueAsBool(TEXT("IsAtFormation"), true);
+            BBComp->SetValueAsBool(TEXT("CanAttack"), true);
+        }
+        
+        UE_LOG(LogTemp, Log, TEXT("士兵 %s: 行为树启动成功"), *GetName());
+    }
+    else
+    {
+        UE_LOG(LogTemp, Log, TEXT("士兵 %s: 无行为树，使用状态机"), *GetName());
+    }
+}
+
 // ==================== 初始化实现 ====================
 
-/**
- * @brief 从数据表初始化士兵
- */
 void AXBSoldierActor::InitializeFromDataTable(UDataTable* DataTable, FName RowName, EXBFaction InFaction)
 {
     if (!DataTable)
@@ -131,39 +468,32 @@ void AXBSoldierActor::InitializeFromDataTable(UDataTable* DataTable, FName RowNa
         return;
     }
 
-    // 缓存数据
     CachedTableRow = *Row;
     bInitializedFromDataTable = true;
 
-    // 设置基本属性
     SoldierType = Row->SoldierType;
     Faction = InFaction;
     CurrentHealth = Row->MaxHealth;
 
-    // 配置移动速度
     if (UCharacterMovementComponent* MovementComp = GetCharacterMovement())
     {
         MovementComp->MaxWalkSpeed = Row->MoveSpeed;
         MovementComp->RotationRate = FRotator(0.0f, Row->RotationSpeed, 0.0f);
     }
 
-    // 配置跟随组件
     if (FollowComponent)
     {
         FollowComponent->SetFollowSpeed(Row->MoveSpeed);
         FollowComponent->SetFollowInterpSpeed(Row->FollowInterpSpeed);
     }
 
-    // 加载行为树
     if (!Row->AIConfig.BehaviorTree.IsNull())
     {
         BehaviorTreeAsset = Row->AIConfig.BehaviorTree.LoadSynchronous();
     }
 
-    // 应用视觉配置
     ApplyVisualConfig();
 
-    // 同步到旧配置（兼容）
     SoldierConfig.SoldierType = Row->SoldierType;
     SoldierConfig.MaxHealth = Row->MaxHealth;
     SoldierConfig.BaseDamage = Row->BaseDamage;
@@ -174,13 +504,10 @@ void AXBSoldierActor::InitializeFromDataTable(UDataTable* DataTable, FName RowNa
     SoldierConfig.HealthBonusToLeader = Row->HealthBonusToLeader;
     SoldierConfig.DamageBonusToLeader = Row->DamageBonusToLeader;
 
-    UE_LOG(LogTemp, Log, TEXT("士兵从数据表初始化: %s, 类型=%d, 血量=%.1f, 伤害=%.1f"), 
-        *RowName.ToString(), static_cast<int32>(SoldierType), CurrentHealth, Row->BaseDamage);
+    UE_LOG(LogTemp, Log, TEXT("士兵从数据表初始化: %s, 类型=%d, 血量=%.1f"), 
+        *RowName.ToString(), static_cast<int32>(SoldierType), CurrentHealth);
 }
 
-/**
- * @brief 初始化士兵（旧接口）
- */
 void AXBSoldierActor::InitializeSoldier(const FXBSoldierConfig& InConfig, EXBFaction InFaction)
 {
     SoldierConfig = InConfig;
@@ -188,20 +515,17 @@ void AXBSoldierActor::InitializeSoldier(const FXBSoldierConfig& InConfig, EXBFac
     Faction = InFaction;
     CurrentHealth = InConfig.MaxHealth;
 
-    // 配置移动速度
     if (UCharacterMovementComponent* MovementComp = GetCharacterMovement())
     {
         MovementComp->MaxWalkSpeed = InConfig.MoveSpeed;
     }
 
-    // 配置跟随组件
     if (FollowComponent)
     {
         FollowComponent->SetFollowSpeed(InConfig.MoveSpeed);
         FollowComponent->SetFollowInterpSpeed(InConfig.FollowInterpSpeed);
     }
 
-    // 设置网格
     if (InConfig.SoldierMesh)
     {
         GetMesh()->SetSkeletalMesh(InConfig.SoldierMesh);
@@ -211,9 +535,6 @@ void AXBSoldierActor::InitializeSoldier(const FXBSoldierConfig& InConfig, EXBFac
         static_cast<int32>(SoldierType), CurrentHealth);
 }
 
-/**
- * @brief 应用视觉配置
- */
 void AXBSoldierActor::ApplyVisualConfig()
 {
     if (!bInitializedFromDataTable)
@@ -221,7 +542,6 @@ void AXBSoldierActor::ApplyVisualConfig()
         return;
     }
 
-    // 加载并设置骨骼网格
     if (!CachedTableRow.VisualConfig.SkeletalMesh.IsNull())
     {
         USkeletalMesh* LoadedMesh = CachedTableRow.VisualConfig.SkeletalMesh.LoadSynchronous();
@@ -231,42 +551,12 @@ void AXBSoldierActor::ApplyVisualConfig()
         }
     }
 
-    // 设置动画蓝图
     if (CachedTableRow.VisualConfig.AnimClass)
     {
         GetMesh()->SetAnimInstanceClass(CachedTableRow.VisualConfig.AnimClass);
     }
 
-    // 设置缩放
     SetActorScale3D(FVector(CachedTableRow.VisualConfig.MeshScale));
-}
-
-/**
- * @brief 初始化AI
- */
-void AXBSoldierActor::InitializeAI()
-{
-    if (!BehaviorTreeAsset)
-    {
-        return;
-    }
-
-    if (AAIController* AICtrl = Cast<AAIController>(GetController()))
-    {
-        // 运行行为树
-        AICtrl->RunBehaviorTree(BehaviorTreeAsset);
-
-        // 设置黑板值
-        if (UBlackboardComponent* BBComp = AICtrl->GetBlackboardComponent())
-        {
-            BBComp->SetValueAsObject(TEXT("Leader"), FollowTarget.Get());
-            BBComp->SetValueAsEnum(TEXT("SoldierState"), static_cast<uint8>(CurrentState));
-            BBComp->SetValueAsFloat(TEXT("AttackRange"), 
-                bInitializedFromDataTable ? CachedTableRow.AttackRange : SoldierConfig.AttackRange);
-        }
-
-        UE_LOG(LogTemp, Log, TEXT("士兵AI初始化完成: %s"), *GetName());
-    }
 }
 
 // ==================== 跟随系统实现 ====================
@@ -282,7 +572,6 @@ void AXBSoldierActor::SetFollowTarget(AActor* NewLeader, int32 SlotIndex)
         FollowComponent->SetFormationSlotIndex(SlotIndex);
     }
 
-    // 更新黑板
     if (AAIController* AICtrl = Cast<AAIController>(GetController()))
     {
         if (UBlackboardComponent* BBComp = AICtrl->GetBlackboardComponent())
@@ -292,7 +581,6 @@ void AXBSoldierActor::SetFollowTarget(AActor* NewLeader, int32 SlotIndex)
         }
     }
 
-    // 设置为跟随状态
     if (NewLeader)
     {
         SetSoldierState(EXBSoldierState::Following);
@@ -317,7 +605,6 @@ void AXBSoldierActor::SetFormationSlotIndex(int32 NewIndex)
         FollowComponent->SetFormationSlotIndex(NewIndex);
     }
 
-    // 更新黑板
     if (AAIController* AICtrl = Cast<AAIController>(GetController()))
     {
         if (UBlackboardComponent* BBComp = AICtrl->GetBlackboardComponent())
@@ -339,7 +626,6 @@ void AXBSoldierActor::SetSoldierState(EXBSoldierState NewState)
     EXBSoldierState OldState = CurrentState;
     CurrentState = NewState;
 
-    // 更新黑板
     if (AAIController* AICtrl = Cast<AAIController>(GetController()))
     {
         if (UBlackboardComponent* BBComp = AICtrl->GetBlackboardComponent())
@@ -348,7 +634,6 @@ void AXBSoldierActor::SetSoldierState(EXBSoldierState NewState)
         }
     }
 
-    // 广播状态变化
     OnSoldierStateChanged.Broadcast(OldState, NewState);
 
     UE_LOG(LogTemp, Log, TEXT("士兵 %s 状态变化: %d -> %d"), 
@@ -364,9 +649,12 @@ void AXBSoldierActor::EnterCombat()
         return;
     }
 
+    if (!bIsRecruited)
+    {
+        return;
+    }
+
     SetSoldierState(EXBSoldierState::Combat);
-    
-    // 立即寻找目标
     CurrentAttackTarget = FindNearestEnemy();
 
     UE_LOG(LogTemp, Log, TEXT("士兵 %s 进入战斗, 目标: %s"), 
@@ -407,9 +695,6 @@ float AXBSoldierActor::TakeSoldierDamage(float DamageAmount, AActor* DamageSourc
     return ActualDamage;
 }
 
-/**
- * @brief 执行攻击
- */
 bool AXBSoldierActor::PerformAttack(AActor* Target)
 {
     if (!Target || !CanAttack())
@@ -417,27 +702,16 @@ bool AXBSoldierActor::PerformAttack(AActor* Target)
         return false;
     }
 
-    // 设置攻击冷却
     float AttackInterval = bInitializedFromDataTable ? CachedTableRow.AttackInterval : SoldierConfig.AttackInterval;
     AttackCooldownTimer = AttackInterval;
 
-    // 播放攻击动画
     PlayAttackMontage();
 
-    // 计算伤害
     float Damage = bInitializedFromDataTable ? CachedTableRow.BaseDamage : SoldierConfig.BaseDamage;
 
-    // 对目标造成伤害
     if (AXBSoldierActor* TargetSoldier = Cast<AXBSoldierActor>(Target))
     {
         TargetSoldier->TakeSoldierDamage(Damage, this);
-    }
-    else if (AXBCharacterBase* TargetCharacter = Cast<AXBCharacterBase>(Target))
-    {
-        // 通过GAS造成伤害（需要GE）
-        // 简化实现：直接log
-        UE_LOG(LogTemp, Log, TEXT("士兵 %s 攻击将领 %s，伤害: %.1f"), 
-            *GetName(), *Target->GetName(), Damage);
     }
 
     UE_LOG(LogTemp, Log, TEXT("士兵 %s 攻击 %s，伤害: %.1f"), 
@@ -446,9 +720,6 @@ bool AXBSoldierActor::PerformAttack(AActor* Target)
     return true;
 }
 
-/**
- * @brief 播放攻击蒙太奇
- */
 bool AXBSoldierActor::PlayAttackMontage()
 {
     UAnimMontage* AttackMontage = nullptr;
@@ -456,10 +727,6 @@ bool AXBSoldierActor::PlayAttackMontage()
     if (bInitializedFromDataTable && !CachedTableRow.BasicAttack.AbilityMontage.IsNull())
     {
         AttackMontage = CachedTableRow.BasicAttack.AbilityMontage.LoadSynchronous();
-    }
-    else if (!SoldierConfig.SoldierTags.IsEmpty())
-    {
-        // 旧配置方式
     }
 
     if (!AttackMontage)
@@ -477,20 +744,20 @@ bool AXBSoldierActor::PlayAttackMontage()
 
 // ==================== AI系统实现 ====================
 
-/**
- * @brief 寻找最近的敌人
- */
 AActor* AXBSoldierActor::FindNearestEnemy() const
 {
+    if (!bIsRecruited)
+    {
+        return nullptr;
+    }
+
     float DetectionRange = bInitializedFromDataTable ? 
         CachedTableRow.AIConfig.DetectionRange : 800.0f;
 
     TArray<AActor*> PotentialTargets;
     
-    // 获取所有角色
     UGameplayStatics::GetAllActorsOfClass(GetWorld(), AXBCharacterBase::StaticClass(), PotentialTargets);
     
-    // 获取所有士兵
     TArray<AActor*> SoldierActors;
     UGameplayStatics::GetAllActorsOfClass(GetWorld(), AXBSoldierActor::StaticClass(), SoldierActors);
     PotentialTargets.Append(SoldierActors);
@@ -505,7 +772,6 @@ AActor* AXBSoldierActor::FindNearestEnemy() const
             continue;
         }
 
-        // 检查阵营
         bool bIsEnemy = false;
         if (const AXBCharacterBase* CharTarget = Cast<AXBCharacterBase>(Target))
         {
@@ -516,6 +782,10 @@ AActor* AXBSoldierActor::FindNearestEnemy() const
         else if (const AXBSoldierActor* SoldierTarget = Cast<AXBSoldierActor>(Target))
         {
             if (SoldierTarget->GetSoldierState() == EXBSoldierState::Dead)
+            {
+                continue;
+            }
+            if (!SoldierTarget->IsRecruited())
             {
                 continue;
             }
@@ -603,17 +873,39 @@ FVector AXBSoldierActor::GetFormationWorldPosition() const
         return GetActorLocation();
     }
 
-    // 尝试从将领的编队组件获取位置
-    if (AXBCharacterBase* Leader = Cast<AXBCharacterBase>(FollowTarget.Get()))
+    if (FollowComponent)
     {
-        // 简化实现：使用跟随组件计算
-        if (FollowComponent)
-        {
-            return FollowComponent->GetTargetPosition();
-        }
+        return FollowComponent->GetTargetPosition();
     }
 
     return FollowTarget->GetActorLocation();
+}
+
+FVector AXBSoldierActor::GetFormationWorldPositionSafe() const
+{
+    if (!FollowTarget.IsValid())
+    {
+        return FVector::ZeroVector;
+    }
+    
+    AActor* Target = FollowTarget.Get();
+    if (!Target || !IsValid(Target))
+    {
+        return FVector::ZeroVector;
+    }
+    
+    if (!FollowComponent)
+    {
+        return Target->GetActorLocation();
+    }
+    
+    FVector TargetPos = FollowComponent->GetTargetPosition();
+    if (!TargetPos.IsZero() && !TargetPos.ContainsNaN())
+    {
+        return TargetPos;
+    }
+    
+    return Target->GetActorLocation();
 }
 
 bool AXBSoldierActor::IsAtFormationPosition() const
@@ -623,82 +915,20 @@ bool AXBSoldierActor::IsAtFormationPosition() const
     return FVector::Dist2D(GetActorLocation(), TargetPos) <= ArrivalThreshold;
 }
 
-/**
- * @brief 获取编队世界位置（安全版本）
- * @note 🔧 新增 - 在组件未初始化时返回ZeroVector而非崩溃
- */
-FVector AXBSoldierActor::GetFormationWorldPositionSafe() const
-{
-    // 安全检查: 确保跟随目标有效
-    if (!FollowTarget.IsValid())
-    {
-        return FVector::ZeroVector;
-    }
-    
-    AActor* Target = FollowTarget.Get();
-    if (!Target || !IsValid(Target))
-    {
-        return FVector::ZeroVector;
-    }
-    
-    // 安全检查: 确保跟随组件有效
-    if (!FollowComponent)
-    {
-        return Target->GetActorLocation();
-    }
-    
-    // 尝试从将领的编队组件获取位置
-    if (AXBCharacterBase* Leader = Cast<AXBCharacterBase>(Target))
-    {
-        // 使用跟随组件计算（内部有安全检查）
-        FVector TargetPos = FollowComponent->GetTargetPosition();
-        
-        // 额外检查: 确保返回的位置有效
-        if (!TargetPos.IsZero() && TargetPos.ContainsNaN() == false)
-        {
-            return TargetPos;
-        }
-    }
-    
-    // 回退: 返回将领位置
-    return Target->GetActorLocation();
-}
-
-/**
- * @brief 是否到达编队位置（安全版本）
- * @note 🔧 新增 - 在组件未初始化时返回true而非崩溃
- */
 bool AXBSoldierActor::IsAtFormationPositionSafe() const
 {
-    // 安全检查: 没有跟随目标时认为已在位置
-    if (!FollowTarget.IsValid())
+    if (!FollowTarget.IsValid() || FormationSlotIndex == INDEX_NONE)
     {
         return true;
     }
     
-    AActor* Target = FollowTarget.Get();
-    if (!Target || !IsValid(Target))
-    {
-        return true;
-    }
-    
-    // 安全检查: 没有有效槽位时认为已在位置
-    if (FormationSlotIndex == INDEX_NONE)
-    {
-        return true;
-    }
-    
-    // 获取安全的编队位置
     FVector TargetPos = GetFormationWorldPositionSafe();
-    
-    // 如果获取的位置为零向量，说明组件未就绪，返回true避免不必要的移动
     if (TargetPos.IsZero())
     {
         return true;
     }
     
-    float ArrivalThreshold = 50.0f;
-    return FVector::Dist2D(GetActorLocation(), TargetPos) <= ArrivalThreshold;
+    return FVector::Dist2D(GetActorLocation(), TargetPos) <= 50.0f;
 }
 
 // ==================== 逃跑系统实现 ====================
@@ -735,7 +965,6 @@ void AXBSoldierActor::UpdateFollowing(float DeltaTime)
 
 void AXBSoldierActor::UpdateCombat(float DeltaTime)
 {
-    // 更新寻敌计时器
     float SearchInterval = bInitializedFromDataTable ? 
         CachedTableRow.AIConfig.TargetSearchInterval : 0.5f;
     
@@ -746,17 +975,14 @@ void AXBSoldierActor::UpdateCombat(float DeltaTime)
         CurrentAttackTarget = FindNearestEnemy();
     }
 
-    // 检查是否应该脱离战斗
     if (ShouldDisengage())
     {
         ExitCombat();
         return;
     }
 
-    // 没有目标时返回
     if (!CurrentAttackTarget.IsValid())
     {
-        // 周围没有敌人，返回队列
         ExitCombat();
         return;
     }
@@ -765,14 +991,11 @@ void AXBSoldierActor::UpdateCombat(float DeltaTime)
     float DistanceToEnemy = GetDistanceToTarget(Target);
     float AttackRange = bInitializedFromDataTable ? CachedTableRow.AttackRange : SoldierConfig.AttackRange;
 
-    // ✨ 新增 - 弓手特殊逻辑
     if (SoldierType == EXBSoldierType::Archer && bInitializedFromDataTable)
     {
         if (CachedTableRow.ArcherConfig.bStationaryAttack && DistanceToEnemy <= AttackRange)
         {
-            // 弓手在攻击范围内，原地攻击不追踪
             FaceTarget(Target, DeltaTime);
-            
             if (CanAttack())
             {
                 PerformAttack(Target);
@@ -780,7 +1003,6 @@ void AXBSoldierActor::UpdateCombat(float DeltaTime)
             return;
         }
         
-        // 弓手过近时后撤
         if (DistanceToEnemy < CachedTableRow.ArcherConfig.MinAttackDistance)
         {
             FVector RetreatDirection = (GetActorLocation() - Target->GetActorLocation()).GetSafeNormal();
@@ -794,16 +1016,13 @@ void AXBSoldierActor::UpdateCombat(float DeltaTime)
         }
     }
 
-    // 普通士兵逻辑：追踪到攻击范围内
     if (DistanceToEnemy > AttackRange)
     {
         MoveToTarget(Target);
     }
     else
     {
-        // 在攻击范围内
         FaceTarget(Target, DeltaTime);
-        
         if (CanAttack())
         {
             PerformAttack(Target);
@@ -815,7 +1034,6 @@ void AXBSoldierActor::UpdateReturning(float DeltaTime)
 {
     MoveToFormationPosition();
 
-    // 检查是否到达编队位置
     if (IsAtFormationPosition())
     {
         SetSoldierState(EXBSoldierState::Following);
@@ -842,27 +1060,34 @@ void AXBSoldierActor::FaceTarget(AActor* Target, float DeltaTime)
 
 void AXBSoldierActor::HandleDeath()
 {
+    // 清除定时器
+    GetWorldTimerManager().ClearTimer(DelayedAIStartTimerHandle);
+    
     SetSoldierState(EXBSoldierState::Dead);
 
-    // 广播死亡事件
     OnSoldierDied.Broadcast(this);
 
-    // 通知将领士兵死亡
     if (AXBCharacterBase* LeaderCharacter = GetLeaderCharacter())
     {
         LeaderCharacter->OnSoldierDied(this);
     }
 
-    // 禁用碰撞
-    GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+    {
+        Capsule->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    }
 
-    // 停止AI
     if (AAIController* AICtrl = Cast<AAIController>(GetController()))
     {
         AICtrl->StopMovement();
     }
 
-    // 播放死亡动画
+    // 禁用移动组件
+    if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+    {
+        MoveComp->SetComponentTickEnabled(false);
+    }
+
     if (bInitializedFromDataTable && !CachedTableRow.VisualConfig.DeathMontage.IsNull())
     {
         UAnimMontage* DeathMontage = CachedTableRow.VisualConfig.DeathMontage.LoadSynchronous();
@@ -875,7 +1100,6 @@ void AXBSoldierActor::HandleDeath()
         }
     }
 
-    // 延迟销毁
     SetLifeSpan(2.0f);
 
     UE_LOG(LogTemp, Log, TEXT("士兵 %s 死亡"), *GetName());
