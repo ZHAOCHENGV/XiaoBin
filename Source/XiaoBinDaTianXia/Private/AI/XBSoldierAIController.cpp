@@ -117,7 +117,7 @@ bool AXBSoldierAIController::StartBehaviorTree(UBehaviorTree* BehaviorTreeAsset)
     
     // 初始化黑板
     // 说明: 黑板必须在行为树运行之前初始化
-    if (!InitializeBlackboard(BehaviorTreeAsset))
+    if (!SetupSoldierBlackboard(BehaviorTreeAsset))
     {
         UE_LOG(LogTemp, Error, TEXT("AI控制器 %s 初始化黑板失败"), *GetName());
         return false;
@@ -128,7 +128,11 @@ bool AXBSoldierAIController::StartBehaviorTree(UBehaviorTree* BehaviorTreeAsset)
     
     // 启动行为树
     // 说明: 使用行为树组件运行行为树
-    bool bSuccess = BehaviorTreeComp->StartTree(*BehaviorTreeAsset);
+    // 注意: StartTree 返回 void，通过检查行为树是否正在运行来判断成功
+    BehaviorTreeComp->StartTree(*BehaviorTreeAsset);
+    
+    // 检查行为树是否成功启动
+    bool bSuccess = BehaviorTreeComp->IsRunning();
     
     if (bSuccess)
     {
@@ -168,7 +172,7 @@ void AXBSoldierAIController::PauseBehaviorTree(bool bPause)
     }
 }
 
-bool AXBSoldierAIController::InitializeBlackboard(UBehaviorTree* BT)
+bool AXBSoldierAIController::SetupSoldierBlackboard(UBehaviorTree* BT)
 {
     if (!BT || !BT->BlackboardAsset)
     {
@@ -178,8 +182,15 @@ bool AXBSoldierAIController::InitializeBlackboard(UBehaviorTree* BT)
     
     // 使用行为树的黑板资产初始化黑板组件
     // 说明: 黑板组件需要黑板资产来定义可用的键
-    if (UseBlackboard(BT->BlackboardAsset, BlackboardComp))
+    // 注意: UseBlackboard 第二个参数是原始指针引用
+    UBlackboardComponent* BBCompRaw = BlackboardComp.Get();
+    if (UseBlackboard(BT->BlackboardAsset, BBCompRaw))
     {
+        // 如果 UseBlackboard 修改了指针，更新 TObjectPtr
+        if (BBCompRaw != BlackboardComp.Get())
+        {
+            BlackboardComp = BBCompRaw;
+        }
         return true;
     }
     

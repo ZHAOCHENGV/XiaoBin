@@ -212,11 +212,12 @@ private:
     // ==================== 内部方法 ====================
 
     /**
-     * @brief 初始化黑板
+     * @brief 初始化士兵黑板
      * @param BT 行为树资产
      * @return 是否成功初始化
+     * @note 使用不同名称避免隐藏基类的 InitializeBlackboard
      */
-    bool InitializeBlackboard(UBehaviorTree* BT);
+    bool SetupSoldierBlackboard(UBehaviorTree* BT);
 
     /**
      * @brief 更新距离相关的黑板值
