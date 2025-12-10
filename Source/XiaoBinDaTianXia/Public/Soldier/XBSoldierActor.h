@@ -234,10 +234,24 @@ public:
     FVector GetFormationWorldPosition() const;
 
     /**
+     * @brief 获取编队世界位置（安全版本）
+     * @note 🔧 新增 - 在组件未初始化时返回ZeroVector而非崩溃
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Soldier|AI", meta = (DisplayName = "获取编队位置(安全)"))
+    FVector GetFormationWorldPositionSafe() const;
+
+    /**
      * @brief 是否到达编队位置
      */
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier|AI", meta = (DisplayName = "是否到达编队位置"))
     bool IsAtFormationPosition() const;
+
+    /**
+     * @brief 是否到达编队位置（安全版本）
+     * @note 🔧 新增 - 在组件未初始化时返回true而非崩溃
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Soldier|AI", meta = (DisplayName = "是否到达编队位置(安全)"))
+    bool IsAtFormationPositionSafe() const;
 
     // ==================== 逃跑系统 ====================
 

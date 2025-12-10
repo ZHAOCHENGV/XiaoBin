@@ -284,18 +284,36 @@ void AXBSoldierAIController::UpdateCombatState(bool bInCombat)
 
 void AXBSoldierAIController::RefreshBlackboardValues()
 {
-    if (!BlackboardComp || !CachedSoldier.IsValid())
+    if (!BlackboardComp)
     {
+        UE_LOG(LogTemp, Warning, TEXT("RefreshBlackboardValues: BlackboardComp 为空"));
+        return;
+    }
+    
+    if (!CachedSoldier.IsValid())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("RefreshBlackboardValues: CachedSoldier 无效"));
         return;
     }
     
     AXBSoldierActor* Soldier = CachedSoldier.Get();
+    if (!Soldier)
+    {
+        return;
+    }
+    
+    // 🔧 修复 - 安全检查: 确保Actor完全初始化
+    if (!IsValid(Soldier) || Soldier->IsPendingKillPending())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("RefreshBlackboardValues: Soldier 正在销毁中"));
+        return;
+    }
     
     // 设置自身引用
     // 说明: 方便行为树节点访问士兵Actor
     BlackboardComp->SetValueAsObject(XBSoldierBBKeys::Self, Soldier);
     
-    // 设置将领
+    // 设置将领 - 安全检查
     AActor* Leader = Soldier->GetFollowTarget();
     SetLeader(Leader);
     
@@ -303,10 +321,22 @@ void AXBSoldierAIController::RefreshBlackboardValues()
     SetSoldierState(static_cast<uint8>(Soldier->GetSoldierState()));
     
     // 设置编队槽位
-    BlackboardComp->SetValueAsInt(XBSoldierBBKeys::FormationSlot, Soldier->GetFormationSlotIndex());
+    int32 SlotIndex = Soldier->GetFormationSlotIndex();
+    BlackboardComp->SetValueAsInt(XBSoldierBBKeys::FormationSlot, SlotIndex);
     
-    // 设置编队位置
-    SetFormationPosition(Soldier->GetFormationWorldPosition());
+    // 🔧 修复 - 设置编队位置 - 增强安全检查
+    // 说明: 在初始化早期可能组件未就绪，使用当前位置作为回退
+    FVector FormationPos = Soldier->GetActorLocation();
+    if (Leader && IsValid(Leader) && SlotIndex != INDEX_NONE)
+    {
+        // 只有有跟随目标且有有效槽位时才计算编队位置
+        FVector SafeFormationPos = Soldier->GetFormationWorldPositionSafe();
+        if (!SafeFormationPos.IsZero())
+        {
+            FormationPos = SafeFormationPos;
+        }
+    }
+    SetFormationPosition(FormationPos);
     
     // 设置攻击范围
     // 说明: 从士兵配置中获取攻击范围
@@ -317,24 +347,42 @@ void AXBSoldierAIController::RefreshBlackboardValues()
     // 说明: 检测范围用于寻敌
     BlackboardComp->SetValueAsFloat(XBSoldierBBKeys::DetectionRange, 800.0f);
     
-    // 更新距离值
-    UpdateDistanceValues();
-    
     // 检查是否可以攻击
     BlackboardComp->SetValueAsBool(XBSoldierBBKeys::CanAttack, Soldier->CanAttack());
     
-    // 检查是否在编队位置
-    BlackboardComp->SetValueAsBool(XBSoldierBBKeys::IsAtFormation, Soldier->IsAtFormationPosition());
+    // 🔧 修复 - 检查是否在编队位置 - 增强安全检查
+    bool bAtFormation = true;
+    if (Leader && IsValid(Leader) && SlotIndex != INDEX_NONE)
+    {
+        bAtFormation = Soldier->IsAtFormationPositionSafe();
+    }
+    BlackboardComp->SetValueAsBool(XBSoldierBBKeys::IsAtFormation, bAtFormation);
 }
 
 void AXBSoldierAIController::UpdateDistanceValues()
 {
-    if (!BlackboardComp || !CachedSoldier.IsValid())
+    if (!BlackboardComp)
+    {
+        return;
+    }
+    
+    if (!CachedSoldier.IsValid())
     {
         return;
     }
     
     AXBSoldierActor* Soldier = CachedSoldier.Get();
+    if (!Soldier || !IsValid(Soldier))
+    {
+        return;
+    }
+    
+    // 🔧 修复 - 安全检查: 确保Actor完全初始化
+    if (Soldier->IsPendingKillPending())
+    {
+        return;
+    }
+    
     FVector SoldierLocation = Soldier->GetActorLocation();
     
     // 更新到目标的距离
@@ -342,8 +390,18 @@ void AXBSoldierAIController::UpdateDistanceValues()
     UObject* TargetObj = BlackboardComp->GetValueAsObject(XBSoldierBBKeys::CurrentTarget);
     if (AActor* Target = Cast<AActor>(TargetObj))
     {
-        float DistToTarget = FVector::Dist(SoldierLocation, Target->GetActorLocation());
-        BlackboardComp->SetValueAsFloat(XBSoldierBBKeys::DistanceToTarget, DistToTarget);
+        if (IsValid(Target) && !Target->IsPendingKillPending())
+        {
+            float DistToTarget = FVector::Dist(SoldierLocation, Target->GetActorLocation());
+            BlackboardComp->SetValueAsFloat(XBSoldierBBKeys::DistanceToTarget, DistToTarget);
+        }
+        else
+        {
+            BlackboardComp->SetValueAsFloat(XBSoldierBBKeys::DistanceToTarget, MAX_FLT);
+            // 目标无效，清空目标引用
+            BlackboardComp->SetValueAsObject(XBSoldierBBKeys::CurrentTarget, nullptr);
+            BlackboardComp->SetValueAsBool(XBSoldierBBKeys::HasTarget, false);
+        }
     }
     else
     {
@@ -355,17 +413,27 @@ void AXBSoldierAIController::UpdateDistanceValues()
     UObject* LeaderObj = BlackboardComp->GetValueAsObject(XBSoldierBBKeys::Leader);
     if (AActor* Leader = Cast<AActor>(LeaderObj))
     {
-        float DistToLeader = FVector::Dist(SoldierLocation, Leader->GetActorLocation());
-        BlackboardComp->SetValueAsFloat(XBSoldierBBKeys::DistanceToLeader, DistToLeader);
-        
-        // 更新是否应该撤退
-        // 说明: 超过1000距离时应该返回将领身边
-        BlackboardComp->SetValueAsBool(XBSoldierBBKeys::ShouldRetreat, DistToLeader > 1000.0f);
+        if (IsValid(Leader) && !Leader->IsPendingKillPending())
+        {
+            float DistToLeader = FVector::Dist(SoldierLocation, Leader->GetActorLocation());
+            BlackboardComp->SetValueAsFloat(XBSoldierBBKeys::DistanceToLeader, DistToLeader);
+            
+            // 更新是否应该撤退
+            // 说明: 超过1000距离时应该返回将领身边
+            BlackboardComp->SetValueAsBool(XBSoldierBBKeys::ShouldRetreat, DistToLeader > 1000.0f);
+        }
     }
     
-    // 更新编队位置相关
+    // 🔧 修复 - 更新编队位置相关 - 增强安全检查
     // 说明: 检查是否到达编队位置
-    BlackboardComp->SetValueAsBool(XBSoldierBBKeys::IsAtFormation, Soldier->IsAtFormationPosition());
+    bool bAtFormation = true;
+    AActor* FollowTarget = Soldier->GetFollowTarget();
+    int32 SlotIndex = Soldier->GetFormationSlotIndex();
+    if (FollowTarget && IsValid(FollowTarget) && SlotIndex != INDEX_NONE)
+    {
+        bAtFormation = Soldier->IsAtFormationPositionSafe();
+    }
+    BlackboardComp->SetValueAsBool(XBSoldierBBKeys::IsAtFormation, bAtFormation);
 }
 
 // ==================== 访问器实现 ====================

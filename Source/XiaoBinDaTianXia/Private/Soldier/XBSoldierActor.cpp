@@ -623,6 +623,84 @@ bool AXBSoldierActor::IsAtFormationPosition() const
     return FVector::Dist2D(GetActorLocation(), TargetPos) <= ArrivalThreshold;
 }
 
+/**
+ * @brief 获取编队世界位置（安全版本）
+ * @note 🔧 新增 - 在组件未初始化时返回ZeroVector而非崩溃
+ */
+FVector AXBSoldierActor::GetFormationWorldPositionSafe() const
+{
+    // 安全检查: 确保跟随目标有效
+    if (!FollowTarget.IsValid())
+    {
+        return FVector::ZeroVector;
+    }
+    
+    AActor* Target = FollowTarget.Get();
+    if (!Target || !IsValid(Target))
+    {
+        return FVector::ZeroVector;
+    }
+    
+    // 安全检查: 确保跟随组件有效
+    if (!FollowComponent)
+    {
+        return Target->GetActorLocation();
+    }
+    
+    // 尝试从将领的编队组件获取位置
+    if (AXBCharacterBase* Leader = Cast<AXBCharacterBase>(Target))
+    {
+        // 使用跟随组件计算（内部有安全检查）
+        FVector TargetPos = FollowComponent->GetTargetPosition();
+        
+        // 额外检查: 确保返回的位置有效
+        if (!TargetPos.IsZero() && TargetPos.ContainsNaN() == false)
+        {
+            return TargetPos;
+        }
+    }
+    
+    // 回退: 返回将领位置
+    return Target->GetActorLocation();
+}
+
+/**
+ * @brief 是否到达编队位置（安全版本）
+ * @note 🔧 新增 - 在组件未初始化时返回true而非崩溃
+ */
+bool AXBSoldierActor::IsAtFormationPositionSafe() const
+{
+    // 安全检查: 没有跟随目标时认为已在位置
+    if (!FollowTarget.IsValid())
+    {
+        return true;
+    }
+    
+    AActor* Target = FollowTarget.Get();
+    if (!Target || !IsValid(Target))
+    {
+        return true;
+    }
+    
+    // 安全检查: 没有有效槽位时认为已在位置
+    if (FormationSlotIndex == INDEX_NONE)
+    {
+        return true;
+    }
+    
+    // 获取安全的编队位置
+    FVector TargetPos = GetFormationWorldPositionSafe();
+    
+    // 如果获取的位置为零向量，说明组件未就绪，返回true避免不必要的移动
+    if (TargetPos.IsZero())
+    {
+        return true;
+    }
+    
+    float ArrivalThreshold = 50.0f;
+    return FVector::Dist2D(GetActorLocation(), TargetPos) <= ArrivalThreshold;
+}
+
 // ==================== 逃跑系统实现 ====================
 
 void AXBSoldierActor::SetEscaping(bool bEscaping)

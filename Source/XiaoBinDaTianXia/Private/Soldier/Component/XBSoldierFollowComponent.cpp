@@ -237,30 +237,49 @@ void UXBSoldierFollowComponent::UpdateFollowMovement(float DeltaTime)
 
 /**
  * @brief 计算目标位置
+ * @note 🔧 修改 - 增强安全检查防止崩溃
  */
 FVector UXBSoldierFollowComponent::CalculateTargetPosition() const
 {
+    AActor* Owner = GetOwner();
+    
+    // 安全检查: 确保Owner有效
+    if (!Owner || !IsValid(Owner))
+    {
+        return FVector::ZeroVector;
+    }
+    
     // 优先从编队组件获取
     FVector FormationPos = GetPositionFromFormationComponent();
     if (!FormationPos.IsZero())
     {
-        return FormationPos;
+        // 额外检查: 确保位置不包含NaN
+        if (!FormationPos.ContainsNaN())
+        {
+            return FormationPos;
+        }
     }
 
     // 回退到手动设置的偏移
     AActor* Target = FollowTargetRef.Get();
-    if (!Target)
+    if (!Target || !IsValid(Target))
     {
         Target = LeaderRef.Get();
     }
     
-    if (!Target)
+    if (!Target || !IsValid(Target))
     {
-        return GetOwner() ? GetOwner()->GetActorLocation() : FVector::ZeroVector;
+        return Owner->GetActorLocation();
     }
 
     FVector TargetLocation = Target->GetActorLocation();
     FRotator TargetRotation = Target->GetActorRotation();
+
+    // 安全检查: 确保获取的数据有效
+    if (TargetLocation.ContainsNaN() || TargetRotation.ContainsNaN())
+    {
+        return Owner->GetActorLocation();
+    }
 
     // 将局部编队偏移转换为世界坐标
     FVector WorldOffset = TargetRotation.RotateVector(FormationOffset);
@@ -270,20 +289,36 @@ FVector UXBSoldierFollowComponent::CalculateTargetPosition() const
 
 /**
  * @brief 从编队组件获取位置
+ * @note 🔧 修改 - 增强安全检查防止崩溃
  */
 FVector UXBSoldierFollowComponent::GetPositionFromFormationComponent() const
 {
+    // 安全检查: 编队组件是否有效
     if (!CachedFormationComponent.IsValid())
     {
         return FVector::ZeroVector;
     }
-
-    if (FormationSlotIndex == INDEX_NONE)
+    
+    UXBFormationComponent* FormationComp = CachedFormationComponent.Get();
+    if (!FormationComp || !IsValid(FormationComp))
     {
         return FVector::ZeroVector;
     }
 
-    return CachedFormationComponent->GetSlotWorldPosition(FormationSlotIndex);
+    // 安全检查: 槽位索引是否有效
+    if (FormationSlotIndex == INDEX_NONE)
+    {
+        return FVector::ZeroVector;
+    }
+    
+    // 安全检查: 槽位索引是否在有效范围内
+    const TArray<FXBFormationSlot>& Slots = FormationComp->GetFormationSlots();
+    if (!Slots.IsValidIndex(FormationSlotIndex))
+    {
+        return FVector::ZeroVector;
+    }
+
+    return FormationComp->GetSlotWorldPosition(FormationSlotIndex);
 }
 
 /**
