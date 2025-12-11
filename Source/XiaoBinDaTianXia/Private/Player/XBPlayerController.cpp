@@ -81,8 +81,16 @@ void AXBPlayerController::SetupInputComponent()
 {
     // 调用父类设置
     Super::SetupInputComponent();
+
+    UEnhancedInputComponent* EnhancedInput = Cast<UEnhancedInputComponent>(InputComponent);
+    if (!EnhancedInput)
+    {
+        return;
+    }
     // 绑定输入动作
     BindInputActions();
+
+   
 }
 
 /**
@@ -224,12 +232,14 @@ void AXBPlayerController::BindInputActions()
         // 绑定召回输入
         EnhancedInput->BindAction(
             InputConfig->RecallAction, 
-            ETriggerEvent::Started, 
+            ETriggerEvent::Triggered, 
             this, 
-            &AXBPlayerController::HandleRecallInput);
+            &AXBPlayerController::HandleDisengageCombat);
     }
 
-    UE_LOG(LogTemp, Log, TEXT("Input actions bound successfully"));
+  
+
+    UE_LOG(LogTemp, Log, TEXT("输入操作已成功绑定!!!"));
 }
 
 void AXBPlayerController::PlayerTick(float DeltaTime)
@@ -277,6 +287,30 @@ void AXBPlayerController::ResetCamera()
     bIsResettingRotation = true;
     
     UE_LOG(LogTemp, Log, TEXT("Camera Reset - Distance: %.1f, Rotation: 0"), DefaultCameraDistance);
+}
+
+/**
+ * @brief 脱离战斗输入处理
+ * @note ✨ 新增方法
+ */
+void AXBPlayerController::HandleDisengageCombat()
+{
+    if (!CachedPlayerCharacter.IsValid())
+    {
+        return;
+    }
+
+    // 🔧 修改 - 重命名变量，避免与 APlayerController::Player 冲突
+    AXBPlayerCharacter* PlayerChar = CachedPlayerCharacter.Get();
+    if (!PlayerChar || PlayerChar->IsDead())
+    {
+        return;
+    }
+
+    // 调用角色的脱离战斗方法
+    PlayerChar->DisengageFromCombat();
+
+    UE_LOG(LogTemp, Log, TEXT("玩家触发脱离战斗"));
 }
 
 /**

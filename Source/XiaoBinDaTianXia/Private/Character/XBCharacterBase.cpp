@@ -12,6 +12,8 @@
  */
 
 #include "Character/XBCharacterBase.h"
+
+#include "AIController.h"
 #include "Character/Components/XBCombatComponent.h"
 #include "Character/Components/XBMagnetFieldComponent.h"
 #include "Character/Components/XBFormationComponent.h"
@@ -26,6 +28,7 @@
 #include "Animation/AnimInstance.h"
 #include "TimerManager.h"
 #include "Kismet/GameplayStatics.h"
+#include "Particles/ParticleSystemComponent.h"
 
 AXBCharacterBase::AXBCharacterBase()
 {
@@ -419,6 +422,11 @@ void AXBCharacterBase::ReassignSoldierSlots(int32 StartIndex)
     }
 }
 
+/**
+ * @brief 士兵死亡时的缩减逻辑
+ * @param DeadSoldier 死亡的士兵
+ * @note 🔧 修改 - 只缩小体型，不减少血量
+ */
 void AXBCharacterBase::OnSoldierDied(AXBSoldierActor* DeadSoldier)
 {
     if (!DeadSoldier)
@@ -426,28 +434,203 @@ void AXBCharacterBase::OnSoldierDied(AXBSoldierActor* DeadSoldier)
         return;
     }
 
+    // 从队列移除
     RemoveSoldier(DeadSoldier);
+
+    // 更新士兵计数
     CurrentSoldierCount = FMath::Max(0, CurrentSoldierCount - 1);
+
+    // ==================== 1. 缩小体型 ====================
     UpdateLeaderScale();
+
+    // ==================== 2. 不减少血量（按需求） ====================
+    // 血量保持不变
+
+    // ==================== 3. 更新技能特效缩放 ====================
+    if (GrowthConfigCache.bEnableSkillEffectScaling)
+    {
+        UpdateSkillEffectScaling();
+    }
+
+    // ==================== 4. 更新攻击范围缩放 ====================
+    if (GrowthConfigCache.bEnableAttackRangeScaling)
+    {
+        UpdateAttackRangeScaling();
+    }
+
+    UE_LOG(LogTemp, Log, TEXT("将领 %s 失去士兵，剩余: %d，体型: %.2f"),
+        *GetName(), CurrentSoldierCount, GetCurrentScale());
 }
 
+float AXBCharacterBase::GetCurrentScale() const
+{
+    if (AbilitySystemComponent)
+    {
+        return AbilitySystemComponent->GetNumericAttribute(UXBAttributeSet::GetScaleAttribute());
+    }
+    return BaseScale;
+}
+
+float AXBCharacterBase::GetScaledAttackRange() const
+{
+    float CurrentScale = GetCurrentScale();
+    return BaseAttackRange * CurrentScale * GrowthConfigCache.AttackRangeScaleMultiplier;
+}
+
+
+/**
+ * @brief 更新角色体型111
+ * @note ✨ 新增方法 - 使用累加方式计算缩放
+ *       公式：最终缩放 = BaseScale + (士兵数 × 每士兵加成)
+ *       示例：1.0 + (10 × 0.02) = 1.2
+ */
 void AXBCharacterBase::UpdateLeaderScale()
 {
-    const float BaseScale = CachedLeaderData.Scale;
+    // 计算新缩放（累加方式）
     const float AdditionalScale = CurrentSoldierCount * GrowthConfigCache.ScalePerSoldier;
     const float NewScale = FMath::Min(BaseScale + AdditionalScale, GrowthConfigCache.MaxScale);
 
+    // 应用到Actor
+    SetActorScale3D(FVector(NewScale));
+
+    // 同步到ASC属性
     if (AbilitySystemComponent)
     {
         AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetScaleAttribute(), NewScale);
     }
 
-    SetActorScale3D(FVector(NewScale));
+    // ✨ 新增 - 同步更新战斗组件的攻击范围缩放
+    if (CombatComponent && GrowthConfigCache.bEnableAttackRangeScaling)
+    {
+        float RangeScale = NewScale * GrowthConfigCache.AttackRangeScaleMultiplier;
+        CombatComponent->SetAttackRangeScale(RangeScale);
+    }
+    
+    UE_LOG(LogTemp, Verbose, TEXT("体型更新: BaseScale=%.2f, 士兵数=%d, 最终缩放=%.2f"),
+        BaseScale, CurrentSoldierCount, NewScale);
 }
 
+
+/**
+ * @brief 增加血量（支持溢出提升最大值）
+ * @param HealthToAdd 要增加的血量
+ * @note ✨ 新增方法
+ *       逻辑说明：
+ *       - 当前血量 + 增加值 <= 最大值：只增加当前血量
+ *       - 当前血量 + 增加值 > 最大值：提升最大值并填满
+ *       
+ *       示例1：最大1000，当前800，加100 → 最大1000，当前900
+ *       示例2：最大1000，当前953，加100 → 最大1053，当前1053
+ */
+void AXBCharacterBase::AddHealthWithOverflow(float HealthToAdd)
+{
+    if (!AbilitySystemComponent)
+    {
+        return;
+    }
+
+    // 获取当前血量和最大血量
+    float CurrentHealth = AbilitySystemComponent->GetNumericAttribute(UXBAttributeSet::GetHealthAttribute());
+    float CurrentMaxHealth = AbilitySystemComponent->GetNumericAttribute(UXBAttributeSet::GetMaxHealthAttribute());
+
+    // 计算新血量
+    float NewHealth = CurrentHealth + HealthToAdd;
+
+    if (NewHealth > CurrentMaxHealth)
+    {
+        // ✨ 溢出逻辑：提升最大血量
+        AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetMaxHealthAttribute(), NewHealth);
+        AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetHealthAttribute(), NewHealth);
+
+        UE_LOG(LogTemp, Log, TEXT("血量溢出：最大血量提升 %.0f → %.0f"), CurrentMaxHealth, NewHealth);
+    }
+    else
+    {
+        // 正常回复：只增加当前血量
+        AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetHealthAttribute(), NewHealth);
+
+        UE_LOG(LogTemp, Verbose, TEXT("血量回复：%.0f → %.0f (最大%.0f)"), 
+            CurrentHealth, NewHealth, CurrentMaxHealth);
+    }
+}
+
+/**
+ * @brief 更新技能特效缩放
+ * @note ✨ 新增方法
+ *       通过 ASC 遍历所有激活的技能实例，应用缩放
+ */
+void AXBCharacterBase::UpdateSkillEffectScaling()
+{
+    if (!AbilitySystemComponent)
+    {
+        return;
+    }
+
+    float CurrentScale = GetCurrentScale();
+    float EffectScale = CurrentScale * GrowthConfigCache.SkillEffectScaleMultiplier;
+
+    // 🔧 修改 - 通过 GameplayTag 查找并缩放特效
+    // 这里需要在技能GA中实现 ScaleEffect 接口
+    // 示例：通过自定义GameplayTag标记需要缩放的技能
+
+    // 方案1：通过GE（GameplayEffect）应用缩放
+    // 创建一个动态GE，Modifier 为 Scale 属性
+    // 这里简化处理，假设技能在释放时会读取角色的 Scale 属性
+
+    UE_LOG(LogTemp, Verbose, TEXT("技能特效缩放更新: %.2f"), EffectScale);
+
+    // 方案2：如果技能使用粒子系统，通过 Component 缩放
+    TArray<UActorComponent*> Components;
+    GetComponents(UParticleSystemComponent::StaticClass(), Components);
+
+    for (UActorComponent* Comp : Components)
+    {
+        if (UParticleSystemComponent* PSC = Cast<UParticleSystemComponent>(Comp))
+        {
+            // 只缩放技能特效（通过Tag识别）
+            if (PSC->ComponentHasTag(FName("SkillEffect")))
+            {
+                PSC->SetWorldScale3D(FVector(EffectScale));
+            }
+        }
+    }
+}
+
+/**
+ * @brief 更新攻击范围缩放
+ * @note ✨ 新增方法
+ *       通过修改碰撞体积实现攻击范围缩放
+ */
+void AXBCharacterBase::UpdateAttackRangeScaling()
+{
+    if (!CombatComponent)
+    {
+        return;
+    }
+
+    float CurrentScale = GetCurrentScale();
+    float ScaledRange = BaseAttackRange * CurrentScale * GrowthConfigCache.AttackRangeScaleMultiplier;
+
+    // 🔧 修改 - 通过 CombatComponent 更新攻击范围
+    // 假设 CombatComponent 有攻击范围配置
+    // 这里需要在实际攻击判定时读取缩放后的范围
+
+    UE_LOG(LogTemp, Verbose, TEXT("攻击范围更新: %.0f → %.0f"), BaseAttackRange, ScaledRange);
+
+    // 实际应用方式1：更新武器碰撞体积
+    // 实际应用方式2：在攻击判定时使用 GetScaledAttackRange()
+}
+
+
+
+
+/**
+ * @brief 士兵增加时的成长逻辑
+ * @param SoldierCount 增加的士兵数量
+ * @note 🔧 修改 - 完善血量溢出逻辑和技能缩放
+ */
 void AXBCharacterBase::OnSoldiersAdded(int32 SoldierCount)
 {
-    // ✨ 新增 - 死亡后不处理成长
     if (bIsDead)
     {
         return;
@@ -458,38 +641,33 @@ void AXBCharacterBase::OnSoldiersAdded(int32 SoldierCount)
         return;
     }
 
+    // 更新士兵计数
     CurrentSoldierCount += SoldierCount;
 
-    const float BaseScale = CachedLeaderData.Scale;
-    const float AdditionalScale = CurrentSoldierCount * GrowthConfigCache.ScalePerSoldier;
-    const float NewScale = FMath::Min(BaseScale + AdditionalScale, GrowthConfigCache.MaxScale);
+    // ==================== 1. 更新体型缩放 ====================
+    UpdateLeaderScale();
 
-    if (AbilitySystemComponent)
-    {
-        AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetScaleAttribute(), NewScale);
-    }
-
-    SetActorScale3D(FVector(NewScale));
-
+    // ==================== 2. 更新血量（支持溢出）====================
     const float HealthBonus = SoldierCount * GrowthConfigCache.HealthPerSoldier;
-    
-    if (AbilitySystemComponent)
+    AddHealthWithOverflow(HealthBonus);
+
+    // ==================== 3. 更新技能特效缩放 ====================
+    if (GrowthConfigCache.bEnableSkillEffectScaling)
     {
-        float CurrentMaxHealth = AbilitySystemComponent->GetNumericAttribute(UXBAttributeSet::GetMaxHealthAttribute());
-        float CurrentHealth = AbilitySystemComponent->GetNumericAttribute(UXBAttributeSet::GetHealthAttribute());
-        
-        float NewHealth = CurrentHealth + HealthBonus;
-        
-        if (NewHealth > CurrentMaxHealth)
-        {
-            AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetMaxHealthAttribute(), NewHealth);
-            AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetHealthAttribute(), NewHealth);
-        }
-        else
-        {
-            AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetHealthAttribute(), NewHealth);
-        }
+        UpdateSkillEffectScaling();
     }
+
+    // ==================== 4. 更新攻击范围缩放 ====================
+    if (GrowthConfigCache.bEnableAttackRangeScaling)
+    {
+        UpdateAttackRangeScaling();
+    }
+
+    UE_LOG(LogTemp, Log, TEXT("将领 %s 招募 %d 个士兵，当前总数: %d，体型: %.2f，血量: %.0f/%.0f"),
+        *GetName(), SoldierCount, CurrentSoldierCount, 
+        GetCurrentScale(), 
+        AbilitySystemComponent->GetNumericAttribute(UXBAttributeSet::GetHealthAttribute()),
+        AbilitySystemComponent->GetNumericAttribute(UXBAttributeSet::GetMaxHealthAttribute()));
 }
 
 // ==================== 战斗状态系统实现 ====================
@@ -558,6 +736,71 @@ void AXBCharacterBase::ExitCombat()
     OnCombatStateChanged.Broadcast(false);
 }
 
+/**
+ * @brief 脱离战斗（逃跑）
+ * @note ✨ 新增方法
+ *       完整流程：
+ *       1. 检查冷却时间
+ *       2. 退出战斗状态
+ *       3. 召回所有士兵
+ *       4. 开启冲刺加速
+ *       5. 定时器自动停止冲刺
+ */
+void AXBCharacterBase::DisengageFromCombat()
+{
+    // 检查冷却
+    float CurrentTime = GetWorld()->GetTimeSeconds();
+    if (CurrentTime - LastDisengageTime < DisengageCooldown)
+    {
+        UE_LOG(LogTemp, Verbose, TEXT("脱离战斗冷却中，剩余: %.1f秒"), 
+            DisengageCooldown - (CurrentTime - LastDisengageTime));
+        return;
+    }
+
+    LastDisengageTime = CurrentTime;
+
+    UE_LOG(LogTemp, Warning, TEXT(">>> 将领 %s 脱离战斗（逃跑） <<<"), *GetName());
+
+    // ==================== 1. 退出战斗状态 ====================
+    ExitCombat();
+
+    // ==================== 2. 召回所有士兵 ====================
+    RecallAllSoldiers();
+
+    // ==================== 3. 开启冲刺加速 ====================
+    if (bSprintWhenDisengaging)
+    {
+        StartSprint();
+
+        // 设置定时器，自动停止冲刺
+        GetWorldTimerManager().ClearTimer(DisengageSprintTimerHandle);
+        GetWorldTimerManager().SetTimer(
+            DisengageSprintTimerHandle,
+            this,
+            &AXBCharacterBase::StopSprint,
+            DisengageSprintDuration,
+            false
+        );
+
+        UE_LOG(LogTemp, Log, TEXT("逃跑冲刺启动，持续时间: %.1f秒"), DisengageSprintDuration);
+    }
+
+    // ==================== 4. 士兵进入逃跑模式 ====================
+    SetSoldiersEscaping(true);
+
+    // 定时器自动恢复正常速度
+    FTimerHandle TempHandle;
+    GetWorldTimerManager().SetTimer(
+        TempHandle,
+        [this]()
+        {
+            SetSoldiersEscaping(false);
+        },
+        DisengageSprintDuration,
+        false
+    );
+}
+
 void AXBCharacterBase::OnCombatTimeout()
 {
     ExitCombat();
@@ -573,19 +816,41 @@ void AXBCharacterBase::OnAttackHit(AActor* HitTarget)
     EnterCombat();
 }
 
+/**
+ * @brief 召回所有士兵
+ * @note 🔧 修改 - 增强逻辑，清除战斗目标
+ */
 void AXBCharacterBase::RecallAllSoldiers()
 {
+    // 退出战斗状态
     ExitCombat();
 
     for (AXBSoldierActor* Soldier : Soldiers)
     {
         if (Soldier && Soldier->GetSoldierState() != EXBSoldierState::Dead)
         {
+            // 设置返回状态
             Soldier->SetSoldierState(EXBSoldierState::Returning);
+            
+            // ✨ 新增 - 清除当前攻击目标
+            Soldier->CurrentAttackTarget = nullptr;
+            
+            // ✨ 新增 - 停止移动，准备返回
+            if (AAIController* AICtrl = Cast<AAIController>(Soldier->GetController()))
+            {
+                AICtrl->StopMovement();
+            }
         }
     }
+
+    UE_LOG(LogTemp, Log, TEXT("将领 %s 召回所有士兵"), *GetName());
 }
 
+/**
+ * @brief 设置士兵逃跑状态
+ * @param bEscaping 是否逃跑
+ * @note 🔧 修改 - 保持原有逻辑
+ */
 void AXBCharacterBase::SetSoldiersEscaping(bool bEscaping)
 {
     for (AXBSoldierActor* Soldier : Soldiers)

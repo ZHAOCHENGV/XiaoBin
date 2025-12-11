@@ -156,4 +156,41 @@ protected:
 private:
     /** @brief 是否已初始化 */
     bool bInitialized = false;
+
+
+public:
+    // ✨ 新增 - 范围缩放支持
+    /**
+     * @brief 设置攻击范围缩放倍率
+     * @param ScaleMultiplier 缩放倍率
+     */
+    UFUNCTION(BlueprintCallable, Category = "战斗", meta = (DisplayName = "设置攻击范围缩放"))
+    void SetAttackRangeScale(float ScaleMultiplier);
+
+    /**
+     * @brief 获取缩放后的攻击范围
+     * @return 实际攻击范围
+     */
+    UFUNCTION(BlueprintPure, Category = "战斗", meta = (DisplayName = "获取缩放后攻击范围"))
+    float GetScaledAttackRange() const;
+
+    /**
+     * @brief 检查目标是否在攻击范围内（考虑缩放）
+     * @param Target 目标Actor
+     * @return 是否在范围内
+     */
+    UFUNCTION(BlueprintCallable, Category = "战斗", meta = (DisplayName = "目标在攻击范围内"))
+    bool IsTargetInRange(AActor* Target) const;
+
+protected:
+    // ✨ 新增 - 攻击范围缩放倍率
+    UPROPERTY(BlueprintReadOnly, Category = "战斗")
+    float AttackRangeScaleMultiplier = 1.0f;
+
+    // ✨ 新增 - 基础攻击范围（从配置读取）
+    UPROPERTY(BlueprintReadOnly, Category = "战斗")
+    float BaseAttackRange = 150.0f;
+
+
+
 };

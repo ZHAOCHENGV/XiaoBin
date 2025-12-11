@@ -159,11 +159,96 @@ public:
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier|AI", meta = (DisplayName = "是否在攻击范围内"))
     bool IsInAttackRange(AActor* Target) const;
 
+
+
+    // ============ 战斗追踪系统（✨ 新增/增强）============
+
+    /**
+     * @brief 更新战斗逻辑
+     * @param DeltaTime 帧时间
+     * @note 功能：
+     *       1. 搜索最近敌人
+     *       2. 移动到目标（带避障）
+     *       3. 攻击目标
+     *       4. 检测脱离范围
+     */
+    void UpdateCombat(float DeltaTime);
+
+    /**
+      * @brief 移动到目标（带避障）
+      * @param Target 目标Actor
+      * @note 使用导航系统自动绕障
+      */
+    UFUNCTION(BlueprintCallable, Category = "XB|Soldier|AI", meta = (DisplayName = "移动到目标"))
+    void MoveToTarget(AActor* Target);
+
+    /**
+     * @brief 检查是否应该返回队列
+     * @return true表示应该返回
+     * @note 条件：
+     *       1. 距离将领超过脱离距离
+     *       2. 周边无敌人
+     */
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier|AI", meta = (DisplayName = "是否应该脱离战斗"))
     bool ShouldDisengage() const;
 
-    UFUNCTION(BlueprintCallable, Category = "XB|Soldier|AI", meta = (DisplayName = "移动到目标"))
-    void MoveToTarget(AActor* Target);
+    /**
+     * @brief 自动返回队列
+     * @note 退出战斗状态，移动到编队位置
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Soldier", meta = (DisplayName = "返回队列"))
+    void ReturnToFormation();
+
+    // ✨ 新增 - 弓手专用逻辑
+    /**
+     * @brief 检查是否应该后撤（弓手专用）
+     * @return true表示敌人过近，需要后撤
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Soldier|AI", meta = (DisplayName = "是否应该后撤"))
+    bool ShouldRetreat() const;
+
+    
+    /**
+     * @brief 后撤到安全距离（弓手专用）
+     * @param Target 威胁目标
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Soldier|AI", meta = (DisplayName = "后撤"))
+    void RetreatFromTarget(AActor* Target);
+
+    
+protected:
+    // ✨ 新增 - 避障计算
+    /**
+     * @brief 计算避障后的移动方向
+     * @param DesiredDirection 期望方向
+     * @return 修正后的方向
+     */
+    FVector CalculateAvoidanceDirection(const FVector& DesiredDirection);
+
+    // ✨ 新增 - 检查周边是否有敌人
+    /**
+     * @brief 在指定范围内检测敌人
+     * @param Radius 检测半径
+     * @return 是否有敌人
+     */
+    bool HasEnemiesInRadius(float Radius) const;
+    
+    // ✨ 新增 - 战斗配置
+    /** @brief 脱离战斗距离（超过此距离自动返回） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "战斗", meta = (DisplayName = "脱离距离", ClampMin = "100.0"))
+    float DisengageDistance = 1000.0f;
+
+    /** @brief 无敌人后返回延迟（秒） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "战斗", meta = (DisplayName = "返回延迟", ClampMin = "0.0"))
+    float ReturnDelay = 2.0f;
+
+    /** @brief 避障检测半径 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "战斗", meta = (DisplayName = "避障半径", ClampMin = "0.0"))
+    float AvoidanceRadius = 100.0f;
+
+    /** @brief 上次检测到敌人的时间 */
+    float LastEnemySeenTime = 0.0f;
+public:
 
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier|AI", meta = (DisplayName = "移动到编队位置"))
     void MoveToFormationPosition();
@@ -242,10 +327,12 @@ protected:
 
     UPROPERTY(BlueprintReadOnly, Category = "状态")
     float AttackCooldownTimer = 0.0f;
-
+    
+public:
     UPROPERTY(BlueprintReadOnly, Category = "状态")
     TWeakObjectPtr<AActor> CurrentAttackTarget;
-
+    
+protected:
     float TargetSearchTimer = 0.0f;
 
     // ✨ 新增 - 招募状态
@@ -264,7 +351,6 @@ public:
     friend class AXBSoldierAIController;
 
     void UpdateFollowing(float DeltaTime);
-    void UpdateCombat(float DeltaTime);
     void UpdateReturning(float DeltaTime);
     void HandleDeath();
     bool PlayAttackMontage();

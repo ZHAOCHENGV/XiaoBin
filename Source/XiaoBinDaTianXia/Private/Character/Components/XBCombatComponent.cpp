@@ -418,3 +418,50 @@ bool UXBCombatComponent::TryActivateAbility(TSubclassOf<UGameplayAbility> Abilit
 
     return bSuccess;
 }
+
+/**
+ * @brief 设置攻击范围缩放倍率
+ * @param ScaleMultiplier 缩放倍率
+ * @note ✨ 新增方法
+ */
+void UXBCombatComponent::SetAttackRangeScale(float ScaleMultiplier)
+{
+    AttackRangeScaleMultiplier = FMath::Max(0.1f, ScaleMultiplier);
+
+    UE_LOG(LogTemp, Verbose, TEXT("攻击范围缩放: %.2f → 实际范围: %.0f"), 
+        AttackRangeScaleMultiplier, GetScaledAttackRange());
+}
+
+/**
+ * @brief 设置攻击范围缩放倍率
+ * @param ScaleMultiplier 缩放倍率
+ * @note ✨ 新增方法
+ */
+float UXBCombatComponent::GetScaledAttackRange() const
+{
+    return BaseAttackRange * AttackRangeScaleMultiplier;
+}
+
+/**
+ * @brief 检查目标是否在攻击范围内
+ * @param Target 目标Actor
+ * @return 是否在范围内
+ * @note ✨ 新增方法
+ */
+bool UXBCombatComponent::IsTargetInRange(AActor* Target) const
+{
+    if (!Target)
+    {
+        return false;
+    }
+
+    AActor* Owner = GetOwner();
+    if (!Owner)
+    {
+        return false;
+    }
+
+    float Distance = FVector::Dist(Owner->GetActorLocation(), Target->GetActorLocation());
+    return Distance <= GetScaledAttackRange();
+    
+}

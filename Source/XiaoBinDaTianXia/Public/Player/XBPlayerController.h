@@ -25,6 +25,7 @@ class UInputMappingContext;
 class UInputAction;
 class UXBInputConfig;
 struct FInputActionValue;
+class AXBPlayerCharacter;
 
 UCLASS()
 class XIAOBINDATIANXIA_API AXBPlayerController : public APlayerController
@@ -79,6 +80,13 @@ public:
      */
     UFUNCTION(BlueprintCallable, Category = "XB|Input", meta = (DisplayName = "获取输入配置"))
     UXBInputConfig* GetInputConfig() const { return InputConfig; }
+
+    // ✨ 新增 - 脱离战斗输入
+    /**
+     * @brief 脱离战斗（逃跑）
+     * @note 对应按键：通常绑定到 R 键
+     */
+    void HandleDisengageCombat();
 
 protected:
     // ==================== 输入配置 ====================
@@ -151,6 +159,10 @@ protected:
      */
     UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "XB|Camera", meta = (DisplayName = "镜头重置平滑度", ClampMin = "1.0"))
     float CameraResetInterpSpeed = 5.0f;
+
+
+    UPROPERTY()
+    TWeakObjectPtr<AXBPlayerCharacter> CachedPlayerCharacter;
 
     // ==================== 输入回调 ====================
 

@@ -40,14 +40,35 @@ struct XIAOBINDATIANXIA_API FXBGrowthConfigCache
 {
     GENERATED_BODY()
 
+    /** @brief 每个士兵增加的生命值 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长", meta = (DisplayName = "每士兵生命加成"))
-    float HealthPerSoldier = 5.0f;
+    float HealthPerSoldier = 20.0f;
 
+    /** @brief 每个士兵增加的体型缩放（累加方式：1 + 0.1 + 0.1...） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长", meta = (DisplayName = "每士兵体型加成"))
     float ScalePerSoldier = 0.01f;
 
+    /** @brief 最大体型缩放 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长", meta = (DisplayName = "最大体型缩放"))
-    float MaxScale = 2.0f;
+    float MaxScale = 2.f;
+
+    // ✨ 新增 - 技能特效缩放配置
+    /** @brief 是否启用技能特效缩放 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长", meta = (DisplayName = "启用技能特效缩放"))
+    bool bEnableSkillEffectScaling = true;
+
+    /** @brief 技能特效缩放倍率（相对于角色缩放） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长", meta = (DisplayName = "技能特效缩放倍率", ClampMin = "0.1"))
+    float SkillEffectScaleMultiplier = 1.0f;
+
+    // ✨ 新增 - 攻击范围缩放配置
+    /** @brief 是否启用攻击范围缩放 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长", meta = (DisplayName = "启用攻击范围缩放"))
+    bool bEnableAttackRangeScaling = true;
+
+    /** @brief 攻击范围缩放倍率（相对于角色缩放） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长", meta = (DisplayName = "攻击范围缩放倍率", ClampMin = "0.1"))
+    float AttackRangeScaleMultiplier = 1.0f;
 };
 
 USTRUCT(BlueprintType)
@@ -137,16 +158,131 @@ public:
     UFUNCTION(BlueprintPure, Category = "士兵")
     const TArray<AXBSoldierActor*>& GetSoldiers() const { return Soldiers; }
 
-    UFUNCTION(BlueprintCallable, Category = "士兵")
-    virtual void OnSoldierDied(AXBSoldierActor* DeadSoldier);
 
+    /**
+     * @brief 士兵增加时的成长逻辑
+     * @param SoldierCount 增加的士兵数量
+     * @note 功能：
+     *       1. 增加体型（累加方式）
+     *       2. 增加血量（溢出时提升最大值）
+     *       3. 缩放技能特效和攻击范围
+     */
     UFUNCTION(BlueprintCallable, Category = "成长")
     void OnSoldiersAdded(int32 SoldierCount);
 
-    // ============ 组件访问 ============
+    /**
+     * @brief 士兵死亡时的缩减逻辑
+     * @param DeadSoldier 死亡的士兵
+     * @note 功能：
+     *       1. 缩小体型
+     *       2. 不减少血量（只减体型）
+     *       3. 重新缩放技能特效和攻击范围
+     */
+    UFUNCTION(BlueprintCallable, Category = "成长")
+    virtual void OnSoldierDied(AXBSoldierActor* DeadSoldier);
 
+    // ✨ 新增 - 获取当前缩放倍率
+    /**
+     * @brief 获取当前角色的实际缩放倍率
+     * @return 缩放倍率（如 1.5 表示放大到 150%）
+     */
+    UFUNCTION(BlueprintPure, Category = "成长", meta = (DisplayName = "获取当前缩放倍率"))
+    float GetCurrentScale() const;
+
+    // ✨ 新增 - 获取当前攻击范围
+    /**
+     * @brief 获取经过缩放后的攻击范围
+     * @return 实际攻击范围
+     */
+    UFUNCTION(BlueprintPure, Category = "成长", meta = (DisplayName = "获取当前攻击范围"))
+    float GetScaledAttackRange() const;
+
+    // ============ 死亡系统 ============
+
+    UFUNCTION(BlueprintCallable, Category = "死亡")
+    virtual void HandleDeath();
+    
+    UFUNCTION(BlueprintPure, Category = "死亡")
+    bool IsDead() const { return bIsDead; }
+    
     UFUNCTION(BlueprintPure, Category = "组件")
     UXBCombatComponent* GetCombatComponent() const { return CombatComponent; }
+
+    // ============ 冲刺系统（共用） ============
+
+    UFUNCTION(BlueprintCallable, Category = "移动", meta = (DisplayName = "开始冲刺"))
+    virtual void StartSprint();
+
+    UFUNCTION(BlueprintCallable, Category = "移动", meta = (DisplayName = "停止冲刺"))
+    virtual void StopSprint();
+
+    // ============ 召回系统 ============
+    UFUNCTION(BlueprintCallable, Category = "士兵")
+    virtual void RecallAllSoldiers();
+
+    /**
+    * @brief 脱离战斗（逃跑）
+    * @note ✨ 新增方法 - 玩家按键触发
+    *       功能：
+    *       1. 立即退出战斗状态
+    *       2. 所有士兵停止追击，返回队列
+    *       3. 清除所有战斗目标
+    *       4. 进入冲刺状态加速逃离
+    */
+    UFUNCTION(BlueprintCallable, Category = "战斗", meta = (DisplayName = "脱离战斗（逃跑）"))
+    virtual void DisengageFromCombat();
+
+
+protected:
+    // ✨ 新增 - 逃跑配置
+    /** @brief 逃跑时是否自动开启冲刺 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "战斗", meta = (DisplayName = "逃跑时自动冲刺"))
+    bool bSprintWhenDisengaging = true;
+
+    /** @brief 脱离战斗后的冲刺持续时间（秒） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "战斗", meta = (DisplayName = "逃跑冲刺时长", ClampMin = "0.0"))
+    float DisengageSprintDuration = 3.0f;
+
+    /** @brief 脱离战斗的冷却时间（防止频繁切换） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "战斗", meta = (DisplayName = "脱离冷却时间", ClampMin = "0.0"))
+    float DisengageCooldown = 2.0f;
+
+    /** @brief 上次脱离战斗的时间 */
+    float LastDisengageTime = 0.0f;
+
+    /** @brief 脱离战斗计时器句柄 */
+    FTimerHandle DisengageSprintTimerHandle;
+    
+
+    // ✨ 新增 - 应用缩放到技能特效
+    /**
+     * @brief 更新技能特效的缩放
+     * @note 遍历所有激活的技能实例，应用缩放
+     */
+    void UpdateSkillEffectScaling();
+
+    // ✨ 新增 - 应用缩放到攻击范围
+    /**
+     * @brief 更新攻击范围（用于碰撞检测）
+     */
+    void UpdateAttackRangeScaling();
+
+    // ✨ 新增 - 更新角色体型
+    /**
+     * @brief 根据当前士兵数量更新体型
+     * @note 使用累加方式：BaseScale + (Count * ScalePerSoldier)
+     */
+    void UpdateLeaderScale();
+
+    // ✨ 新增 - 更新角色血量
+    /**
+     * @brief 增加血量，支持溢出提升最大值
+     * @param HealthToAdd 要增加的血量
+     */
+    void AddHealthWithOverflow(float HealthToAdd);
+    
+    
+    // ============ 组件访问 ============
 
     UFUNCTION(BlueprintCallable, Category = "组件", meta = (DisplayName = "获取磁场组件"))
     UXBMagnetFieldComponent* GetMagnetFieldComponent() const { return MagnetFieldComponent; }
@@ -165,19 +301,14 @@ public:
     UFUNCTION(BlueprintCallable, Category = "战斗")
     virtual void ExitCombat();
 
+
     UFUNCTION(BlueprintPure, Category = "战斗")
     bool IsInCombat() const { return bIsInCombat; }
 
     UFUNCTION(BlueprintCallable, Category = "战斗")
     virtual void OnAttackHit(AActor* HitTarget);
 
-    // ============ 冲刺系统（共用） ============
 
-    UFUNCTION(BlueprintCallable, Category = "移动", meta = (DisplayName = "开始冲刺"))
-    virtual void StartSprint();
-
-    UFUNCTION(BlueprintCallable, Category = "移动", meta = (DisplayName = "停止冲刺"))
-    virtual void StopSprint();
 
     UFUNCTION(BlueprintPure, Category = "移动", meta = (DisplayName = "是否正在冲刺"))
     bool IsSprinting() const { return bIsSprinting; }
@@ -185,21 +316,12 @@ public:
     UFUNCTION(BlueprintPure, Category = "移动", meta = (DisplayName = "获取当前移动速度"))
     float GetCurrentMoveSpeed() const;
 
-    // ============ 召回系统 ============
 
-    UFUNCTION(BlueprintCallable, Category = "士兵")
-    virtual void RecallAllSoldiers();
 
     UFUNCTION(BlueprintCallable, Category = "士兵")
     virtual void SetSoldiersEscaping(bool bEscaping);
 
-    // ============ 死亡系统 ============
 
-    UFUNCTION(BlueprintCallable, Category = "死亡")
-    virtual void HandleDeath();
-
-    UFUNCTION(BlueprintPure, Category = "死亡")
-    bool IsDead() const { return bIsDead; }
 
     // ============ 委托事件 ============
 
@@ -232,8 +354,7 @@ protected:
     virtual void SpawnDroppedSoldiers();
 
     void ReassignSoldierSlots(int32 StartIndex);
-
-    void UpdateLeaderScale();
+    
 
     virtual void UpdateSprint(float DeltaTime);
 
@@ -242,7 +363,7 @@ protected:
     UFUNCTION()
     virtual void OnMagnetFieldActorEntered(AActor* EnteredActor);
 
-protected:
+
     // ==================== 核心组件 ====================
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "能力系统组件"))
@@ -275,6 +396,14 @@ protected:
 
     UPROPERTY(BlueprintReadOnly, Category = "成长")
     int32 CurrentSoldierCount = 0;
+
+    // ✨ 新增 - 基础缩放（从数据表读取）
+    UPROPERTY(BlueprintReadOnly, Category = "成长")
+    float BaseScale = 1.0f;
+
+    // ✨ 新增 - 基础攻击范围（从数据表读取）
+    UPROPERTY(BlueprintReadOnly, Category = "成长")
+    float BaseAttackRange = 150.0f;
 
     // ==================== 战斗状态 ====================
 
@@ -351,4 +480,5 @@ protected:
 private:
     UFUNCTION()
     void OnCombatTimeout();
+
 };

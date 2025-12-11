@@ -830,19 +830,261 @@ bool AXBSoldierActor::IsInAttackRange(AActor* Target) const
     return GetDistanceToTarget(Target) <= AttackRange;
 }
 
+
+/**
+ * @brief 检查是否应该脱离战斗
+ * @return true表示应该返回队列
+ * @note ✨ 新增方法
+ *       脱离条件：
+ *       1. 距离将领超过脱离距离
+ *       2. 周边无敌人且超过返回延迟
+ */
 bool AXBSoldierActor::ShouldDisengage() const
 {
-    if (!FollowTarget.IsValid())
+    // 条件1：距离将领过远
+    if (FollowTarget.IsValid())
+    {
+        float DistToLeader = FVector::Dist(GetActorLocation(), FollowTarget->GetActorLocation());
+        if (DistToLeader > DisengageDistance)
+        {
+            UE_LOG(LogTemp, Verbose, TEXT("士兵 %s 距离将领过远: %.0f > %.0f"), 
+                *GetName(), DistToLeader, DisengageDistance);
+            return true;
+        }
+    }
+
+    // 条件2：周边无敌人且超过返回延迟
+    float DetectionRange = bInitializedFromDataTable ? 
+        CachedTableRow.AIConfig.DetectionRange : 800.0f;
+
+    if (!HasEnemiesInRadius(DetectionRange))
+    {
+        float TimeSinceLastEnemy = GetWorld()->GetTimeSeconds() - LastEnemySeenTime;
+        if (TimeSinceLastEnemy > ReturnDelay)
+        {
+            UE_LOG(LogTemp, Verbose, TEXT("士兵 %s 周边无敌人，返回队列"), *GetName());
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * @brief 返回队列
+ * @note ✨ 新增方法
+ */
+void AXBSoldierActor::ReturnToFormation()
+{
+    // 清除当前目标
+    CurrentAttackTarget = nullptr;
+
+    // 设置返回状态
+    SetSoldierState(EXBSoldierState::Returning);
+
+    // 移动到编队位置
+    MoveToFormationPosition();
+
+    UE_LOG(LogTemp, Log, TEXT("士兵 %s 返回队列"), *GetName());
+}
+
+/**
+ * @brief 检查是否应该后撤（弓手专用）
+ * @return true表示敌人过近
+ * @note ✨ 新增方法
+ */
+bool AXBSoldierActor::ShouldRetreat() const
+{
+    if (SoldierType != EXBSoldierType::Archer)
     {
         return false;
     }
 
-    float DisengageDistance = bInitializedFromDataTable ? 
-        CachedTableRow.AIConfig.DisengageDistance : 1000.0f;
+    if (!CurrentAttackTarget.IsValid())
+    {
+        return false;
+    }
 
-    return FVector::Dist(GetActorLocation(), FollowTarget->GetActorLocation()) > DisengageDistance;
+    if (!bInitializedFromDataTable)
+    {
+        return false;
+    }
+
+    float DistToTarget = GetDistanceToTarget(CurrentAttackTarget.Get());
+    return DistToTarget < CachedTableRow.ArcherConfig.MinAttackDistance;
 }
 
+/**
+ * @brief 后撤到安全距离
+ * @param Target 威胁目标
+ * @note ✨ 新增方法
+ *       计算远离目标的方向，移动到安全位置
+ */
+void AXBSoldierActor::RetreatFromTarget(AActor* Target)
+{
+    if (!Target || !bInitializedFromDataTable)
+    {
+        return;
+    }
+
+    // 计算后撤方向（远离目标）
+    FVector RetreatDirection = (GetActorLocation() - Target->GetActorLocation()).GetSafeNormal2D();
+
+    // 计算后撤目标位置
+    float RetreatDistance = CachedTableRow.ArcherConfig.RetreatDistance;
+    FVector RetreatTarget = GetActorLocation() + RetreatDirection * RetreatDistance;
+
+    // 使用AI移动
+    if (AAIController* AICtrl = Cast<AAIController>(GetController()))
+    {
+        AICtrl->MoveToLocation(RetreatTarget, 10.0f, true, true, true, true);
+    }
+
+    UE_LOG(LogTemp, Verbose, TEXT("弓手 %s 后撤，目标距离: %.0f"), 
+        *GetName(), GetDistanceToTarget(Target));
+}
+
+/**
+ * @brief 计算避障方向
+ * @param DesiredDirection 期望方向
+ * @return 修正后的方向
+ * @note ✨ 新增方法
+ *       使用简单的排斥力模型避免扎堆
+ */
+FVector AXBSoldierActor::CalculateAvoidanceDirection(const FVector& DesiredDirection)
+{
+
+    if (AvoidanceRadius <= 0.0f)
+    {
+        return DesiredDirection;
+    }
+
+    FVector AvoidanceForce = FVector::ZeroVector;
+    FVector MyLocation = GetActorLocation();
+
+    // 获取附近的士兵
+    TArray<AActor*> NearbyActors;
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AXBSoldierActor::StaticClass(), NearbyActors);
+
+    int32 AvoidanceCount = 0;
+
+    for (AActor* OtherActor : NearbyActors)
+    {
+        if (OtherActor == this)
+        {
+            continue;
+        }
+
+        float Distance = FVector::Dist2D(MyLocation, OtherActor->GetActorLocation());
+        if (Distance < AvoidanceRadius && Distance > KINDA_SMALL_NUMBER)
+        {
+            // 计算远离方向
+            FVector AwayDirection = (MyLocation - OtherActor->GetActorLocation()).GetSafeNormal2D();
+            
+            // 距离越近，排斥力越大
+            float Strength = 1.0f - (Distance / AvoidanceRadius);
+            AvoidanceForce += AwayDirection * Strength;
+            
+            AvoidanceCount++;
+        }
+    }
+
+    // 如果没有需要避让的对象，直接返回期望方向
+    if (AvoidanceCount == 0)
+    {
+        return DesiredDirection;
+    }
+
+    // 归一化避障力
+    AvoidanceForce.Normalize();
+
+    // 混合期望方向和避障力
+    float AvoidanceWeight = bInitializedFromDataTable ? 
+        CachedTableRow.AIConfig.AvoidanceWeight : 0.3f;
+
+    FVector BlendedDirection = DesiredDirection * (1.0f - AvoidanceWeight) + 
+                               AvoidanceForce * AvoidanceWeight;
+
+    return BlendedDirection.GetSafeNormal();
+}
+
+/**
+ * @brief 检查周边是否有敌人
+ * @param Radius 检测半径
+ * @return 是否有敌人
+ * @note ✨ 新增方法
+ */
+bool AXBSoldierActor::HasEnemiesInRadius(float Radius) const
+{
+    TArray<AActor*> PotentialTargets;
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AXBCharacterBase::StaticClass(), PotentialTargets);
+
+    TArray<AActor*> SoldierActors;
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AXBSoldierActor::StaticClass(), SoldierActors);
+    PotentialTargets.Append(SoldierActors);
+
+    FVector MyLocation = GetActorLocation();
+
+    for (AActor* Target : PotentialTargets)
+    {
+        if (Target == this)
+        {
+            continue;
+        }
+
+        // 检查是否为敌对目标
+        bool bIsEnemy = false;
+
+        if (const AXBCharacterBase* CharTarget = Cast<AXBCharacterBase>(Target))
+        {
+            if (CharTarget->IsDead())
+            {
+                continue;
+            }
+
+            bIsEnemy = (Faction == EXBFaction::Player || Faction == EXBFaction::Ally) ? 
+                (CharTarget->GetFaction() == EXBFaction::Enemy) :
+                (CharTarget->GetFaction() == EXBFaction::Player || CharTarget->GetFaction() == EXBFaction::Ally);
+        }
+        else if (const AXBSoldierActor* SoldierTarget = Cast<AXBSoldierActor>(Target))
+        {
+            if (SoldierTarget->GetSoldierState() == EXBSoldierState::Dead)
+            {
+                continue;
+            }
+
+            if (!SoldierTarget->IsRecruited())
+            {
+                continue;
+            }
+
+            bIsEnemy = (Faction == EXBFaction::Player || Faction == EXBFaction::Ally) ? 
+                (SoldierTarget->GetFaction() == EXBFaction::Enemy) :
+                (SoldierTarget->GetFaction() == EXBFaction::Player || SoldierTarget->GetFaction() == EXBFaction::Ally);
+        }
+
+        if (!bIsEnemy)
+        {
+            continue;
+        }
+
+        // 检查距离
+        float Distance = FVector::Dist(MyLocation, Target->GetActorLocation());
+        if (Distance <= Radius)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * @brief 移动到目标（使用导航系统绕障）
+ * @param Target 目标Actor
+ * @note ✨ 新增方法
+ *       使用 UNavigationSystemV1 实现自动寻路绕障
+ */
 void AXBSoldierActor::MoveToTarget(AActor* Target)
 {
     if (!Target)
@@ -850,10 +1092,28 @@ void AXBSoldierActor::MoveToTarget(AActor* Target)
         return;
     }
 
-    if (AAIController* AICtrl = Cast<AAIController>(GetController()))
+    AAIController* AICtrl = Cast<AAIController>(GetController());
+    if (!AICtrl)
     {
-        AICtrl->MoveToActor(Target);
+        return;
     }
+
+    // 使用AI移动系统（自动寻路绕障）
+    float AcceptanceRadius = bInitializedFromDataTable ? CachedTableRow.AttackRange * 0.9f : SoldierConfig.AttackRange * 0.9f;
+
+    // 🔧 修改 - 使用 MoveToActor 替代 MoveToLocation，支持动态目标追踪
+    AICtrl->MoveToActor(
+        Target,
+        AcceptanceRadius,  // 停止距离（略小于攻击范围）
+        true,              // 使用寻路
+        true,              // 允许部分路径
+        true,              // 投射目标到导航网格
+        nullptr,           // 过滤类
+        true               // 允许横向移动
+    );
+
+    UE_LOG(LogTemp, VeryVerbose, TEXT("士兵 %s 追踪目标 %s，距离: %.0f"), 
+        *GetName(), *Target->GetName(), GetDistanceToTarget(Target));
 }
 
 void AXBSoldierActor::MoveToFormationPosition()
@@ -963,27 +1223,54 @@ void AXBSoldierActor::UpdateFollowing(float DeltaTime)
     }
 }
 
+
+/**
+ * @brief 更新战斗逻辑
+ * @param DeltaTime 帧时间
+ * @note 🔧 完全重写 - 实现完整的战斗追踪系统
+ *       功能流程：
+ *       1. 检查是否应该脱离战斗（距离过远/无敌人）
+ *       2. 搜索或更新目标
+ *       3. 弓手特殊处理（原地攻击/后撤）
+ *       4. 近战单位追踪并攻击
+ */
 void AXBSoldierActor::UpdateCombat(float DeltaTime)
 {
+   // ==================== 1. 脱离战斗检测 ====================
+    if (ShouldDisengage())
+    {
+        UE_LOG(LogTemp, Verbose, TEXT("士兵 %s 脱离战斗条件满足，返回队列"), *GetName());
+        ReturnToFormation();
+        return;
+    }
+
+    // ==================== 2. 目标搜索/更新 ====================
     float SearchInterval = bInitializedFromDataTable ? 
         CachedTableRow.AIConfig.TargetSearchInterval : 0.5f;
-    
+
     TargetSearchTimer += DeltaTime;
     if (TargetSearchTimer >= SearchInterval || !CurrentAttackTarget.IsValid())
     {
         TargetSearchTimer = 0.0f;
-        CurrentAttackTarget = FindNearestEnemy();
+        AActor* NewTarget = FindNearestEnemy();
+
+        if (NewTarget)
+        {
+            CurrentAttackTarget = NewTarget;
+            LastEnemySeenTime = GetWorld()->GetTimeSeconds();
+        }
     }
 
-    if (ShouldDisengage())
-    {
-        ExitCombat();
-        return;
-    }
-
+    // ==================== 3. 无目标处理 ====================
     if (!CurrentAttackTarget.IsValid())
     {
-        ExitCombat();
+        // 检查是否超过返回延迟
+        float TimeSinceLastEnemy = GetWorld()->GetTimeSeconds() - LastEnemySeenTime;
+        if (TimeSinceLastEnemy > ReturnDelay)
+        {
+            UE_LOG(LogTemp, Verbose, TEXT("士兵 %s 长时间无目标，返回队列"), *GetName());
+            ReturnToFormation();
+        }
         return;
     }
 
@@ -991,38 +1278,55 @@ void AXBSoldierActor::UpdateCombat(float DeltaTime)
     float DistanceToEnemy = GetDistanceToTarget(Target);
     float AttackRange = bInitializedFromDataTable ? CachedTableRow.AttackRange : SoldierConfig.AttackRange;
 
+    // ==================== 4. 弓手特殊逻辑 ====================
     if (SoldierType == EXBSoldierType::Archer && bInitializedFromDataTable)
     {
+        // 🔧 修改 - 弓手在攻击范围内原地攻击，不追踪
         if (CachedTableRow.ArcherConfig.bStationaryAttack && DistanceToEnemy <= AttackRange)
         {
+            // 停止移动
+            if (AAIController* AICtrl = Cast<AAIController>(GetController()))
+            {
+                AICtrl->StopMovement();
+            }
+
+            // 面向目标
             FaceTarget(Target, DeltaTime);
+
+            // 攻击
             if (CanAttack())
             {
                 PerformAttack(Target);
             }
+
+            UE_LOG(LogTemp, VeryVerbose, TEXT("弓手 %s 原地攻击 %s"), *GetName(), *Target->GetName());
             return;
         }
-        
-        if (DistanceToEnemy < CachedTableRow.ArcherConfig.MinAttackDistance)
+
+        // 🔧 修改 - 敌人过近时后撤
+        if (ShouldRetreat())
         {
-            FVector RetreatDirection = (GetActorLocation() - Target->GetActorLocation()).GetSafeNormal();
-            FVector RetreatTarget = GetActorLocation() + RetreatDirection * CachedTableRow.ArcherConfig.RetreatDistance;
-            
-            if (AAIController* AICtrl = Cast<AAIController>(GetController()))
-            {
-                AICtrl->MoveToLocation(RetreatTarget);
-            }
+            RetreatFromTarget(Target);
             return;
         }
     }
 
+    // ==================== 5. 距离判定与行动 ====================
     if (DistanceToEnemy > AttackRange)
     {
+        // 超出攻击范围：追踪目标（带避障）
         MoveToTarget(Target);
     }
     else
     {
+        // 在攻击范围内：停止移动，面向目标，攻击
+        if (AAIController* AICtrl = Cast<AAIController>(GetController()))
+        {
+            AICtrl->StopMovement();
+        }
+
         FaceTarget(Target, DeltaTime);
+
         if (CanAttack())
         {
             PerformAttack(Target);
