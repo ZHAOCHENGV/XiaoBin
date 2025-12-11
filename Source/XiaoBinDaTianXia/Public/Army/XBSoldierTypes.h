@@ -83,10 +83,10 @@ struct FXBFormationConfig
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Formation", meta = (DisplayName = "离将领距离"))
     float MinDistanceToLeader = 150.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Formation")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Formation", meta = (DisplayName = "最大列数"))
     int32 MaxColumns = 10;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Formation")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Formation", meta = (DisplayName = "跟随距离"))
     float FollowDistance = 200.0f;
 };
 

@@ -6,9 +6,7 @@
  * @brief 角色基类 - 包含所有将领共用的组件和功能
  * 
  * @note 🔧 修改记录:
- *       1. 将 MagnetFieldComponent 从 PlayerCharacter 移入
- *       2. 将 FormationComponent 从 PlayerCharacter 移入
- *       3. 新增冲刺系统（供 AI 和玩家共用）
+ *       1. 新增 GetSoldierActorClass() 公开访问器
  */
 
 #pragma once
@@ -29,20 +27,14 @@ struct FXBSoldierTableRow;
 class AXBSoldierActor;
 class UAnimMontage;
 class UXBWorldHealthBarComponent;
-// ✨ 新增 - 从 PlayerCharacter 移入的组件
 class UXBMagnetFieldComponent;
 class UXBFormationComponent;
 
-// 委托声明
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCharacterDeath, AXBCharacterBase*, DeadCharacter);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCombatStateChanged, bool, bInCombat);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnSoldierCountChanged, int32, OldCount, int32, NewCount);
-// ✨ 新增 - 冲刺状态委托
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSprintStateChanged, bool, bIsSprinting);
 
-/**
- * @brief 成长配置缓存结构体
- */
 USTRUCT(BlueprintType)
 struct XIAOBINDATIANXIA_API FXBGrowthConfigCache
 {
@@ -58,9 +50,6 @@ struct XIAOBINDATIANXIA_API FXBGrowthConfigCache
     float MaxScale = 2.0f;
 };
 
-/**
- * @brief 士兵掉落配置
- */
 USTRUCT(BlueprintType)
 struct XIAOBINDATIANXIA_API FXBSoldierDropConfig
 {
@@ -79,9 +68,6 @@ struct XIAOBINDATIANXIA_API FXBSoldierDropConfig
     float DropAnimDuration = 0.5f;
 };
 
-/**
- * @brief 角色基类 - 所有将领的共同基类
- */
 UCLASS()
 class XIAOBINDATIANXIA_API AXBCharacterBase : public ACharacter, public IAbilitySystemInterface
 {
@@ -97,9 +83,6 @@ public:
 
     // ============ 基础信息 ============
 
-    /**
-     * @brief 角色显示名称
-     */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "配置", meta = (DisplayName = "角色名称"))
     FString CharacterName;
 
@@ -136,6 +119,15 @@ public:
     UFUNCTION(BlueprintCallable, Category = "士兵")
     UDataTable* GetSoldierDataTable() const { return SoldierDataTable; }
 
+    // ✨ 新增 - 公开访问器，修复 protected 访问问题
+    /**
+     * @brief 获取士兵Actor类
+     * @return 士兵Actor类引用
+     * @note 用于磁场组件生成士兵实例
+     */
+    UFUNCTION(BlueprintCallable, Category = "士兵", meta = (DisplayName = "获取士兵Actor类"))
+    TSubclassOf<AXBSoldierActor> GetSoldierActorClass() const { return SoldierActorClass; }
+
     UFUNCTION(BlueprintCallable, Category = "士兵")
     virtual void RemoveSoldier(AXBSoldierActor* Soldier);
 
@@ -156,11 +148,9 @@ public:
     UFUNCTION(BlueprintPure, Category = "组件")
     UXBCombatComponent* GetCombatComponent() const { return CombatComponent; }
 
-    // ✨ 新增 - 磁场组件访问器
     UFUNCTION(BlueprintCallable, Category = "组件", meta = (DisplayName = "获取磁场组件"))
     UXBMagnetFieldComponent* GetMagnetFieldComponent() const { return MagnetFieldComponent; }
 
-    // ✨ 新增 - 编队组件访问器
     UFUNCTION(BlueprintCallable, Category = "组件", meta = (DisplayName = "获取编队组件"))
     UXBFormationComponent* GetFormationComponent() const { return FormationComponent; }
 
@@ -183,28 +173,15 @@ public:
 
     // ============ 冲刺系统（共用） ============
 
-    /**
-     * @brief 开始冲刺
-     * @note 玩家通过输入调用，AI 通过行为树调用
-     */
     UFUNCTION(BlueprintCallable, Category = "移动", meta = (DisplayName = "开始冲刺"))
     virtual void StartSprint();
 
-    /**
-     * @brief 停止冲刺
-     */
     UFUNCTION(BlueprintCallable, Category = "移动", meta = (DisplayName = "停止冲刺"))
     virtual void StopSprint();
 
-    /**
-     * @brief 是否正在冲刺
-     */
     UFUNCTION(BlueprintPure, Category = "移动", meta = (DisplayName = "是否正在冲刺"))
     bool IsSprinting() const { return bIsSprinting; }
 
-    /**
-     * @brief 获取当前移动速度
-     */
     UFUNCTION(BlueprintPure, Category = "移动", meta = (DisplayName = "获取当前移动速度"))
     float GetCurrentMoveSpeed() const;
 
@@ -235,7 +212,6 @@ public:
     UPROPERTY(BlueprintAssignable, Category = "事件")
     FOnSoldierCountChanged OnSoldierCountChanged;
 
-    // ✨ 新增 - 冲刺状态变化事件
     UPROPERTY(BlueprintAssignable, Category = "事件", meta = (DisplayName = "冲刺状态变化"))
     FOnSprintStateChanged OnSprintStateChanged;
 
@@ -259,13 +235,10 @@ protected:
 
     void UpdateLeaderScale();
 
-    // ✨ 新增 - 冲刺更新
     virtual void UpdateSprint(float DeltaTime);
 
-    // ✨ 新增 - 配置移动组件
     virtual void SetupMovementComponent();
 
-    // ✨ 新增 - 磁场回调
     UFUNCTION()
     virtual void OnMagnetFieldActorEntered(AActor* EnteredActor);
 
@@ -284,16 +257,9 @@ protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "头顶血条"))
     TObjectPtr<UXBWorldHealthBarComponent> HealthBarComponent;
 
-    // ✨ 新增 - 从 PlayerCharacter 移入的共用组件
-    /**
-     * @brief 磁场组件（用于招募士兵）
-     */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "磁场组件"))
     TObjectPtr<UXBMagnetFieldComponent> MagnetFieldComponent;
 
-    /**
-     * @brief 编队组件
-     */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "编队组件"))
     TObjectPtr<UXBFormationComponent> FormationComponent;
 
@@ -322,33 +288,18 @@ protected:
 
     // ==================== 移动配置（共用） ====================
 
-    /**
-     * @brief 基础移动速度
-     */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "移动", meta = (DisplayName = "基础移动速度", ClampMin = "0.0"))
     float BaseMoveSpeed = 600.0f;
 
-    /**
-     * @brief 冲刺速度倍率
-     */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "移动", meta = (DisplayName = "冲刺速度倍率", ClampMin = "1.0", ClampMax = "5.0"))
     float SprintSpeedMultiplier = 2.0f;
 
-    /**
-     * @brief 速度插值速度
-     */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "移动", meta = (DisplayName = "速度变化平滑度", ClampMin = "1.0"))
     float SpeedInterpRate = 15.0f;
 
-    /**
-     * @brief 是否正在冲刺
-     */
     UPROPERTY(BlueprintReadOnly, Category = "移动")
     bool bIsSprinting = false;
 
-    /**
-     * @brief 目标移动速度
-     */
     UPROPERTY(BlueprintReadOnly, Category = "移动")
     float TargetMoveSpeed = 0.0f;
 
@@ -377,6 +328,7 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "招募", meta = (DisplayName = "招募士兵行名"))
     FName RecruitSoldierRowName;
 
+    // 🔧 修改 - 将访问权限改为 public，或添加公开访问器（已选择后者）
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "招募", meta = (DisplayName = "士兵Actor类"))
     TSubclassOf<AXBSoldierActor> SoldierActorClass;
 

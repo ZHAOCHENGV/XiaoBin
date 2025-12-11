@@ -1,9 +1,20 @@
-﻿// XBMagnetFieldComponent.cpp
-#include "Character/Components/XBMagnetFieldComponent.h"
+﻿/* --- 完整文件代码 --- */
+// Source/XiaoBinDaTianXia/Private/Character/Components/XBMagnetFieldComponent.cpp
 
+/**
+ * @file XBMagnetFieldComponent.cpp
+ * @brief 磁场组件实现 - 增强村民招募
+ * 
+ * @note 🔧 修改记录:
+ *       1. 新增 TryRecruitVillager 方法
+ *       2. 在 OnSphereBeginOverlap 中处理村民检测
+ */
+
+#include "Character/Components/XBMagnetFieldComponent.h"
 #include "GameplayEffectTypes.h"
 #include "Character/XBCharacterBase.h"
 #include "Soldier/XBSoldierActor.h"
+#include "Soldier/XBVillagerActor.h" // ✨ 新增
 #include "GAS/XBAbilitySystemComponent.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "Data/XBSoldierDataTable.h"
@@ -11,28 +22,19 @@
 
 UXBMagnetFieldComponent::UXBMagnetFieldComponent()
 {
-    // 构造函数中只设置基本属性，不做复杂操作
     PrimaryComponentTick.bCanEverTick = false;
-    
-    // 设置组件需要初始化
     bWantsInitializeComponent = true;
-    
-    // 基础碰撞设置
+
     SetCollisionProfileName(UCollisionProfile::NoCollision_ProfileName);
-    SetGenerateOverlapEvents(false);  // 先禁用，在 BeginPlay 中启用
-    
-    // 设置球体半径
+    SetGenerateOverlapEvents(false);
     InitSphereRadius(300.0f);
-    
-    // 默认不可见
     SetHiddenInGame(true);
 }
 
 void UXBMagnetFieldComponent::InitializeComponent()
 {
     Super::InitializeComponent();
-    
-    // 在这里设置碰撞配置
+
     SetCollisionEnabled(ECollisionEnabled::QueryOnly);
     SetCollisionObjectType(ECC_WorldDynamic);
     SetCollisionResponseToAllChannels(ECR_Ignore);
@@ -44,15 +46,13 @@ void UXBMagnetFieldComponent::BeginPlay()
 {
     Super::BeginPlay();
 
-    // 在 BeginPlay 中绑定碰撞事件（安全）
     if (!bOverlapEventsBound)
     {
         OnComponentBeginOverlap.AddDynamic(this, &UXBMagnetFieldComponent::OnSphereBeginOverlap);
         OnComponentEndOverlap.AddDynamic(this, &UXBMagnetFieldComponent::OnSphereEndOverlap);
         bOverlapEventsBound = true;
     }
-    
-    // 现在启用重叠事件
+
     SetGenerateOverlapEvents(bIsFieldEnabled);
 }
 
@@ -67,6 +67,10 @@ void UXBMagnetFieldComponent::SetFieldEnabled(bool bEnabled)
     SetGenerateOverlapEvents(bEnabled);
 }
 
+/**
+ * @brief 碰撞开始回调
+ * @note 🔧 修改 - 新增村民检测逻辑
+ */
 void UXBMagnetFieldComponent::OnSphereBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
     UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
@@ -80,7 +84,6 @@ void UXBMagnetFieldComponent::OnSphereBeginOverlap(UPrimitiveComponent* Overlapp
         return;
     }
 
-    // ✨ 新增 - 检查将领是否死亡
     AXBCharacterBase* Leader = Cast<AXBCharacterBase>(GetOwner());
     if (!Leader || Leader->IsDead())
     {
@@ -88,15 +91,23 @@ void UXBMagnetFieldComponent::OnSphereBeginOverlap(UPrimitiveComponent* Overlapp
         return;
     }
 
-    // 招募士兵逻辑
+    // ✨ 新增 - 优先检测村民
+    if (AXBVillagerActor* Villager = Cast<AXBVillagerActor>(OtherActor))
+    {
+        if (TryRecruitVillager(Villager))
+        {
+            return; // 成功招募村民，跳过后续逻辑
+        }
+    }
+
+    // 原有逻辑：招募已存在的士兵
     if (AXBSoldierActor* Soldier = Cast<AXBSoldierActor>(OtherActor))
     {
         if (Soldier->CanBeRecruited())
         {
-            // 从将领配置的数据表初始化士兵
             UDataTable* SoldierDT = Leader->GetSoldierDataTable();
             FName SoldierRowName = Leader->GetRecruitSoldierRowName();
-            
+
             if (SoldierDT && !SoldierRowName.IsNone())
             {
                 Soldier->InitializeFromDataTable(SoldierDT, SoldierRowName, Leader->GetFaction());
@@ -106,12 +117,12 @@ void UXBMagnetFieldComponent::OnSphereBeginOverlap(UPrimitiveComponent* Overlapp
                 FXBSoldierConfig DefaultConfig;
                 Soldier->InitializeSoldier(DefaultConfig, Leader->GetFaction());
             }
-            
+
             int32 SlotIndex = Leader->GetSoldierCount();
             Soldier->OnRecruited(Leader, SlotIndex);
             Leader->AddSoldier(Soldier);
             ApplyRecruitEffect(Leader, Soldier);
-            
+
             UE_LOG(LogTemp, Log, TEXT("士兵被招募，将领当前士兵数: %d"), Leader->GetSoldierCount());
         }
     }
@@ -164,6 +175,95 @@ bool UXBMagnetFieldComponent::IsActorDetectable(AActor* Actor) const
     return false;
 }
 
+/**
+ * @brief 尝试招募村民
+ * @param Villager 村民Actor
+ * @return 是否成功招募
+ * @note ✨ 新增方法
+ *       功能流程：
+ *       1. 检查村民是否可招募
+ *       2. 生成对应兵种的士兵Actor
+ *       3. 调用村民的 OnRecruited（村民会自毁）
+ *       4. 将新士兵加入将领队列
+ */
+bool UXBMagnetFieldComponent::TryRecruitVillager(AXBVillagerActor* Villager)
+{
+    if (!Villager || !Villager->CanBeRecruited())
+    {
+        return false;
+    }
+
+    AXBCharacterBase* Leader = Cast<AXBCharacterBase>(GetOwner());
+    if (!Leader)
+    {
+        return false;
+    }
+
+    // 获取将领的默认兵种配置
+    UDataTable* SoldierDT = Leader->GetSoldierDataTable();
+    FName SoldierRowName = Leader->GetRecruitSoldierRowName();
+
+    if (!SoldierDT || SoldierRowName.IsNone())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("将领 %s 未配置士兵数据表"), *Leader->GetName());
+        return false;
+    }
+
+    // 生成士兵Actor
+    UWorld* World = GetWorld();
+    if (!World)
+    {
+        return false;
+    }
+
+    // 🔧 修改 - 使用公开访问器代替直接访问 protected 成员
+    TSubclassOf<AXBSoldierActor> SoldierClass = Leader->GetSoldierActorClass();
+    if (!SoldierClass)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("将领 %s 未配置士兵Actor类"), *Leader->GetName());
+        return false;
+    }
+
+    // 在村民位置生成士兵
+    FVector SpawnLocation = Villager->GetActorLocation();
+    FRotator SpawnRotation = Villager->GetActorRotation();
+
+    FActorSpawnParameters SpawnParams;
+    SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
+    AXBSoldierActor* NewSoldier = World->SpawnActor<AXBSoldierActor>(
+        SoldierClass,
+        SpawnLocation,
+        SpawnRotation,
+        SpawnParams
+    );
+
+    if (!NewSoldier)
+    {
+        UE_LOG(LogTemp, Error, TEXT("生成士兵失败"));
+        return false;
+    }
+
+    // 初始化士兵
+    NewSoldier->InitializeFromDataTable(SoldierDT, SoldierRowName, Leader->GetFaction());
+
+    // 招募士兵
+    int32 SlotIndex = Leader->GetSoldierCount();
+    NewSoldier->OnRecruited(Leader, SlotIndex);
+    Leader->AddSoldier(NewSoldier);
+
+    // 应用招募效果
+    ApplyRecruitEffect(Leader, NewSoldier);
+
+    // 通知村民被招募（村民会自毁）
+    Villager->OnRecruited(Leader);
+
+    UE_LOG(LogTemp, Log, TEXT("村民 %s 转化为士兵 %s，将领当前士兵数: %d"),
+        *Villager->GetName(), *NewSoldier->GetName(), Leader->GetSoldierCount());
+
+    return true;
+}
+
 void UXBMagnetFieldComponent::ApplyRecruitEffect(AXBCharacterBase* Leader, AXBSoldierActor* Soldier)
 {
     if (!Leader)
@@ -171,7 +271,6 @@ void UXBMagnetFieldComponent::ApplyRecruitEffect(AXBCharacterBase* Leader, AXBSo
         return;
     }
 
-    // 获取将领的 ASC
     UAbilitySystemComponent* LeaderASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Leader);
     if (!LeaderASC)
     {
@@ -179,7 +278,6 @@ void UXBMagnetFieldComponent::ApplyRecruitEffect(AXBCharacterBase* Leader, AXBSo
         return;
     }
 
-    // 如果配置了招募效果，应用它
     if (RecruitBonusEffectClass)
     {
         FGameplayEffectContextHandle ContextHandle = LeaderASC->MakeEffectContext();
@@ -195,7 +293,6 @@ void UXBMagnetFieldComponent::ApplyRecruitEffect(AXBCharacterBase* Leader, AXBSo
         }
     }
 
-    // 发送招募事件（供其他系统监听）
     FGameplayEventData EventData;
     EventData.Instigator = Leader;
     EventData.Target = Soldier;
