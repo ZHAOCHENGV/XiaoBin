@@ -78,6 +78,13 @@ void UXBLeaderHealthWidget::NativeTick(const FGeometry& MyGeometry, float InDelt
 {
     Super::NativeTick(MyGeometry, InDeltaTime);
 
+    /*// ✨ 新增 - 如果将领死亡，停止更新
+    if (OwningLeader.IsValid() && OwningLeader->IsDead())
+    {
+        return;
+    }*/
+    
+
     if (bAutoUpdate && OwningLeader.IsValid())
     {
         UpdateTimer += InDeltaTime;
@@ -129,16 +136,28 @@ void UXBLeaderHealthWidget::RefreshDisplay()
         UE_LOG(LogTemp, Warning, TEXT("RefreshDisplay: OwningLeader 无效"));
         return;
     }
-
+    /*// ✨ 新增 - 如果将领死亡，不刷新
+    if (OwningLeader->IsDead())
+    {
+        UE_LOG(LogTemp, Log, TEXT("RefreshDisplay: 将领已死亡，跳过刷新"));
+        return;
+    }*/
     UpdateNameFromLeader();
     UpdateHealthFromLeader(false);
 }
 
 void UXBLeaderHealthWidget::ForceRefreshDisplay()
 {
-    if (!OwningLeader.IsValid())
+    /*if (!OwningLeader.IsValid())
     {
         UE_LOG(LogTemp, Warning, TEXT("ForceRefreshDisplay: OwningLeader 无效"));
+        return;
+    }*/
+
+    // ✨ 新增 - 如果将领死亡，不刷新
+    if (OwningLeader->IsDead())
+    {
+        UE_LOG(LogTemp, Log, TEXT("ForceRefreshDisplay: 将领已死亡，跳过刷新"));
         return;
     }
 

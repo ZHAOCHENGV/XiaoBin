@@ -61,6 +61,17 @@ void UXBWorldHealthBarComponent::TickComponent(float DeltaTime, ELevelTick TickT
 {
     Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
+    // ✨ 新增 - 如果将领死亡，停止所有更新
+    if (CachedOwner.IsValid() && CachedOwner->IsDead())
+    {
+        // 确保血条已隐藏
+        if (IsVisible())
+        {
+            SetVisibility(false);
+        }
+        return;
+    }
+
     UpdatePositionWithScaleCompensation();
 
     if (bEnableDistanceFade)
@@ -275,6 +286,14 @@ void UXBWorldHealthBarComponent::SetHealthBarScale(float NewScale)
 // 🔧 修改 - 设置可见性时强制刷新
 void UXBWorldHealthBarComponent::SetHealthBarVisible(bool bNewVisible)
 {
+    // ✨ 新增 - 如果将领死亡，强制隐藏
+    if (CachedOwner.IsValid() && CachedOwner->IsDead())
+    {
+        bManuallyHidden = true;
+        SetVisibility(false);
+        return;
+    }
+    
     bool bWasVisible = IsVisible() && !bManuallyHidden;
     
     bManuallyHidden = !bNewVisible;
@@ -300,6 +319,12 @@ UXBLeaderHealthWidget* UXBWorldHealthBarComponent::GetHealthWidget() const
 
 void UXBWorldHealthBarComponent::RefreshHealthBar()
 {
+    // ✨ 新增 - 如果将领死亡，不刷新
+    if (CachedOwner.IsValid() && CachedOwner->IsDead())
+    {
+        return;
+    }
+
     UXBLeaderHealthWidget* HealthWidget = GetHealthWidget();
     if (HealthWidget)
     {
@@ -315,6 +340,12 @@ void UXBWorldHealthBarComponent::RefreshHealthBar()
 // ✨ 新增 - 强制刷新血条
 void UXBWorldHealthBarComponent::ForceRefreshHealthBar()
 {
+    // ✨ 新增 - 如果将领死亡，不刷新
+    if (CachedOwner.IsValid() && CachedOwner->IsDead())
+    {
+        return;
+    }
+    
     UXBLeaderHealthWidget* HealthWidget = GetHealthWidget();
     if (HealthWidget)
     {

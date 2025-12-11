@@ -80,44 +80,39 @@ void UXBMagnetFieldComponent::OnSphereBeginOverlap(UPrimitiveComponent* Overlapp
         return;
     }
 
-    // 🔧 修改 - 使用新的招募流程
+    // ✨ 新增 - 检查将领是否死亡
+    AXBCharacterBase* Leader = Cast<AXBCharacterBase>(GetOwner());
+    if (!Leader || Leader->IsDead())
+    {
+        UE_LOG(LogTemp, Log, TEXT("磁场组件: 将领已死亡，忽略招募"));
+        return;
+    }
+
+    // 招募士兵逻辑
     if (AXBSoldierActor* Soldier = Cast<AXBSoldierActor>(OtherActor))
     {
-        // 使用新的 CanBeRecruited 检查
         if (Soldier->CanBeRecruited())
         {
-            if (AXBCharacterBase* Leader = Cast<AXBCharacterBase>(GetOwner()))
+            // 从将领配置的数据表初始化士兵
+            UDataTable* SoldierDT = Leader->GetSoldierDataTable();
+            FName SoldierRowName = Leader->GetRecruitSoldierRowName();
+            
+            if (SoldierDT && !SoldierRowName.IsNone())
             {
-                // 从将领配置的数据表初始化士兵
-                UDataTable* SoldierDT = Leader->GetSoldierDataTable();
-                FName SoldierRowName = Leader->GetRecruitSoldierRowName();
-                
-                if (SoldierDT && !SoldierRowName.IsNone())
-                {
-                    Soldier->InitializeFromDataTable(SoldierDT, SoldierRowName, Leader->GetFaction());
-                    UE_LOG(LogTemp, Log, TEXT("士兵从数据表初始化: %s"), *SoldierRowName.ToString());
-                }
-                else
-                {
-                    FXBSoldierConfig DefaultConfig;
-                    Soldier->InitializeSoldier(DefaultConfig, Leader->GetFaction());
-                    UE_LOG(LogTemp, Warning, TEXT("将领未配置士兵数据表，使用默认配置"));
-                }
-                
-                // ✨ 核心改动 - 获取槽位并调用 OnRecruited
-                int32 SlotIndex = Leader->GetSoldierCount();  // 当前数量即为新槽位
-                
-                // 调用新的招募方法（内部会启动AI控制器）
-                Soldier->OnRecruited(Leader, SlotIndex);
-                
-                // 添加到将领的士兵列表
-                Leader->AddSoldier(Soldier);
-                
-                // 应用招募效果
-                ApplyRecruitEffect(Leader, Soldier);
-                
-                UE_LOG(LogTemp, Log, TEXT("士兵被招募，将领当前士兵数: %d"), Leader->GetSoldierCount());
+                Soldier->InitializeFromDataTable(SoldierDT, SoldierRowName, Leader->GetFaction());
             }
+            else
+            {
+                FXBSoldierConfig DefaultConfig;
+                Soldier->InitializeSoldier(DefaultConfig, Leader->GetFaction());
+            }
+            
+            int32 SlotIndex = Leader->GetSoldierCount();
+            Soldier->OnRecruited(Leader, SlotIndex);
+            Leader->AddSoldier(Soldier);
+            ApplyRecruitEffect(Leader, Soldier);
+            
+            UE_LOG(LogTemp, Log, TEXT("士兵被招募，将领当前士兵数: %d"), Leader->GetSoldierCount());
         }
     }
 

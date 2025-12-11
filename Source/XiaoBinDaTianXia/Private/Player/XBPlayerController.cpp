@@ -495,11 +495,9 @@ void AXBPlayerController::HandleMoveInput(const FInputActionValue& InputValue)
  */
 void AXBPlayerController::HandleDashInputStarted()
 {
-    // 获取玩家角色
-    if (AXBPlayerCharacter* PlayerChar = Cast<AXBPlayerCharacter>(GetPawn()))
+    if (AXBCharacterBase* CharBase = Cast<AXBCharacterBase>(GetPawn()))
     {
-        // 开始冲刺
-        PlayerChar->StartDash();
+        CharBase->StartSprint();
     }
 }
 
@@ -508,11 +506,9 @@ void AXBPlayerController::HandleDashInputStarted()
  */
 void AXBPlayerController::HandleDashInputCompleted()
 {
-    // 获取玩家角色
-    if (AXBPlayerCharacter* PlayerChar = Cast<AXBPlayerCharacter>(GetPawn()))
+    if (AXBCharacterBase* CharBase = Cast<AXBCharacterBase>(GetPawn()))
     {
-        // 停止冲刺
-        PlayerChar->StopDash();
+        CharBase->StopSprint();
     }
 }
 

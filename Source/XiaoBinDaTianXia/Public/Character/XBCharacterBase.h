@@ -3,12 +3,12 @@
 
 /**
  * @file XBCharacterBase.h
- * @brief 角色基类 - 包含阵营、士兵管理、战斗组件、死亡系统等功能
+ * @brief 角色基类 - 包含所有将领共用的组件和功能
  * 
  * @note 🔧 修改记录:
- *       1. 新增战斗状态系统 - 用于触发士兵进入战斗
- *       2. 新增士兵掉落系统 - 将领死亡后掉落士兵
- *       3. 完善血量成长逻辑 - 区分回复和溢出提升上限
+ *       1. 将 MagnetFieldComponent 从 PlayerCharacter 移入
+ *       2. 将 FormationComponent 从 PlayerCharacter 移入
+ *       3. 新增冲刺系统（供 AI 和玩家共用）
  */
 
 #pragma once
@@ -28,17 +28,17 @@ class UDataTable;
 struct FXBSoldierTableRow;
 class AXBSoldierActor;
 class UAnimMontage;
-
 class UXBWorldHealthBarComponent;
+// ✨ 新增 - 从 PlayerCharacter 移入的组件
+class UXBMagnetFieldComponent;
+class UXBFormationComponent;
 
-// ✨ 新增 - 死亡事件委托
+// 委托声明
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCharacterDeath, AXBCharacterBase*, DeadCharacter);
-
-// ✨ 新增 - 战斗状态变化委托
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCombatStateChanged, bool, bInCombat);
-
-// ✨ 新增 - 士兵数量变化委托
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnSoldierCountChanged, int32, OldCount, int32, NewCount);
+// ✨ 新增 - 冲刺状态委托
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSprintStateChanged, bool, bIsSprinting);
 
 /**
  * @brief 成长配置缓存结构体
@@ -48,44 +48,39 @@ struct XIAOBINDATIANXIA_API FXBGrowthConfigCache
 {
     GENERATED_BODY()
 
-    /** @brief 每个士兵提供的生命值 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长", meta = (DisplayName = "每士兵生命加成"))
     float HealthPerSoldier = 5.0f;
 
-    /** @brief 每个士兵提供的体型缩放 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长", meta = (DisplayName = "每士兵体型加成"))
     float ScalePerSoldier = 0.01f;
 
-    /** @brief 最大体型缩放 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长", meta = (DisplayName = "最大体型缩放"))
     float MaxScale = 2.0f;
 };
 
-// ✨ 新增 - 士兵掉落配置
+/**
+ * @brief 士兵掉落配置
+ */
 USTRUCT(BlueprintType)
 struct XIAOBINDATIANXIA_API FXBSoldierDropConfig
 {
     GENERATED_BODY()
 
-    /** @brief 死亡时掉落士兵数量 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "掉落", meta = (DisplayName = "掉落数量", ClampMin = "0"))
     int32 DropCount = 5;
 
-    /** @brief 掉落半径范围 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "掉落", meta = (DisplayName = "掉落半径", ClampMin = "50.0"))
     float DropRadius = 300.0f;
 
-    /** @brief 掉落士兵类 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "掉落", meta = (DisplayName = "掉落士兵类"))
     TSubclassOf<AXBSoldierActor> DropSoldierClass;
 
-    /** @brief 掉落动画时长 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "掉落", meta = (DisplayName = "掉落动画时长", ClampMin = "0.1"))
     float DropAnimDuration = 0.5f;
 };
 
 /**
- * @brief 角色基类
+ * @brief 角色基类 - 所有将领的共同基类
  */
 UCLASS()
 class XIAOBINDATIANXIA_API AXBCharacterBase : public ACharacter, public IAbilitySystemInterface
@@ -95,8 +90,18 @@ class XIAOBINDATIANXIA_API AXBCharacterBase : public ACharacter, public IAbility
 public:
     AXBCharacterBase();
 
+    virtual void Tick(float DeltaTime) override;
+
     // ============ IAbilitySystemInterface ============
     virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
+
+    // ============ 基础信息 ============
+
+    /**
+     * @brief 角色显示名称
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "配置", meta = (DisplayName = "角色名称"))
+    FString CharacterName;
 
     // ============ 初始化 ============
 
@@ -122,33 +127,15 @@ public:
 
     // ============ 士兵管理 ============
 
-    /**
-     * @brief 添加士兵到队列
-     * @param Soldier 士兵Actor
-     * @note 会自动分配槽位并触发成长效果
-     */
     UFUNCTION(BlueprintCallable, Category = "士兵")
     virtual void AddSoldier(AXBSoldierActor* Soldier);
 
-    /**
-     * @brief 获取招募士兵的数据表行名
-     * @return 士兵数据表行名
-     * @note ✨ 新增 - 用于确定招募时创建什么类型的士兵
-     */
     UFUNCTION(BlueprintCallable, Category = "士兵")
     FName GetRecruitSoldierRowName() const { return RecruitSoldierRowName; }
 
-    /**
-     * @brief 获取士兵数据表
-     */
     UFUNCTION(BlueprintCallable, Category = "士兵")
     UDataTable* GetSoldierDataTable() const { return SoldierDataTable; }
 
-    /**
-     * @brief 从队列移除士兵
-     * @param Soldier 士兵Actor
-     * @note 🔧 修改 - 实现补位逻辑，后面的士兵向前补
-     */
     UFUNCTION(BlueprintCallable, Category = "士兵")
     virtual void RemoveSoldier(AXBSoldierActor* Soldier);
 
@@ -158,57 +145,68 @@ public:
     UFUNCTION(BlueprintPure, Category = "士兵")
     const TArray<AXBSoldierActor*>& GetSoldiers() const { return Soldiers; }
 
-    /**
-     * @brief 士兵死亡回调
-     * @note 触发补位逻辑和缩放更新
-     */
     UFUNCTION(BlueprintCallable, Category = "士兵")
     virtual void OnSoldierDied(AXBSoldierActor* DeadSoldier);
 
-    /**
-     * @brief 士兵添加后的成长处理
-     * @param SoldierCount 新增士兵数量
-     * @note 🔧 修改 - 实现设计文档的血量回复逻辑:
-     *       1. 优先回复当前血量
-     *       2. 溢出部分才提升最大血量
-     */
     UFUNCTION(BlueprintCallable, Category = "成长")
     void OnSoldiersAdded(int32 SoldierCount);
 
-    // ============ 战斗组件 ============
+    // ============ 组件访问 ============
 
-    UFUNCTION(BlueprintPure, Category = "战斗")
+    UFUNCTION(BlueprintPure, Category = "组件")
     UXBCombatComponent* GetCombatComponent() const { return CombatComponent; }
+
+    // ✨ 新增 - 磁场组件访问器
+    UFUNCTION(BlueprintCallable, Category = "组件", meta = (DisplayName = "获取磁场组件"))
+    UXBMagnetFieldComponent* GetMagnetFieldComponent() const { return MagnetFieldComponent; }
+
+    // ✨ 新增 - 编队组件访问器
+    UFUNCTION(BlueprintCallable, Category = "组件", meta = (DisplayName = "获取编队组件"))
+    UXBFormationComponent* GetFormationComponent() const { return FormationComponent; }
+
+    UFUNCTION(BlueprintCallable, Category = "组件", meta = (DisplayName = "获取血条组件"))
+    UXBWorldHealthBarComponent* GetHealthBarComponent() const { return HealthBarComponent; }
 
     // ============ 战斗状态系统 ============
 
-    /**
-     * @brief 进入战斗状态
-     * @note ✨ 新增 - 玩家攻击命中时调用，通知所有士兵进入战斗
-     */
     UFUNCTION(BlueprintCallable, Category = "战斗")
     virtual void EnterCombat();
 
-    /**
-     * @brief 退出战斗状态
-     * @note ✨ 新增 - 周围无敌人时调用，士兵返回队列
-     */
     UFUNCTION(BlueprintCallable, Category = "战斗")
     virtual void ExitCombat();
 
-    /**
-     * @brief 检查是否在战斗中
-     */
     UFUNCTION(BlueprintPure, Category = "战斗")
     bool IsInCombat() const { return bIsInCombat; }
 
-    /**
-     * @brief 攻击命中目标时调用
-     * @param HitTarget 命中的目标
-     * @note ✨ 新增 - 用于触发士兵进入战斗
-     */
     UFUNCTION(BlueprintCallable, Category = "战斗")
     virtual void OnAttackHit(AActor* HitTarget);
+
+    // ============ 冲刺系统（共用） ============
+
+    /**
+     * @brief 开始冲刺
+     * @note 玩家通过输入调用，AI 通过行为树调用
+     */
+    UFUNCTION(BlueprintCallable, Category = "移动", meta = (DisplayName = "开始冲刺"))
+    virtual void StartSprint();
+
+    /**
+     * @brief 停止冲刺
+     */
+    UFUNCTION(BlueprintCallable, Category = "移动", meta = (DisplayName = "停止冲刺"))
+    virtual void StopSprint();
+
+    /**
+     * @brief 是否正在冲刺
+     */
+    UFUNCTION(BlueprintPure, Category = "移动", meta = (DisplayName = "是否正在冲刺"))
+    bool IsSprinting() const { return bIsSprinting; }
+
+    /**
+     * @brief 获取当前移动速度
+     */
+    UFUNCTION(BlueprintPure, Category = "移动", meta = (DisplayName = "获取当前移动速度"))
+    float GetCurrentMoveSpeed() const;
 
     // ============ 召回系统 ============
 
@@ -220,96 +218,59 @@ public:
 
     // ============ 死亡系统 ============
 
-    /**
-     * @brief 处理角色死亡
-     * @note 🔧 修改 - 增加士兵掉落逻辑
-     */
     UFUNCTION(BlueprintCallable, Category = "死亡")
     virtual void HandleDeath();
 
-    /**
-     * @brief 检查角色是否已死亡
-     */
     UFUNCTION(BlueprintPure, Category = "死亡")
     bool IsDead() const { return bIsDead; }
 
     // ============ 委托事件 ============
 
-    /** @brief 死亡事件委托 */
-    UPROPERTY(BlueprintAssignable, Category = "死亡")
+    UPROPERTY(BlueprintAssignable, Category = "事件")
     FOnCharacterDeath OnCharacterDeath;
 
-    /** @brief 战斗状态变化事件 */
-    UPROPERTY(BlueprintAssignable, Category = "战斗")
+    UPROPERTY(BlueprintAssignable, Category = "事件")
     FOnCombatStateChanged OnCombatStateChanged;
 
-    /** @brief 士兵数量变化事件 */
-    UPROPERTY(BlueprintAssignable, Category = "士兵")
+    UPROPERTY(BlueprintAssignable, Category = "事件")
     FOnSoldierCountChanged OnSoldierCountChanged;
 
-    UPROPERTY(BlueprintReadWrite,EditAnywhere,Category = "配置", meta = (DisplayName = "角色名称"))
-    FString CharacterName;
+    // ✨ 新增 - 冲刺状态变化事件
+    UPROPERTY(BlueprintAssignable, Category = "事件", meta = (DisplayName = "冲刺状态变化"))
+    FOnSprintStateChanged OnSprintStateChanged;
 
-    /**
-    * @brief 获取头顶血条组件
-    */
-    UFUNCTION(BlueprintCallable, Category = "UI", meta = (DisplayName = "获取血条组件"))
-    UXBWorldHealthBarComponent* GetHealthBarComponent() const { return HealthBarComponent; }
 protected:
     virtual void BeginPlay() override;
     virtual void PossessedBy(AController* NewController) override;
 
-    /** @brief 初始化ASC */
     virtual void InitializeAbilitySystem();
 
-    /**
-     * @brief 死亡蒙太奇播放结束回调
-     */
     UFUNCTION()
     void OnDeathMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 
-    /**
-     * @brief 延迟销毁定时器回调
-     */
     UFUNCTION()
     void OnDestroyTimerExpired();
 
-    /**
-     * @brief 执行角色销毁前的清理
-     */
     virtual void PreDestroyCleanup();
 
-    // ✨ 新增 - 士兵掉落相关
-
-    /**
-     * @brief 生成掉落的士兵
-     * @note 将领死亡时调用，从中心向四周掉落士兵
-     */
     virtual void SpawnDroppedSoldiers();
 
-    /**
-     * @brief 更新士兵槽位（补位逻辑）
-     * @param StartIndex 从哪个索引开始重新分配
-     */
     void ReassignSoldierSlots(int32 StartIndex);
 
-    /**
-     * @brief 更新将领缩放（不更新血量）
-     * @note 士兵死亡时只缩小不扣血
-     */
     void UpdateLeaderScale();
 
+    // ✨ 新增 - 冲刺更新
+    virtual void UpdateSprint(float DeltaTime);
 
+    // ✨ 新增 - 配置移动组件
+    virtual void SetupMovementComponent();
 
-    /**
-     * @brief 头顶血条组件
-     * @note 在角色头顶显示血量 UI
-     */
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "头顶血条"))
-    TObjectPtr<UXBWorldHealthBarComponent> HealthBarComponent;
+    // ✨ 新增 - 磁场回调
+    UFUNCTION()
+    virtual void OnMagnetFieldActorEntered(AActor* EnteredActor);
 
 protected:
-    // ============ 组件 ============
+    // ==================== 核心组件 ====================
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "能力系统组件"))
     TObjectPtr<UXBAbilitySystemComponent> AbilitySystemComponent;
@@ -320,12 +281,28 @@ protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "战斗组件"))
     TObjectPtr<UXBCombatComponent> CombatComponent;
 
-    // ============ 阵营 ============
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "头顶血条"))
+    TObjectPtr<UXBWorldHealthBarComponent> HealthBarComponent;
+
+    // ✨ 新增 - 从 PlayerCharacter 移入的共用组件
+    /**
+     * @brief 磁场组件（用于招募士兵）
+     */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "磁场组件"))
+    TObjectPtr<UXBMagnetFieldComponent> MagnetFieldComponent;
+
+    /**
+     * @brief 编队组件
+     */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "编队组件"))
+    TObjectPtr<UXBFormationComponent> FormationComponent;
+
+    // ==================== 阵营 ====================
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "阵营", meta = (DisplayName = "阵营"))
     EXBFaction Faction = EXBFaction::Neutral;
 
-    // ============ 士兵管理 ============
+    // ==================== 士兵管理 ====================
 
     UPROPERTY(BlueprintReadOnly, Category = "士兵")
     TArray<AXBSoldierActor*> Soldiers;
@@ -333,20 +310,49 @@ protected:
     UPROPERTY(BlueprintReadOnly, Category = "成长")
     int32 CurrentSoldierCount = 0;
 
-    // ============ 战斗状态 ============
+    // ==================== 战斗状态 ====================
 
-    /** @brief 是否处于战斗状态 */
     UPROPERTY(BlueprintReadOnly, Category = "战斗")
     bool bIsInCombat = false;
 
-    /** @brief 战斗超时时间（秒） - 无攻击后自动退出战斗 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "战斗", meta = (DisplayName = "战斗超时时间"))
     float CombatTimeoutDuration = 5.0f;
 
-    /** @brief 战斗超时计时器 */
     FTimerHandle CombatTimeoutHandle;
 
-    // ============ 配置 ============
+    // ==================== 移动配置（共用） ====================
+
+    /**
+     * @brief 基础移动速度
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "移动", meta = (DisplayName = "基础移动速度", ClampMin = "0.0"))
+    float BaseMoveSpeed = 600.0f;
+
+    /**
+     * @brief 冲刺速度倍率
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "移动", meta = (DisplayName = "冲刺速度倍率", ClampMin = "1.0", ClampMax = "5.0"))
+    float SprintSpeedMultiplier = 2.0f;
+
+    /**
+     * @brief 速度插值速度
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "移动", meta = (DisplayName = "速度变化平滑度", ClampMin = "1.0"))
+    float SpeedInterpRate = 15.0f;
+
+    /**
+     * @brief 是否正在冲刺
+     */
+    UPROPERTY(BlueprintReadOnly, Category = "移动")
+    bool bIsSprinting = false;
+
+    /**
+     * @brief 目标移动速度
+     */
+    UPROPERTY(BlueprintReadOnly, Category = "移动")
+    float TargetMoveSpeed = 0.0f;
+
+    // ==================== 配置 ====================
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "配置", meta = (DisplayName = "配置数据表"))
     TObjectPtr<UDataTable> ConfigDataTable;
@@ -360,57 +366,37 @@ protected:
     UPROPERTY(BlueprintReadOnly, Category = "成长")
     FXBGrowthConfigCache GrowthConfigCache;
 
-    // ✨ 新增 - 士兵掉落配置
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "掉落", meta = (DisplayName = "士兵掉落配置"))
     FXBSoldierDropConfig SoldierDropConfig;
 
-    // ============ 招募配置 ============
+    // ==================== 招募配置 ====================
 
-    /**
-     * @brief 士兵数据表
-     * @note ✨ 新增 - 用于初始化招募的士兵
-     */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "招募", meta = (DisplayName = "士兵数据表"))
     TObjectPtr<UDataTable> SoldierDataTable;
 
-    /**
-     * @brief 招募士兵的数据表行名
-     * @note ✨ 新增 - 决定招募时创建哪种类型的士兵
-     *       例如: "Infantry_Default", "Archer_Default", "Cavalry_Default"
-     */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "招募", meta = (DisplayName = "招募士兵行名"))
     FName RecruitSoldierRowName;
 
-    /**
-     * @brief 士兵Actor类
-     * @note ✨ 新增 - 生成士兵时使用的类
-     */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "招募", meta = (DisplayName = "士兵Actor类"))
     TSubclassOf<AXBSoldierActor> SoldierActorClass;
 
-    // ============ 死亡系统 ============
+    // ==================== 死亡系统 ====================
 
-    /** @brief 死亡蒙太奇 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "死亡", meta = (DisplayName = "死亡蒙太奇"))
     TObjectPtr<UAnimMontage> DeathMontage;
 
-    /** @brief 死亡后延迟消失时间（秒） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "死亡", meta = (DisplayName = "死亡后消失延迟", ClampMin = "0.0"))
     float DeathDestroyDelay = 3.0f;
 
-    /** @brief 是否在死亡蒙太奇播放完后才开始计时 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "死亡", meta = (DisplayName = "蒙太奇结束后开始计时"))
     bool bDelayAfterMontage = true;
 
-    /** @brief 是否已死亡 */
     UPROPERTY(BlueprintReadOnly, Category = "死亡")
     bool bIsDead = false;
 
-    /** @brief 死亡销毁定时器句柄 */
     FTimerHandle DeathDestroyTimerHandle;
 
 private:
-    /** @brief 战斗超时回调 */
     UFUNCTION()
     void OnCombatTimeout();
 };
