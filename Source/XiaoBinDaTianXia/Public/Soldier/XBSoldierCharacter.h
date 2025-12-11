@@ -14,7 +14,6 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
-#include "Data/XBDataTypes.h"
 #include "Data/XBSoldierDataTable.h"
 #include "XBSoldierCharacter.generated.h"
 
