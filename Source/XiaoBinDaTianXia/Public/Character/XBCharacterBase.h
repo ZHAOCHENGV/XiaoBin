@@ -29,6 +29,8 @@ struct FXBSoldierTableRow;
 class AXBSoldierActor;
 class UAnimMontage;
 
+class UXBWorldHealthBarComponent;
+
 // ✨ 新增 - 死亡事件委托
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCharacterDeath, AXBCharacterBase*, DeadCharacter);
 
@@ -245,6 +247,14 @@ public:
     UPROPERTY(BlueprintAssignable, Category = "士兵")
     FOnSoldierCountChanged OnSoldierCountChanged;
 
+    UPROPERTY(BlueprintReadWrite,EditAnywhere,Category = "配置", meta = (DisplayName = "角色名称"))
+    FString CharacterName;
+
+    /**
+    * @brief 获取头顶血条组件
+    */
+    UFUNCTION(BlueprintCallable, Category = "UI", meta = (DisplayName = "获取血条组件"))
+    UXBWorldHealthBarComponent* GetHealthBarComponent() const { return HealthBarComponent; }
 protected:
     virtual void BeginPlay() override;
     virtual void PossessedBy(AController* NewController) override;
@@ -288,6 +298,15 @@ protected:
      * @note 士兵死亡时只缩小不扣血
      */
     void UpdateLeaderScale();
+
+
+
+    /**
+     * @brief 头顶血条组件
+     * @note 在角色头顶显示血量 UI
+     */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "头顶血条"))
+    TObjectPtr<UXBWorldHealthBarComponent> HealthBarComponent;
 
 protected:
     // ============ 组件 ============

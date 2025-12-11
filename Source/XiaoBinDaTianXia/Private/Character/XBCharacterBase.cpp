@@ -24,6 +24,8 @@
 #include "Animation/AnimInstance.h"
 #include "TimerManager.h"
 #include "Kismet/GameplayStatics.h"
+#include "UI/XBLeaderHUDComponent.h"
+#include "UI/XBWorldHealthBarComponent.h"
 
 AXBCharacterBase::AXBCharacterBase()
 {
@@ -37,6 +39,11 @@ AXBCharacterBase::AXBCharacterBase()
 
     // 创建战斗组件
     CombatComponent = CreateDefaultSubobject<UXBCombatComponent>(TEXT("CombatComponent"));
+
+
+    // ✨ 新增 - 创建头顶血条组件
+    HealthBarComponent = CreateDefaultSubobject<UXBWorldHealthBarComponent>(TEXT("HealthBarComponent"));
+    HealthBarComponent->SetupAttachment(RootComponent);
 }
 
 UAbilitySystemComponent* AXBCharacterBase::GetAbilitySystemComponent() const
