@@ -11,7 +11,7 @@
 #include "AI/BehaviorTree/BTTask_XBMoveToFormation.h"
 #include "AIController.h"
 #include "BehaviorTree/BlackboardComponent.h"
-#include "Soldier/XBSoldierActor.h"
+#include "Soldier/XBSoldierCharacter.h"
 #include "AI/XBSoldierAIController.h"
 #include "Navigation/PathFollowingComponent.h"
 
@@ -38,7 +38,7 @@ EBTNodeResult::Type UBTTask_XBMoveToFormation::ExecuteTask(UBehaviorTreeComponen
     }
     
     // 获取士兵Actor
-    AXBSoldierActor* Soldier = Cast<AXBSoldierActor>(AIController->GetPawn());
+    AXBSoldierCharacter* Soldier = Cast<AXBSoldierCharacter>(AIController->GetPawn());
     if (!Soldier)
     {
         return EBTNodeResult::Failed;
@@ -121,7 +121,7 @@ void UBTTask_XBMoveToFormation::TickTask(UBehaviorTreeComponent& OwnerComp, uint
     }
     
     // 获取士兵Actor
-    AXBSoldierActor* Soldier = Cast<AXBSoldierActor>(AIController->GetPawn());
+    AXBSoldierCharacter* Soldier = Cast<AXBSoldierCharacter>(AIController->GetPawn());
     if (!Soldier)
     {
         FinishLatentTask(OwnerComp, EBTNodeResult::Failed);

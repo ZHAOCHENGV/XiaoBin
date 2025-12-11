@@ -11,7 +11,7 @@
 #include "AI/BehaviorTree/BTTask_XBSetSoldierState.h"
 #include "AIController.h"
 #include "BehaviorTree/BlackboardComponent.h"
-#include "Soldier/XBSoldierActor.h"
+#include "Soldier/XBSoldierCharacter.h"
 #include "AI/XBSoldierAIController.h"
 
 UBTTask_XBSetSoldierState::UBTTask_XBSetSoldierState()
@@ -33,7 +33,7 @@ EBTNodeResult::Type UBTTask_XBSetSoldierState::ExecuteTask(UBehaviorTreeComponen
     }
     
     // 获取士兵Actor
-    AXBSoldierActor* Soldier = Cast<AXBSoldierActor>(AIController->GetPawn());
+    AXBSoldierCharacter* Soldier = Cast<AXBSoldierCharacter>(AIController->GetPawn());
     if (!Soldier)
     {
         return EBTNodeResult::Failed;

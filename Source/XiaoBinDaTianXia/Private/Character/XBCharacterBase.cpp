@@ -21,7 +21,7 @@
 #include "GAS/XBAbilitySystemComponent.h"
 #include "GAS/XBAttributeSet.h"
 #include "Data/XBLeaderDataTable.h"
-#include "Soldier/XBSoldierActor.h"
+#include "Soldier/XBSoldierCharacter.h"
 #include "Engine/DataTable.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -346,7 +346,7 @@ bool AXBCharacterBase::IsFriendlyTo(const AXBCharacterBase* Other) const
 
 // ==================== 士兵管理实现 ====================
 
-void AXBCharacterBase::AddSoldier(AXBSoldierActor* Soldier)
+void AXBCharacterBase::AddSoldier(AXBSoldierCharacter* Soldier)
 {
     // ✨ 新增 - 死亡后不能添加士兵
     if (bIsDead)
@@ -384,7 +384,7 @@ void AXBCharacterBase::AddSoldier(AXBSoldierActor* Soldier)
     }
 }
 
-void AXBCharacterBase::RemoveSoldier(AXBSoldierActor* Soldier)
+void AXBCharacterBase::RemoveSoldier(AXBSoldierCharacter* Soldier)
 {
     if (!Soldier)
     {
@@ -427,7 +427,7 @@ void AXBCharacterBase::ReassignSoldierSlots(int32 StartIndex)
  * @param DeadSoldier 死亡的士兵
  * @note 🔧 修改 - 只缩小体型，不减少血量
  */
-void AXBCharacterBase::OnSoldierDied(AXBSoldierActor* DeadSoldier)
+void AXBCharacterBase::OnSoldierDied(AXBSoldierCharacter* DeadSoldier)
 {
     if (!DeadSoldier)
     {
@@ -695,7 +695,7 @@ void AXBCharacterBase::EnterCombat()
 
     bIsInCombat = true;
 
-    for (AXBSoldierActor* Soldier : Soldiers)
+    for (AXBSoldierCharacter* Soldier : Soldiers)
     {
         if (Soldier && Soldier->GetSoldierState() != EXBSoldierState::Dead)
         {
@@ -725,7 +725,7 @@ void AXBCharacterBase::ExitCombat()
 
     GetWorldTimerManager().ClearTimer(CombatTimeoutHandle);
 
-    for (AXBSoldierActor* Soldier : Soldiers)
+    for (AXBSoldierCharacter* Soldier : Soldiers)
     {
         if (Soldier && Soldier->GetSoldierState() != EXBSoldierState::Dead)
         {
@@ -825,7 +825,7 @@ void AXBCharacterBase::RecallAllSoldiers()
     // 退出战斗状态
     ExitCombat();
 
-    for (AXBSoldierActor* Soldier : Soldiers)
+    for (AXBSoldierCharacter* Soldier : Soldiers)
     {
         if (Soldier && Soldier->GetSoldierState() != EXBSoldierState::Dead)
         {
@@ -853,7 +853,7 @@ void AXBCharacterBase::RecallAllSoldiers()
  */
 void AXBCharacterBase::SetSoldiersEscaping(bool bEscaping)
 {
-    for (AXBSoldierActor* Soldier : Soldiers)
+    for (AXBSoldierCharacter* Soldier : Soldiers)
     {
         if (Soldier)
         {
@@ -999,7 +999,7 @@ void AXBCharacterBase::SpawnDroppedSoldiers()
         FActorSpawnParameters SpawnParams;
         SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
         
-        AXBSoldierActor* DroppedSoldier = World->SpawnActor<AXBSoldierActor>(
+        AXBSoldierCharacter* DroppedSoldier = World->SpawnActor<AXBSoldierCharacter>(
             SoldierDropConfig.DropSoldierClass,
             TargetLocation,
             FRotator::ZeroRotator,
@@ -1038,7 +1038,7 @@ void AXBCharacterBase::PreDestroyCleanup()
 {
     GetWorldTimerManager().ClearTimer(CombatTimeoutHandle);
 
-    for (AXBSoldierActor* Soldier : Soldiers)
+    for (AXBSoldierCharacter* Soldier : Soldiers)
     {
         if (Soldier)
         {

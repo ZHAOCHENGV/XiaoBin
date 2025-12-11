@@ -13,7 +13,7 @@
 #include "Character/Components/XBMagnetFieldComponent.h"
 #include "GameplayEffectTypes.h"
 #include "Character/XBCharacterBase.h"
-#include "Soldier/XBSoldierActor.h"
+#include "Soldier/XBSoldierCharacter.h"
 #include "Soldier/XBVillagerActor.h" // ✨ 新增
 #include "GAS/XBAbilitySystemComponent.h"
 #include "AbilitySystemBlueprintLibrary.h"
@@ -101,7 +101,7 @@ void UXBMagnetFieldComponent::OnSphereBeginOverlap(UPrimitiveComponent* Overlapp
     }
 
     // 原有逻辑：招募已存在的士兵
-    if (AXBSoldierActor* Soldier = Cast<AXBSoldierActor>(OtherActor))
+    if (AXBSoldierCharacter* Soldier = Cast<AXBSoldierCharacter>(OtherActor))
     {
         if (Soldier->CanBeRecruited())
         {
@@ -217,7 +217,7 @@ bool UXBMagnetFieldComponent::TryRecruitVillager(AXBVillagerActor* Villager)
     }
 
     // 🔧 修改 - 使用公开访问器代替直接访问 protected 成员
-    TSubclassOf<AXBSoldierActor> SoldierClass = Leader->GetSoldierActorClass();
+    TSubclassOf<AXBSoldierCharacter> SoldierClass = Leader->GetSoldierActorClass();
     if (!SoldierClass)
     {
         UE_LOG(LogTemp, Warning, TEXT("将领 %s 未配置士兵Actor类"), *Leader->GetName());
@@ -231,7 +231,7 @@ bool UXBMagnetFieldComponent::TryRecruitVillager(AXBVillagerActor* Villager)
     FActorSpawnParameters SpawnParams;
     SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
 
-    AXBSoldierActor* NewSoldier = World->SpawnActor<AXBSoldierActor>(
+    AXBSoldierCharacter* NewSoldier = World->SpawnActor<AXBSoldierCharacter>(
         SoldierClass,
         SpawnLocation,
         SpawnRotation,
@@ -264,7 +264,7 @@ bool UXBMagnetFieldComponent::TryRecruitVillager(AXBVillagerActor* Villager)
     return true;
 }
 
-void UXBMagnetFieldComponent::ApplyRecruitEffect(AXBCharacterBase* Leader, AXBSoldierActor* Soldier)
+void UXBMagnetFieldComponent::ApplyRecruitEffect(AXBCharacterBase* Leader, AXBSoldierCharacter* Soldier)
 {
     if (!Leader)
     {

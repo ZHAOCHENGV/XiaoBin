@@ -11,7 +11,7 @@
 #include "AI/BehaviorTree/BTService_XBUpdateSoldierState.h"
 #include "AIController.h"
 #include "BehaviorTree/BlackboardComponent.h"
-#include "Soldier/XBSoldierActor.h"
+#include "Soldier/XBSoldierCharacter.h"
 #include "Character/XBCharacterBase.h"
 #include "AI/XBSoldierAIController.h"
 #include "Kismet/GameplayStatics.h"
@@ -52,7 +52,7 @@ void UBTService_XBUpdateSoldierState::TickNode(UBehaviorTreeComponent& OwnerComp
     }
     
     // 获取士兵Actor
-    AXBSoldierActor* Soldier = Cast<AXBSoldierActor>(AIController->GetPawn());
+    AXBSoldierCharacter* Soldier = Cast<AXBSoldierCharacter>(AIController->GetPawn());
     if (!Soldier)
     {
         return;
@@ -81,7 +81,7 @@ void UBTService_XBUpdateSoldierState::TickNode(UBehaviorTreeComponent& OwnerComp
     if (bCheckTargetValidity && CurrentTarget)
     {
         // 检查目标是否已死亡
-        if (const AXBSoldierActor* TargetSoldier = Cast<AXBSoldierActor>(CurrentTarget))
+        if (const AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(CurrentTarget))
         {
             bTargetValid = (TargetSoldier->GetSoldierState() != EXBSoldierState::Dead);
         }

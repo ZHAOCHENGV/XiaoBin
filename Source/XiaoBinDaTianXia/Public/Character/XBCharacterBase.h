@@ -24,7 +24,7 @@ class UXBAttributeSet;
 class UXBCombatComponent;
 class UDataTable;
 struct FXBSoldierTableRow;
-class AXBSoldierActor;
+class AXBSoldierCharacter;
 class UAnimMontage;
 class UXBWorldHealthBarComponent;
 class UXBMagnetFieldComponent;
@@ -83,7 +83,7 @@ struct XIAOBINDATIANXIA_API FXBSoldierDropConfig
     float DropRadius = 300.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "掉落", meta = (DisplayName = "掉落士兵类"))
-    TSubclassOf<AXBSoldierActor> DropSoldierClass;
+    TSubclassOf<AXBSoldierCharacter> DropSoldierClass;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "掉落", meta = (DisplayName = "掉落动画时长", ClampMin = "0.1"))
     float DropAnimDuration = 0.5f;
@@ -132,7 +132,7 @@ public:
     // ============ 士兵管理 ============
 
     UFUNCTION(BlueprintCallable, Category = "士兵")
-    virtual void AddSoldier(AXBSoldierActor* Soldier);
+    virtual void AddSoldier(AXBSoldierCharacter* Soldier);
 
     UFUNCTION(BlueprintCallable, Category = "士兵")
     FName GetRecruitSoldierRowName() const { return RecruitSoldierRowName; }
@@ -147,16 +147,16 @@ public:
      * @note 用于磁场组件生成士兵实例
      */
     UFUNCTION(BlueprintCallable, Category = "士兵", meta = (DisplayName = "获取士兵Actor类"))
-    TSubclassOf<AXBSoldierActor> GetSoldierActorClass() const { return SoldierActorClass; }
+    TSubclassOf<AXBSoldierCharacter> GetSoldierActorClass() const { return SoldierActorClass; }
 
     UFUNCTION(BlueprintCallable, Category = "士兵")
-    virtual void RemoveSoldier(AXBSoldierActor* Soldier);
+    virtual void RemoveSoldier(AXBSoldierCharacter* Soldier);
 
     UFUNCTION(BlueprintPure, Category = "士兵")
     int32 GetSoldierCount() const { return Soldiers.Num(); }
 
     UFUNCTION(BlueprintPure, Category = "士兵")
-    const TArray<AXBSoldierActor*>& GetSoldiers() const { return Soldiers; }
+    const TArray<AXBSoldierCharacter*>& GetSoldiers() const { return Soldiers; }
 
 
     /**
@@ -179,7 +179,7 @@ public:
      *       3. 重新缩放技能特效和攻击范围
      */
     UFUNCTION(BlueprintCallable, Category = "成长")
-    virtual void OnSoldierDied(AXBSoldierActor* DeadSoldier);
+    virtual void OnSoldierDied(AXBSoldierCharacter* DeadSoldier);
 
     // ✨ 新增 - 获取当前缩放倍率
     /**
@@ -392,7 +392,7 @@ protected:
     // ==================== 士兵管理 ====================
 
     UPROPERTY(BlueprintReadOnly, Category = "士兵")
-    TArray<AXBSoldierActor*> Soldiers;
+    TArray<AXBSoldierCharacter*> Soldiers;
 
     UPROPERTY(BlueprintReadOnly, Category = "成长")
     int32 CurrentSoldierCount = 0;
@@ -459,7 +459,7 @@ protected:
 
     // 🔧 修改 - 将访问权限改为 public，或添加公开访问器（已选择后者）
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "招募", meta = (DisplayName = "士兵Actor类"))
-    TSubclassOf<AXBSoldierActor> SoldierActorClass;
+    TSubclassOf<AXBSoldierCharacter> SoldierActorClass;
 
     // ==================== 死亡系统 ====================
 

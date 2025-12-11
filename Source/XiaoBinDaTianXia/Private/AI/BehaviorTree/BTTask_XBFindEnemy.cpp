@@ -11,7 +11,7 @@
 #include "AI/BehaviorTree/BTTask_XBFindEnemy.h"
 #include "AIController.h"
 #include "BehaviorTree/BlackboardComponent.h"
-#include "Soldier/XBSoldierActor.h"
+#include "Soldier/XBSoldierCharacter.h"
 #include "Character/XBCharacterBase.h"
 #include "Kismet/GameplayStatics.h"
 #include "AI/XBSoldierAIController.h"
@@ -42,7 +42,7 @@ EBTNodeResult::Type UBTTask_XBFindEnemy::ExecuteTask(UBehaviorTreeComponent& Own
     // 获取控制的Pawn
     // 说明: AI控制器控制的士兵Actor
     APawn* ControlledPawn = AIController->GetPawn();
-    AXBSoldierActor* Soldier = Cast<AXBSoldierActor>(ControlledPawn);
+    AXBSoldierCharacter* Soldier = Cast<AXBSoldierCharacter>(ControlledPawn);
     if (!Soldier)
     {
         UE_LOG(LogTemp, Warning, TEXT("BTTask_FindEnemy: 被控制的Pawn不是士兵类型"));
@@ -85,7 +85,7 @@ EBTNodeResult::Type UBTTask_XBFindEnemy::ExecuteTask(UBehaviorTreeComponent& Own
     
     // 获取所有士兵敌人
     TArray<AActor*> Soldiers;
-    UGameplayStatics::GetAllActorsOfClass(Soldier->GetWorld(), AXBSoldierActor::StaticClass(), Soldiers);
+    UGameplayStatics::GetAllActorsOfClass(Soldier->GetWorld(), AXBSoldierCharacter::StaticClass(), Soldiers);
     PotentialTargets.Append(Soldiers);
     
     // 寻找最近的敌人
@@ -119,7 +119,7 @@ EBTNodeResult::Type UBTTask_XBFindEnemy::ExecuteTask(UBehaviorTreeComponent& Own
                            CharTarget->GetFaction() == EXBFaction::Ally);
             }
         }
-        else if (const AXBSoldierActor* SoldierTarget = Cast<AXBSoldierActor>(Target))
+        else if (const AXBSoldierCharacter* SoldierTarget = Cast<AXBSoldierCharacter>(Target))
         {
             // 跳过死亡的士兵
             if (bIgnoreDeadTargets && SoldierTarget->GetSoldierState() == EXBSoldierState::Dead)

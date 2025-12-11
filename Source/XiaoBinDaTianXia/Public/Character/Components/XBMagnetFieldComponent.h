@@ -18,7 +18,7 @@
 
 class UGameplayEffect;
 class AXBCharacterBase;
-class AXBSoldierActor;
+class AXBSoldierCharacter;
 class AXBVillagerActor; // ✨ 新增
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FXBOnActorEnteredField, AActor*, Actor);
@@ -98,5 +98,5 @@ protected:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XB|MagnetField", meta = (DisplayName = "招募增益效果"))
     TSubclassOf<UGameplayEffect> RecruitBonusEffectClass;
 
-    void ApplyRecruitEffect(AXBCharacterBase* Leader, AXBSoldierActor* Soldier);
+    void ApplyRecruitEffect(AXBCharacterBase* Leader, AXBSoldierCharacter* Soldier);
 };

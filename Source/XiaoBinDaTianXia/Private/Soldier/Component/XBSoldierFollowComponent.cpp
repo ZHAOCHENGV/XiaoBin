@@ -17,7 +17,7 @@
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
-#include "Soldier/XBSoldierActor.h"
+#include "Soldier/XBSoldierCharacter.h"
 
 UXBSoldierFollowComponent::UXBSoldierFollowComponent()
 {
@@ -343,7 +343,7 @@ FVector UXBSoldierFollowComponent::ApplyAvoidance(const FVector& DesiredDirectio
 
     // 获取所有附近的士兵
     TArray<AActor*> NearbyActors;
-    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AXBSoldierActor::StaticClass(), NearbyActors);
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AXBSoldierCharacter::StaticClass(), NearbyActors);
 
     for (AActor* OtherActor : NearbyActors)
     {

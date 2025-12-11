@@ -11,7 +11,7 @@
  *       3. 延迟启用移动组件Tick
  */
 
-#include "Soldier/XBSoldierActor.h"
+#include "Soldier/XBSoldierCharacter.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Soldier/Component/XBSoldierFollowComponent.h"
@@ -28,7 +28,7 @@
 #include "Animation/AnimInstance.h"
 #include "TimerManager.h"
 
-AXBSoldierActor::AXBSoldierActor()
+AXBSoldierCharacter::AXBSoldierCharacter()
 {
     PrimaryActorTick.bCanEverTick = true;
     // 🔧 修改 - 延迟启用Tick，等待组件初始化
@@ -71,7 +71,7 @@ AXBSoldierActor::AXBSoldierActor()
  * @brief 组件初始化完成后的回调
  * @note ✨ 新增 - 验证所有组件正确初始化
  */
-void AXBSoldierActor::PostInitializeComponents()
+void AXBSoldierCharacter::PostInitializeComponents()
 {
     Super::PostInitializeComponents();
     
@@ -116,7 +116,7 @@ void AXBSoldierActor::PostInitializeComponents()
     UE_LOG(LogTemp, Log, TEXT("士兵 %s: PostInitializeComponents 完成"), *GetName());
 }
 
-void AXBSoldierActor::BeginPlay()
+void AXBSoldierCharacter::BeginPlay()
 {
     Super::BeginPlay();
 
@@ -145,7 +145,7 @@ void AXBSoldierActor::BeginPlay()
  * @brief 启用移动组件和Tick
  * @note ✨ 新增 - 延迟启用，确保组件就绪
  */
-void AXBSoldierActor::EnableMovementAndTick()
+void AXBSoldierCharacter::EnableMovementAndTick()
 {
     if (!IsValid(this) || IsPendingKillPending())
     {
@@ -179,7 +179,7 @@ void AXBSoldierActor::EnableMovementAndTick()
     UE_LOG(LogTemp, Log, TEXT("士兵 %s: 移动组件和Tick已启用"), *GetName());
 }
 
-void AXBSoldierActor::Tick(float DeltaTime)
+void AXBSoldierCharacter::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
@@ -218,7 +218,7 @@ void AXBSoldierActor::Tick(float DeltaTime)
 
 // ==================== 招募系统实现 ====================
 
-bool AXBSoldierActor::CanBeRecruited() const
+bool AXBSoldierCharacter::CanBeRecruited() const
 {
     if (bIsRecruited)
     {
@@ -249,7 +249,7 @@ bool AXBSoldierActor::CanBeRecruited() const
     return true;
 }
 
-void AXBSoldierActor::OnRecruited(AActor* NewLeader, int32 SlotIndex)
+void AXBSoldierCharacter::OnRecruited(AActor* NewLeader, int32 SlotIndex)
 {
     if (!NewLeader)
     {
@@ -306,7 +306,7 @@ void AXBSoldierActor::OnRecruited(AActor* NewLeader, int32 SlotIndex)
     GetWorldTimerManager().SetTimer(
         DelayedAIStartTimerHandle,
         this,
-        &AXBSoldierActor::SpawnAndPossessAIController,
+        &AXBSoldierCharacter::SpawnAndPossessAIController,
         0.3f,  // 延迟 0.3 秒
         false
     );
@@ -315,7 +315,7 @@ void AXBSoldierActor::OnRecruited(AActor* NewLeader, int32 SlotIndex)
     OnSoldierRecruited.Broadcast(this, NewLeader);
 }
 
-void AXBSoldierActor::SpawnAndPossessAIController()
+void AXBSoldierCharacter::SpawnAndPossessAIController()
 {
     // 安全检查
     if (!IsValid(this) || IsPendingKillPending())
@@ -342,7 +342,7 @@ void AXBSoldierActor::SpawnAndPossessAIController()
         GetWorldTimerManager().SetTimer(
             DelayedAIStartTimerHandle,
             this,
-            &AXBSoldierActor::SpawnAndPossessAIController,
+            &AXBSoldierCharacter::SpawnAndPossessAIController,
             0.1f,
             false
         );
@@ -410,7 +410,7 @@ void AXBSoldierActor::SpawnAndPossessAIController()
     }
 }
 
-void AXBSoldierActor::InitializeAI()
+void AXBSoldierCharacter::InitializeAI()
 {
     AAIController* AICtrl = Cast<AAIController>(GetController());
     if (!AICtrl)
@@ -447,7 +447,7 @@ void AXBSoldierActor::InitializeAI()
 
 // ==================== 初始化实现 ====================
 
-void AXBSoldierActor::InitializeFromDataTable(UDataTable* DataTable, FName RowName, EXBFaction InFaction)
+void AXBSoldierCharacter::InitializeFromDataTable(UDataTable* DataTable, FName RowName, EXBFaction InFaction)
 {
     if (!DataTable)
     {
@@ -508,7 +508,7 @@ void AXBSoldierActor::InitializeFromDataTable(UDataTable* DataTable, FName RowNa
         *RowName.ToString(), static_cast<int32>(SoldierType), CurrentHealth);
 }
 
-void AXBSoldierActor::InitializeSoldier(const FXBSoldierConfig& InConfig, EXBFaction InFaction)
+void AXBSoldierCharacter::InitializeSoldier(const FXBSoldierConfig& InConfig, EXBFaction InFaction)
 {
     SoldierConfig = InConfig;
     SoldierType = InConfig.SoldierType;
@@ -535,7 +535,7 @@ void AXBSoldierActor::InitializeSoldier(const FXBSoldierConfig& InConfig, EXBFac
         static_cast<int32>(SoldierType), CurrentHealth);
 }
 
-void AXBSoldierActor::ApplyVisualConfig()
+void AXBSoldierCharacter::ApplyVisualConfig()
 {
     if (!bInitializedFromDataTable)
     {
@@ -561,7 +561,7 @@ void AXBSoldierActor::ApplyVisualConfig()
 
 // ==================== 跟随系统实现 ====================
 
-void AXBSoldierActor::SetFollowTarget(AActor* NewLeader, int32 SlotIndex)
+void AXBSoldierCharacter::SetFollowTarget(AActor* NewLeader, int32 SlotIndex)
 {
     FollowTarget = NewLeader;
     FormationSlotIndex = SlotIndex;
@@ -591,12 +591,12 @@ void AXBSoldierActor::SetFollowTarget(AActor* NewLeader, int32 SlotIndex)
     }
 }
 
-AXBCharacterBase* AXBSoldierActor::GetLeaderCharacter() const
+AXBCharacterBase* AXBSoldierCharacter::GetLeaderCharacter() const
 {
     return Cast<AXBCharacterBase>(FollowTarget.Get());
 }
 
-void AXBSoldierActor::SetFormationSlotIndex(int32 NewIndex)
+void AXBSoldierCharacter::SetFormationSlotIndex(int32 NewIndex)
 {
     FormationSlotIndex = NewIndex;
 
@@ -616,7 +616,7 @@ void AXBSoldierActor::SetFormationSlotIndex(int32 NewIndex)
 
 // ==================== 状态管理实现 ====================
 
-void AXBSoldierActor::SetSoldierState(EXBSoldierState NewState)
+void AXBSoldierCharacter::SetSoldierState(EXBSoldierState NewState)
 {
     if (CurrentState == NewState)
     {
@@ -642,7 +642,7 @@ void AXBSoldierActor::SetSoldierState(EXBSoldierState NewState)
 
 // ==================== 战斗系统实现 ====================
 
-void AXBSoldierActor::EnterCombat()
+void AXBSoldierCharacter::EnterCombat()
 {
     if (CurrentState == EXBSoldierState::Dead)
     {
@@ -661,7 +661,7 @@ void AXBSoldierActor::EnterCombat()
         *GetName(), CurrentAttackTarget.IsValid() ? *CurrentAttackTarget->GetName() : TEXT("无"));
 }
 
-void AXBSoldierActor::ExitCombat()
+void AXBSoldierCharacter::ExitCombat()
 {
     if (CurrentState == EXBSoldierState::Dead)
     {
@@ -674,7 +674,7 @@ void AXBSoldierActor::ExitCombat()
     UE_LOG(LogTemp, Log, TEXT("士兵 %s 退出战斗，返回队列"), *GetName());
 }
 
-float AXBSoldierActor::TakeSoldierDamage(float DamageAmount, AActor* DamageSource)
+float AXBSoldierCharacter::TakeSoldierDamage(float DamageAmount, AActor* DamageSource)
 {
     if (CurrentState == EXBSoldierState::Dead)
     {
@@ -695,7 +695,7 @@ float AXBSoldierActor::TakeSoldierDamage(float DamageAmount, AActor* DamageSourc
     return ActualDamage;
 }
 
-bool AXBSoldierActor::PerformAttack(AActor* Target)
+bool AXBSoldierCharacter::PerformAttack(AActor* Target)
 {
     if (!Target || !CanAttack())
     {
@@ -709,7 +709,7 @@ bool AXBSoldierActor::PerformAttack(AActor* Target)
 
     float Damage = bInitializedFromDataTable ? CachedTableRow.BaseDamage : SoldierConfig.BaseDamage;
 
-    if (AXBSoldierActor* TargetSoldier = Cast<AXBSoldierActor>(Target))
+    if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(Target))
     {
         TargetSoldier->TakeSoldierDamage(Damage, this);
     }
@@ -720,7 +720,7 @@ bool AXBSoldierActor::PerformAttack(AActor* Target)
     return true;
 }
 
-bool AXBSoldierActor::PlayAttackMontage()
+bool AXBSoldierCharacter::PlayAttackMontage()
 {
     UAnimMontage* AttackMontage = nullptr;
 
@@ -744,7 +744,7 @@ bool AXBSoldierActor::PlayAttackMontage()
 
 // ==================== AI系统实现 ====================
 
-AActor* AXBSoldierActor::FindNearestEnemy() const
+AActor* AXBSoldierCharacter::FindNearestEnemy() const
 {
     if (!bIsRecruited)
     {
@@ -759,7 +759,7 @@ AActor* AXBSoldierActor::FindNearestEnemy() const
     UGameplayStatics::GetAllActorsOfClass(GetWorld(), AXBCharacterBase::StaticClass(), PotentialTargets);
     
     TArray<AActor*> SoldierActors;
-    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AXBSoldierActor::StaticClass(), SoldierActors);
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AXBSoldierCharacter::StaticClass(), SoldierActors);
     PotentialTargets.Append(SoldierActors);
 
     AActor* NearestEnemy = nullptr;
@@ -779,7 +779,7 @@ AActor* AXBSoldierActor::FindNearestEnemy() const
                 (CharTarget->GetFaction() == EXBFaction::Enemy) :
                 (CharTarget->GetFaction() == EXBFaction::Player || CharTarget->GetFaction() == EXBFaction::Ally);
         }
-        else if (const AXBSoldierActor* SoldierTarget = Cast<AXBSoldierActor>(Target))
+        else if (const AXBSoldierCharacter* SoldierTarget = Cast<AXBSoldierCharacter>(Target))
         {
             if (SoldierTarget->GetSoldierState() == EXBSoldierState::Dead)
             {
@@ -810,7 +810,7 @@ AActor* AXBSoldierActor::FindNearestEnemy() const
     return NearestEnemy;
 }
 
-float AXBSoldierActor::GetDistanceToTarget(AActor* Target) const
+float AXBSoldierCharacter::GetDistanceToTarget(AActor* Target) const
 {
     if (!Target)
     {
@@ -819,7 +819,7 @@ float AXBSoldierActor::GetDistanceToTarget(AActor* Target) const
     return FVector::Dist(GetActorLocation(), Target->GetActorLocation());
 }
 
-bool AXBSoldierActor::IsInAttackRange(AActor* Target) const
+bool AXBSoldierCharacter::IsInAttackRange(AActor* Target) const
 {
     if (!Target)
     {
@@ -839,7 +839,7 @@ bool AXBSoldierActor::IsInAttackRange(AActor* Target) const
  *       1. 距离将领超过脱离距离
  *       2. 周边无敌人且超过返回延迟
  */
-bool AXBSoldierActor::ShouldDisengage() const
+bool AXBSoldierCharacter::ShouldDisengage() const
 {
     // 条件1：距离将领过远
     if (FollowTarget.IsValid())
@@ -874,7 +874,7 @@ bool AXBSoldierActor::ShouldDisengage() const
  * @brief 返回队列
  * @note ✨ 新增方法
  */
-void AXBSoldierActor::ReturnToFormation()
+void AXBSoldierCharacter::ReturnToFormation()
 {
     // 清除当前目标
     CurrentAttackTarget = nullptr;
@@ -893,7 +893,7 @@ void AXBSoldierActor::ReturnToFormation()
  * @return true表示敌人过近
  * @note ✨ 新增方法
  */
-bool AXBSoldierActor::ShouldRetreat() const
+bool AXBSoldierCharacter::ShouldRetreat() const
 {
     if (SoldierType != EXBSoldierType::Archer)
     {
@@ -920,7 +920,7 @@ bool AXBSoldierActor::ShouldRetreat() const
  * @note ✨ 新增方法
  *       计算远离目标的方向，移动到安全位置
  */
-void AXBSoldierActor::RetreatFromTarget(AActor* Target)
+void AXBSoldierCharacter::RetreatFromTarget(AActor* Target)
 {
     if (!Target || !bInitializedFromDataTable)
     {
@@ -951,7 +951,7 @@ void AXBSoldierActor::RetreatFromTarget(AActor* Target)
  * @note ✨ 新增方法
  *       使用简单的排斥力模型避免扎堆
  */
-FVector AXBSoldierActor::CalculateAvoidanceDirection(const FVector& DesiredDirection)
+FVector AXBSoldierCharacter::CalculateAvoidanceDirection(const FVector& DesiredDirection)
 {
 
     if (AvoidanceRadius <= 0.0f)
@@ -964,7 +964,7 @@ FVector AXBSoldierActor::CalculateAvoidanceDirection(const FVector& DesiredDirec
 
     // 获取附近的士兵
     TArray<AActor*> NearbyActors;
-    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AXBSoldierActor::StaticClass(), NearbyActors);
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AXBSoldierCharacter::StaticClass(), NearbyActors);
 
     int32 AvoidanceCount = 0;
 
@@ -1014,13 +1014,13 @@ FVector AXBSoldierActor::CalculateAvoidanceDirection(const FVector& DesiredDirec
  * @return 是否有敌人
  * @note ✨ 新增方法
  */
-bool AXBSoldierActor::HasEnemiesInRadius(float Radius) const
+bool AXBSoldierCharacter::HasEnemiesInRadius(float Radius) const
 {
     TArray<AActor*> PotentialTargets;
     UGameplayStatics::GetAllActorsOfClass(GetWorld(), AXBCharacterBase::StaticClass(), PotentialTargets);
 
     TArray<AActor*> SoldierActors;
-    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AXBSoldierActor::StaticClass(), SoldierActors);
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AXBSoldierCharacter::StaticClass(), SoldierActors);
     PotentialTargets.Append(SoldierActors);
 
     FVector MyLocation = GetActorLocation();
@@ -1046,7 +1046,7 @@ bool AXBSoldierActor::HasEnemiesInRadius(float Radius) const
                 (CharTarget->GetFaction() == EXBFaction::Enemy) :
                 (CharTarget->GetFaction() == EXBFaction::Player || CharTarget->GetFaction() == EXBFaction::Ally);
         }
-        else if (const AXBSoldierActor* SoldierTarget = Cast<AXBSoldierActor>(Target))
+        else if (const AXBSoldierCharacter* SoldierTarget = Cast<AXBSoldierCharacter>(Target))
         {
             if (SoldierTarget->GetSoldierState() == EXBSoldierState::Dead)
             {
@@ -1085,7 +1085,7 @@ bool AXBSoldierActor::HasEnemiesInRadius(float Radius) const
  * @note ✨ 新增方法
  *       使用 UNavigationSystemV1 实现自动寻路绕障
  */
-void AXBSoldierActor::MoveToTarget(AActor* Target)
+void AXBSoldierCharacter::MoveToTarget(AActor* Target)
 {
     if (!Target)
     {
@@ -1116,7 +1116,7 @@ void AXBSoldierActor::MoveToTarget(AActor* Target)
         *GetName(), *Target->GetName(), GetDistanceToTarget(Target));
 }
 
-void AXBSoldierActor::MoveToFormationPosition()
+void AXBSoldierCharacter::MoveToFormationPosition()
 {
     FVector TargetPos = GetFormationWorldPosition();
     
@@ -1126,7 +1126,7 @@ void AXBSoldierActor::MoveToFormationPosition()
     }
 }
 
-FVector AXBSoldierActor::GetFormationWorldPosition() const
+FVector AXBSoldierCharacter::GetFormationWorldPosition() const
 {
     if (!FollowTarget.IsValid())
     {
@@ -1141,7 +1141,7 @@ FVector AXBSoldierActor::GetFormationWorldPosition() const
     return FollowTarget->GetActorLocation();
 }
 
-FVector AXBSoldierActor::GetFormationWorldPositionSafe() const
+FVector AXBSoldierCharacter::GetFormationWorldPositionSafe() const
 {
     if (!FollowTarget.IsValid())
     {
@@ -1168,14 +1168,14 @@ FVector AXBSoldierActor::GetFormationWorldPositionSafe() const
     return Target->GetActorLocation();
 }
 
-bool AXBSoldierActor::IsAtFormationPosition() const
+bool AXBSoldierCharacter::IsAtFormationPosition() const
 {
     FVector TargetPos = GetFormationWorldPosition();
     float ArrivalThreshold = 50.0f;
     return FVector::Dist2D(GetActorLocation(), TargetPos) <= ArrivalThreshold;
 }
 
-bool AXBSoldierActor::IsAtFormationPositionSafe() const
+bool AXBSoldierCharacter::IsAtFormationPositionSafe() const
 {
     if (!FollowTarget.IsValid() || FormationSlotIndex == INDEX_NONE)
     {
@@ -1193,7 +1193,7 @@ bool AXBSoldierActor::IsAtFormationPositionSafe() const
 
 // ==================== 逃跑系统实现 ====================
 
-void AXBSoldierActor::SetEscaping(bool bEscaping)
+void AXBSoldierCharacter::SetEscaping(bool bEscaping)
 {
     bIsEscaping = bEscaping;
 
@@ -1215,7 +1215,7 @@ void AXBSoldierActor::SetEscaping(bool bEscaping)
 
 // ==================== 更新逻辑实现 ====================
 
-void AXBSoldierActor::UpdateFollowing(float DeltaTime)
+void AXBSoldierCharacter::UpdateFollowing(float DeltaTime)
 {
     if (FollowComponent)
     {
@@ -1234,7 +1234,7 @@ void AXBSoldierActor::UpdateFollowing(float DeltaTime)
  *       3. 弓手特殊处理（原地攻击/后撤）
  *       4. 近战单位追踪并攻击
  */
-void AXBSoldierActor::UpdateCombat(float DeltaTime)
+void AXBSoldierCharacter::UpdateCombat(float DeltaTime)
 {
    // ==================== 1. 脱离战斗检测 ====================
     if (ShouldDisengage())
@@ -1334,7 +1334,7 @@ void AXBSoldierActor::UpdateCombat(float DeltaTime)
     }
 }
 
-void AXBSoldierActor::UpdateReturning(float DeltaTime)
+void AXBSoldierCharacter::UpdateReturning(float DeltaTime)
 {
     MoveToFormationPosition();
 
@@ -1344,7 +1344,7 @@ void AXBSoldierActor::UpdateReturning(float DeltaTime)
     }
 }
 
-void AXBSoldierActor::FaceTarget(AActor* Target, float DeltaTime)
+void AXBSoldierCharacter::FaceTarget(AActor* Target, float DeltaTime)
 {
     if (!Target)
     {
@@ -1362,7 +1362,7 @@ void AXBSoldierActor::FaceTarget(AActor* Target, float DeltaTime)
     }
 }
 
-void AXBSoldierActor::HandleDeath()
+void AXBSoldierCharacter::HandleDeath()
 {
     // 清除定时器
     GetWorldTimerManager().ClearTimer(DelayedAIStartTimerHandle);

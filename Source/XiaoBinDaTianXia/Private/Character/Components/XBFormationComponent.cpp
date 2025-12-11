@@ -12,7 +12,7 @@
  */
 
 #include "Character/Components/XBFormationComponent.h"
-#include "Soldier/XBSoldierActor.h"
+#include "Soldier/XBSoldierCharacter.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/World.h"
 
@@ -434,7 +434,7 @@ void UXBFormationComponent::ReleaseAllSlots()
     }
 }
 
-int32 UXBFormationComponent::AssignSlotToSoldier(AXBSoldierActor* Soldier)
+int32 UXBFormationComponent::AssignSlotToSoldier(AXBSoldierCharacter* Soldier)
 {
     if (!Soldier)
     {
@@ -459,7 +459,7 @@ int32 UXBFormationComponent::AssignSlotToSoldier(AXBSoldierActor* Soldier)
     return INDEX_NONE;
 }
 
-void UXBFormationComponent::RemoveSoldierFromSlot(AXBSoldierActor* Soldier)
+void UXBFormationComponent::RemoveSoldierFromSlot(AXBSoldierCharacter* Soldier)
 {
     if (!Soldier)
     {
@@ -473,7 +473,7 @@ void UXBFormationComponent::RemoveSoldierFromSlot(AXBSoldierActor* Soldier)
     }
 }
 
-void UXBFormationComponent::ReassignAllSlots(const TArray<AXBSoldierActor*>& Soldiers)
+void UXBFormationComponent::ReassignAllSlots(const TArray<AXBSoldierCharacter*>& Soldiers)
 {
     ReleaseAllSlots();
     RegenerateFormation(Soldiers.Num());

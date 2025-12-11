@@ -21,7 +21,7 @@
 class UBehaviorTreeComponent;
 class UBlackboardComponent;
 class UBehaviorTree;
-class AXBSoldierActor;
+class AXBSoldierCharacter;
 
 /**
  * @brief 士兵黑板键名常量
@@ -168,7 +168,7 @@ public:
      * @brief 获取控制的士兵Actor
      */
     UFUNCTION(BlueprintCallable, Category = "XB|AI", meta = (DisplayName = "获取士兵"))
-    AXBSoldierActor* GetSoldierActor() const;
+    AXBSoldierCharacter* GetSoldierActor() const;
 
     /**
      * @brief 获取行为树组件
@@ -207,7 +207,7 @@ private:
     // ==================== 内部变量 ====================
 
     /** @brief 缓存的士兵引用 */
-    TWeakObjectPtr<AXBSoldierActor> CachedSoldier;
+    TWeakObjectPtr<AXBSoldierCharacter> CachedSoldier;
 
     /** @brief 黑板更新计时器 */
     float BlackboardUpdateTimer = 0.0f;

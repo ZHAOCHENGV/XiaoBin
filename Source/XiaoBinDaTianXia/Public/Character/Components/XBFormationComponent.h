@@ -18,7 +18,7 @@
 #include "Army/XBSoldierTypes.h"
 #include "XBFormationComponent.generated.h"
 
-class AXBSoldierActor;
+class AXBSoldierCharacter;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnFormationUpdated);
 
@@ -69,13 +69,13 @@ public:
     void ReleaseAllSlots();
 
     UFUNCTION(BlueprintCallable, Category = "XB|Formation")
-    int32 AssignSlotToSoldier(AXBSoldierActor* Soldier);
+    int32 AssignSlotToSoldier(AXBSoldierCharacter* Soldier);
 
     UFUNCTION(BlueprintCallable, Category = "XB|Formation")
-    void RemoveSoldierFromSlot(AXBSoldierActor* Soldier);
+    void RemoveSoldierFromSlot(AXBSoldierCharacter* Soldier);
 
     UFUNCTION(BlueprintCallable, Category = "XB|Formation")
-    void ReassignAllSlots(const TArray<AXBSoldierActor*>& Soldiers);
+    void ReassignAllSlots(const TArray<AXBSoldierCharacter*>& Soldiers);
 
     // ============ 配置接口 ============
 

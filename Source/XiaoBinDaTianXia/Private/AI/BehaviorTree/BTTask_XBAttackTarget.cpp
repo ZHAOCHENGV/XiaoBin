@@ -11,7 +11,7 @@
 #include "AI/BehaviorTree/BTTask_XBAttackTarget.h"
 #include "AIController.h"
 #include "BehaviorTree/BlackboardComponent.h"
-#include "Soldier/XBSoldierActor.h"
+#include "Soldier/XBSoldierCharacter.h"
 
 UBTTask_XBAttackTarget::UBTTask_XBAttackTarget()
 {
@@ -31,7 +31,7 @@ EBTNodeResult::Type UBTTask_XBAttackTarget::ExecuteTask(UBehaviorTreeComponent& 
         return EBTNodeResult::Failed;
     }
     
-    AXBSoldierActor* Soldier = Cast<AXBSoldierActor>(AIController->GetPawn());
+    AXBSoldierCharacter* Soldier = Cast<AXBSoldierCharacter>(AIController->GetPawn());
     if (!Soldier)
     {
         return EBTNodeResult::Failed;

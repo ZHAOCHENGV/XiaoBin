@@ -15,7 +15,7 @@
 #include "BehaviorTree/BehaviorTree.h"
 #include "BehaviorTree/BehaviorTreeComponent.h"
 #include "BehaviorTree/BlackboardComponent.h"
-#include "Soldier/XBSoldierActor.h"
+#include "Soldier/XBSoldierCharacter.h"
 #include "Character/XBCharacterBase.h"
 #include "Kismet/GameplayStatics.h"
 #include "TimerManager.h"
@@ -61,7 +61,7 @@ void AXBSoldierAIController::OnPossess(APawn* InPawn)
     
     // 🔧 修改 - 先缓存士兵引用，再调用父类
     // 说明: 在调用 Super::OnPossess 之前缓存，确保后续能访问
-    AXBSoldierActor* Soldier = Cast<AXBSoldierActor>(InPawn);
+    AXBSoldierCharacter* Soldier = Cast<AXBSoldierCharacter>(InPawn);
     if (Soldier)
     {
         CachedSoldier = Soldier;
@@ -115,7 +115,7 @@ void AXBSoldierAIController::DelayedOnPossess()
         return;
     }
     
-    AXBSoldierActor* Soldier = CachedSoldier.Get();
+    AXBSoldierCharacter* Soldier = CachedSoldier.Get();
     if (!Soldier || !IsValid(Soldier))
     {
         UE_LOG(LogTemp, Warning, TEXT("DelayedOnPossess: 士兵Actor无效"));
@@ -412,7 +412,7 @@ void AXBSoldierAIController::RefreshBlackboardValuesSafe()
         return;
     }
     
-    AXBSoldierActor* Soldier = CachedSoldier.Get();
+    AXBSoldierCharacter* Soldier = CachedSoldier.Get();
     if (!Soldier || !IsValid(Soldier))
     {
         return;
@@ -483,7 +483,7 @@ void AXBSoldierAIController::UpdateDistanceValuesSafe()
         return;
     }
     
-    AXBSoldierActor* Soldier = CachedSoldier.Get();
+    AXBSoldierCharacter* Soldier = CachedSoldier.Get();
     if (!Soldier || !IsValid(Soldier) || Soldier->IsPendingKillPending())
     {
         return;
@@ -551,7 +551,7 @@ void AXBSoldierAIController::UpdateDistanceValuesSafe()
 
 // ==================== 访问器实现 ====================
 
-AXBSoldierActor* AXBSoldierAIController::GetSoldierActor() const
+AXBSoldierCharacter* AXBSoldierAIController::GetSoldierActor() const
 {
     return CachedSoldier.Get();
 }

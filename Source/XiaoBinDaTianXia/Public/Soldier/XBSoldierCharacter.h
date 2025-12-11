@@ -16,7 +16,7 @@
 #include "GameFramework/Character.h"
 #include "Data/XBDataTypes.h"
 #include "Data/XBSoldierDataTable.h"
-#include "XBSoldierActor.generated.h"
+#include "XBSoldierCharacter.generated.h"
 
 class USkeletalMeshComponent;
 class UCapsuleComponent;
@@ -30,21 +30,21 @@ class UDataTable;
 class UAnimMontage;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnSoldierStateChanged, EXBSoldierState, OldState, EXBSoldierState, NewState);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSoldierDied, AXBSoldierActor*, Soldier);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSoldierDied, AXBSoldierCharacter*, Soldier);
 
 // ✨ 新增 - 士兵招募委托
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnSoldierRecruited, AXBSoldierActor*, Soldier, AActor*, Leader);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnSoldierRecruited, AXBSoldierCharacter*, Soldier, AActor*, Leader);
 
 /**
  * @brief 士兵Actor类
  */
 UCLASS()
-class XIAOBINDATIANXIA_API AXBSoldierActor : public ACharacter
+class XIAOBINDATIANXIA_API AXBSoldierCharacter : public ACharacter
 {
     GENERATED_BODY()
 
 public:
-    AXBSoldierActor();
+    AXBSoldierCharacter();
 
     virtual void BeginPlay() override;
     virtual void Tick(float DeltaTime) override;
