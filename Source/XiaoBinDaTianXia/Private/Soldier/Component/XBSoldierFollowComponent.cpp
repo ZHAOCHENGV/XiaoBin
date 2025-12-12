@@ -3,26 +3,26 @@
 
 /**
  * @file XBSoldierFollowComponent.cpp
- * @brief 士兵跟随组件实现
+ * @brief 士兵跟随组件实现（紧密编队模式）
  * 
- * @note 🔧 修改记录:
- *       1. 完善跟随算法
- *       2. 集成编队组件
- *       3. 实现避障逻辑
+ * @note 🔧 完全重写:
+ *       1. 锁定模式：每帧同步位置，完全跟随将领
+ *       2. 插值模式：被阻挡后平滑回位
+ *       3. 自由模式：战斗中不干预
  */
 
 #include "Soldier/Component/XBSoldierFollowComponent.h"
+#include "Utils/XBLogCategories.h"
 #include "Character/XBCharacterBase.h"
 #include "Character/Components/XBFormationComponent.h"
+#include "Soldier/XBSoldierCharacter.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
-#include "Kismet/GameplayStatics.h"
-#include "Soldier/XBSoldierCharacter.h"
 
 UXBSoldierFollowComponent::UXBSoldierFollowComponent()
 {
     PrimaryComponentTick.bCanEverTick = true;
-    PrimaryComponentTick.bStartWithTickEnabled = false;
+    PrimaryComponentTick.bStartWithTickEnabled = true;
 }
 
 void UXBSoldierFollowComponent::BeginPlay()
@@ -35,24 +35,43 @@ void UXBSoldierFollowComponent::TickComponent(float DeltaTime, ELevelTick TickTy
 {
     Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-    if (bIsFollowing)
+    // 自由模式不处理
+    if (CurrentMode == EXBFollowMode::Free)
     {
-        UpdateFollowMovement(DeltaTime);
+        return;
     }
+
+    // 没有跟随目标不处理
+    if (!FollowTargetRef.IsValid())
+    {
+        return;
+    }
+
+    UpdateFollowing(DeltaTime);
 }
 
-// ============ 目标设置实现 ============
+// ==================== 目标设置实现 ====================
 
-void UXBSoldierFollowComponent::SetLeader(AXBCharacterBase* NewLeader)
+void UXBSoldierFollowComponent::SetFollowTarget(AActor* NewTarget)
 {
-    LeaderRef = NewLeader;
-    FollowTargetRef = NewLeader;
-
+    FollowTargetRef = NewTarget;
+    
     // 缓存编队组件
-    if (NewLeader)
+    if (NewTarget)
     {
-        // 尝试获取PlayerCharacter的编队组件
-        CachedFormationComponent = NewLeader->FindComponentByClass<UXBFormationComponent>();
+        if (AXBCharacterBase* CharTarget = Cast<AXBCharacterBase>(NewTarget))
+        {
+            CachedFormationComponent = CharTarget->GetFormationComponent();
+        }
+        
+        // 记录初始位置
+        LastLeaderLocation = NewTarget->GetActorLocation();
+        LastLeaderRotation = NewTarget->GetActorRotation();
+        
+        // 标记需要刷新槽位偏移
+        bNeedRefreshSlotOffset = true;
+        
+        UE_LOG(LogXBSoldier, Log, TEXT("跟随组件: 设置跟随目标 %s"), *NewTarget->GetName());
     }
     else
     {
@@ -60,315 +79,340 @@ void UXBSoldierFollowComponent::SetLeader(AXBCharacterBase* NewLeader)
     }
 }
 
-void UXBSoldierFollowComponent::SetFollowTarget(AActor* NewTarget)
-{
-    FollowTargetRef = NewTarget;
-    
-    // 如果是角色，尝试获取编队组件
-    if (AXBCharacterBase* CharTarget = Cast<AXBCharacterBase>(NewTarget))
-    {
-        LeaderRef = CharTarget;
-        CachedFormationComponent = CharTarget->FindComponentByClass<UXBFormationComponent>();
-    }
-}
-
-// ============ 编队设置实现 ============
-
-void UXBSoldierFollowComponent::SetFormationOffset(const FVector& Offset)
-{
-    FormationOffset = Offset;
-}
-
 void UXBSoldierFollowComponent::SetFormationSlotIndex(int32 SlotIndex)
 {
     FormationSlotIndex = SlotIndex;
-}
-
-// ============ 速度设置实现 ============
-
-void UXBSoldierFollowComponent::SetInterpSpeed(float NewSpeed)
-{
-    InterpSpeed = NewSpeed;
-}
-
-void UXBSoldierFollowComponent::SetFollowInterpSpeed(float NewSpeed)
-{
-    InterpSpeed = NewSpeed;
-}
-
-void UXBSoldierFollowComponent::SetFollowSpeed(float NewSpeed)
-{
-    FollowSpeed = NewSpeed;
+    bNeedRefreshSlotOffset = true;
     
-    // 同时更新角色移动组件的速度
+    UE_LOG(LogXBSoldier, Verbose, TEXT("跟随组件: 设置槽位索引 %d"), SlotIndex);
+}
+
+// ==================== 模式控制实现 ====================
+
+void UXBSoldierFollowComponent::SetFollowMode(EXBFollowMode NewMode)
+{
+    if (CurrentMode == NewMode)
+    {
+        return;
+    }
+    
+    EXBFollowMode OldMode = CurrentMode;
+    CurrentMode = NewMode;
+    
+    UE_LOG(LogXBSoldier, Log, TEXT("跟随组件: 模式切换 %d -> %d"), 
+        static_cast<int32>(OldMode), static_cast<int32>(NewMode));
+}
+
+void UXBSoldierFollowComponent::EnterCombatMode()
+{
+    SetFollowMode(EXBFollowMode::Free);
+    
+    UE_LOG(LogXBSoldier, Log, TEXT("跟随组件: 进入战斗模式（自由移动）"));
+}
+
+void UXBSoldierFollowComponent::ExitCombatMode()
+{
+    // 立即传送回编队位置
+    TeleportToFormationPosition();
+    
+    // 切换到锁定模式
+    SetFollowMode(EXBFollowMode::Locked);
+    
+    UE_LOG(LogXBSoldier, Log, TEXT("跟随组件: 退出战斗模式（传送回编队）"));
+}
+
+void UXBSoldierFollowComponent::TeleportToFormationPosition()
+{
     AActor* Owner = GetOwner();
     if (!Owner)
     {
         return;
     }
-
-    // 支持Character和普通Actor
-    if (ACharacter* OwnerCharacter = Cast<ACharacter>(Owner))
-    {
-        if (UCharacterMovementComponent* MoveComp = OwnerCharacter->GetCharacterMovement())
-        {
-            MoveComp->MaxWalkSpeed = NewSpeed;
-        }
-    }
-}
-
-// ============ 跟随控制实现 ============
-
-void UXBSoldierFollowComponent::StartFollowing()
-{
-    bIsFollowing = true;
-    SetComponentTickEnabled(true);
-}
-
-void UXBSoldierFollowComponent::StopFollowing()
-{
-    bIsFollowing = false;
-    SetComponentTickEnabled(false);
-}
-
-void UXBSoldierFollowComponent::UpdateFollowing(float DeltaTime)
-{
-    if (bIsFollowing)
-    {
-        UpdateFollowMovement(DeltaTime);
-    }
-}
-
-// ============ 状态查询实现 ============
-
-bool UXBSoldierFollowComponent::IsAtFormationPosition() const
-{
-    AActor* Owner = GetOwner();
-    if (!Owner)
-    {
-        return false;
-    }
-
-    FVector CurrentPosition = Owner->GetActorLocation();
-    FVector TargetPosition = CalculateTargetPosition();
     
-    return FVector::Dist2D(CurrentPosition, TargetPosition) <= ArrivalThreshold;
+    FVector TargetPos = CalculateFormationWorldPosition();
+    FRotator TargetRot = CalculateFormationWorldRotation();
+    
+    // 直接设置位置和旋转
+    Owner->SetActorLocation(TargetPos);
+    
+    if (bFollowRotation)
+    {
+        Owner->SetActorRotation(TargetRot);
+    }
+    
+    UE_LOG(LogXBSoldier, Verbose, TEXT("跟随组件: 传送到编队位置 %s"), *TargetPos.ToString());
 }
+
+void UXBSoldierFollowComponent::StartInterpolateToFormation()
+{
+    SetFollowMode(EXBFollowMode::Interpolating);
+    
+    UE_LOG(LogXBSoldier, Verbose, TEXT("跟随组件: 开始插值回编队位置"));
+}
+
+// ==================== 状态查询实现 ====================
 
 FVector UXBSoldierFollowComponent::GetTargetPosition() const
 {
-    return CalculateTargetPosition();
+    return CalculateFormationWorldPosition();
 }
 
-float UXBSoldierFollowComponent::GetDistanceToTarget() const
+bool UXBSoldierFollowComponent::IsAtFormationPosition() const
+{
+    return GetDistanceToFormation() <= ArrivalThreshold;
+}
+
+float UXBSoldierFollowComponent::GetDistanceToFormation() const
 {
     AActor* Owner = GetOwner();
     if (!Owner)
     {
         return 0.0f;
     }
-
-    return FVector::Dist2D(Owner->GetActorLocation(), CalculateTargetPosition());
+    
+    FVector TargetPos = CalculateFormationWorldPosition();
+    return FVector::Dist2D(Owner->GetActorLocation(), TargetPos);
 }
 
-// ============ 内部方法实现 ============
+// ==================== 更新逻辑实现 ====================
+
+void UXBSoldierFollowComponent::UpdateFollowing(float DeltaTime)
+{
+    switch (CurrentMode)
+    {
+    case EXBFollowMode::Locked:
+        UpdateLockedMode(DeltaTime);
+        break;
+        
+    case EXBFollowMode::Interpolating:
+        UpdateInterpolatingMode(DeltaTime);
+        break;
+        
+    case EXBFollowMode::Free:
+        // 自由模式不处理
+        break;
+    }
+}
 
 /**
- * @brief 更新跟随移动
+ * @brief 更新锁定模式
+ * @param DeltaTime 帧时间
+ * @note 核心逻辑:
+ *       1. 计算编队世界位置（将领位置 + 旋转后的偏移）
+ *       2. 插值或直接设置士兵位置
+ *       3. 同步将领旋转
  */
-void UXBSoldierFollowComponent::UpdateFollowMovement(float DeltaTime)
+void UXBSoldierFollowComponent::UpdateLockedMode(float DeltaTime)
 {
     AActor* Owner = GetOwner();
-    if (!Owner)
-    {
-        return;
-    }
-
-    // 计算目标位置
-    FVector TargetPosition = CalculateTargetPosition();
-    CachedTargetPosition = TargetPosition;
+    AActor* Leader = FollowTargetRef.Get();
     
-    FVector CurrentPosition = Owner->GetActorLocation();
-    float DistanceToTarget = FVector::Dist2D(CurrentPosition, TargetPosition);
-
-    // 距离太近不需要移动
-    if (DistanceToTarget <= MinDistanceToMove)
+    if (!Owner || !Leader || !IsValid(Leader))
     {
         return;
     }
-
-    // 计算移动方向
-    FVector Direction = (TargetPosition - CurrentPosition).GetSafeNormal2D();
-
-    // 应用避障
-    Direction = ApplyAvoidance(Direction);
-
-    // 根据Owner类型选择移动方式
-    if (ACharacter* OwnerCharacter = Cast<ACharacter>(Owner))
+    
+    // 计算目标位置和旋转
+    FVector TargetPosition = CalculateFormationWorldPosition();
+    FRotator TargetRotation = CalculateFormationWorldRotation();
+    
+    // 获取当前位置
+    FVector CurrentPosition = Owner->GetActorLocation();
+    FRotator CurrentRotation = Owner->GetActorRotation();
+    
+    // ==================== 位置更新 ====================
+    
+    if (bInterpolateInLockedMode)
     {
-        // 使用Character移动组件
-        OwnerCharacter->AddMovementInput(Direction, 1.0f);
-
-        // 平滑旋转
-        if (!Direction.IsNearlyZero())
-        {
-            FRotator TargetRotation = Direction.Rotation();
-            FRotator CurrentRotation = Owner->GetActorRotation();
-            FRotator NewRotation = FMath::RInterpTo(CurrentRotation, TargetRotation, DeltaTime, InterpSpeed * 2.0f);
-            Owner->SetActorRotation(FRotator(0.0f, NewRotation.Yaw, 0.0f));
-        }
+        // 使用插值平滑移动
+        FVector NewPosition = FMath::VInterpTo(CurrentPosition, TargetPosition, DeltaTime, LockedModeInterpolateSpeed);
+        Owner->SetActorLocation(NewPosition);
     }
     else
     {
-        // 直接设置位置（非角色Actor）
-        FVector NewPosition = FMath::VInterpTo(CurrentPosition, TargetPosition, DeltaTime, InterpSpeed);
-        Owner->SetActorLocation(NewPosition);
-
-        // 设置旋转
-        if (!Direction.IsNearlyZero())
-        {
-            FRotator TargetRotation = Direction.Rotation();
-            FRotator CurrentRotation = Owner->GetActorRotation();
-            FRotator NewRotation = FMath::RInterpTo(CurrentRotation, TargetRotation, DeltaTime, InterpSpeed * 2.0f);
-            Owner->SetActorRotation(FRotator(0.0f, NewRotation.Yaw, 0.0f));
-        }
+        // 直接设置位置（完全同步）
+        Owner->SetActorLocation(TargetPosition);
     }
+    
+    // ==================== 旋转更新 ====================
+    
+    if (bFollowRotation)
+    {
+        // 插值旋转
+        FRotator NewRotation = FMath::RInterpTo(CurrentRotation, TargetRotation, DeltaTime, RotationInterpolateSpeed);
+        Owner->SetActorRotation(FRotator(0.0f, NewRotation.Yaw, 0.0f));
+    }
+    
+    // ==================== 阻挡检测 ====================
+    
+    // 检查是否被阻挡（实际位置与目标位置差距过大）
+    // 注意：由于我们直接设置位置，正常情况下不会被阻挡
+    // 但如果有物理碰撞阻止移动，可能会出现偏差
+    float ActualDistance = FVector::Dist2D(Owner->GetActorLocation(), TargetPosition);
+    if (ActualDistance > BlockedThreshold)
+    {
+        // 被阻挡了，切换到插值模式
+        UE_LOG(LogXBSoldier, Warning, TEXT("跟随组件: 检测到阻挡，距离: %.1f，切换到插值模式"), ActualDistance);
+        SetFollowMode(EXBFollowMode::Interpolating);
+    }
+    
+    // 更新上一帧数据
+    LastLeaderLocation = Leader->GetActorLocation();
+    LastLeaderRotation = Leader->GetActorRotation();
 }
 
 /**
- * @brief 计算目标位置
- * @note 🔧 修改 - 增强安全检查防止崩溃
+ * @brief 更新插值模式
+ * @param DeltaTime 帧时间
+ * @note 被阻挡后，平滑插值回编队位置
  */
-FVector UXBSoldierFollowComponent::CalculateTargetPosition() const
+void UXBSoldierFollowComponent::UpdateInterpolatingMode(float DeltaTime)
 {
     AActor* Owner = GetOwner();
+    AActor* Leader = FollowTargetRef.Get();
     
-    // 安全检查: 确保Owner有效
-    if (!Owner || !IsValid(Owner))
+    if (!Owner || !Leader || !IsValid(Leader))
     {
-        return FVector::ZeroVector;
-    }
-    
-    // 优先从编队组件获取
-    FVector FormationPos = GetPositionFromFormationComponent();
-    if (!FormationPos.IsZero())
-    {
-        // 额外检查: 确保位置不包含NaN
-        if (!FormationPos.ContainsNaN())
-        {
-            return FormationPos;
-        }
-    }
-
-    // 回退到手动设置的偏移
-    AActor* Target = FollowTargetRef.Get();
-    if (!Target || !IsValid(Target))
-    {
-        Target = LeaderRef.Get();
+        return;
     }
     
-    if (!Target || !IsValid(Target))
+    // 计算目标位置和旋转
+    FVector TargetPosition = CalculateFormationWorldPosition();
+    FRotator TargetRotation = CalculateFormationWorldRotation();
+    
+    // 获取当前位置
+    FVector CurrentPosition = Owner->GetActorLocation();
+    FRotator CurrentRotation = Owner->GetActorRotation();
+    
+    // ==================== 位置插值 ====================
+    
+    FVector NewPosition = FMath::VInterpTo(CurrentPosition, TargetPosition, DeltaTime, InterpolateSpeed);
+    Owner->SetActorLocation(NewPosition);
+    
+    // ==================== 旋转插值 ====================
+    
+    if (bFollowRotation)
     {
-        return Owner->GetActorLocation();
+        FRotator NewRotation = FMath::RInterpTo(CurrentRotation, TargetRotation, DeltaTime, RotationInterpolateSpeed);
+        Owner->SetActorRotation(FRotator(0.0f, NewRotation.Yaw, 0.0f));
     }
-
-    FVector TargetLocation = Target->GetActorLocation();
-    FRotator TargetRotation = Target->GetActorRotation();
-
-    // 安全检查: 确保获取的数据有效
-    if (TargetLocation.ContainsNaN() || TargetRotation.ContainsNaN())
+    
+    // ==================== 到达检测 ====================
+    
+    float Distance = FVector::Dist2D(NewPosition, TargetPosition);
+    if (Distance <= ArrivalThreshold)
     {
-        return Owner->GetActorLocation();
+        // 到达编队位置，切换回锁定模式
+        UE_LOG(LogXBSoldier, Verbose, TEXT("跟随组件: 到达编队位置，切换回锁定模式"));
+        SetFollowMode(EXBFollowMode::Locked);
     }
+    
+    // 更新上一帧数据
+    LastLeaderLocation = Leader->GetActorLocation();
+    LastLeaderRotation = Leader->GetActorRotation();
+}
 
-    // 将局部编队偏移转换为世界坐标
-    FVector WorldOffset = TargetRotation.RotateVector(FormationOffset);
+// ==================== 计算方法实现 ====================
 
-    return TargetLocation + WorldOffset;
+/**
+ * @brief 计算编队世界位置
+ * @return 世界坐标位置
+ * @note 公式: 将领位置 + 将领旋转.RotateVector(槽位本地偏移)
+ */
+FVector UXBSoldierFollowComponent::CalculateFormationWorldPosition() const
+{
+    AActor* Leader = FollowTargetRef.Get();
+    if (!Leader || !IsValid(Leader))
+    {
+        AActor* Owner = GetOwner();
+        return Owner ? Owner->GetActorLocation() : FVector::ZeroVector;
+    }
+    
+    // 获取将领位置和旋转
+    FVector LeaderLocation = Leader->GetActorLocation();
+    FRotator LeaderRotation = Leader->GetActorRotation();
+    
+    // 获取槽位本地偏移
+    FVector2D SlotOffset = GetSlotLocalOffset();
+    
+    // 转换为3D偏移（X=前后，Y=左右，Z=0）
+    FVector LocalOffset3D(SlotOffset.X, SlotOffset.Y, 0.0f);
+    
+    // 应用将领旋转
+    FVector WorldOffset = LeaderRotation.RotateVector(LocalOffset3D);
+    
+    // 计算最终位置（保持与将领相同的Z高度）
+    FVector FinalPosition = LeaderLocation + WorldOffset;
+    FinalPosition.Z = LeaderLocation.Z;
+    
+    return FinalPosition;
 }
 
 /**
- * @brief 从编队组件获取位置
- * @note 🔧 修改 - 增强安全检查防止崩溃
+ * @brief 计算编队世界旋转
+ * @return 世界旋转
+ * @note 士兵朝向与将领一致
  */
-FVector UXBSoldierFollowComponent::GetPositionFromFormationComponent() const
+FRotator UXBSoldierFollowComponent::CalculateFormationWorldRotation() const
 {
-    // 安全检查: 编队组件是否有效
-    if (!CachedFormationComponent.IsValid())
+    AActor* Leader = FollowTargetRef.Get();
+    if (!Leader || !IsValid(Leader))
     {
-        return FVector::ZeroVector;
+        AActor* Owner = GetOwner();
+        return Owner ? Owner->GetActorRotation() : FRotator::ZeroRotator;
     }
     
-    UXBFormationComponent* FormationComp = CachedFormationComponent.Get();
-    if (!FormationComp || !IsValid(FormationComp))
-    {
-        return FVector::ZeroVector;
-    }
-
-    // 安全检查: 槽位索引是否有效
-    if (FormationSlotIndex == INDEX_NONE)
-    {
-        return FVector::ZeroVector;
-    }
-    
-    // 安全检查: 槽位索引是否在有效范围内
-    const TArray<FXBFormationSlot>& Slots = FormationComp->GetFormationSlots();
-    if (!Slots.IsValidIndex(FormationSlotIndex))
-    {
-        return FVector::ZeroVector;
-    }
-
-    return FormationComp->GetSlotWorldPosition(FormationSlotIndex);
+    // 跟随将领的Yaw旋转
+    FRotator LeaderRotation = Leader->GetActorRotation();
+    return FRotator(0.0f, LeaderRotation.Yaw, 0.0f);
 }
 
 /**
- * @brief 应用避障偏移
- * @note 避免多个士兵扎堆
+ * @brief 检测是否被阻挡
+ * @return 是否被阻挡
  */
-FVector UXBSoldierFollowComponent::ApplyAvoidance(const FVector& DesiredDirection) const
+bool UXBSoldierFollowComponent::IsBlockedFromFormation() const
 {
-    if (AvoidanceStrength <= 0.0f || AvoidanceRadius <= 0.0f)
+    return GetDistanceToFormation() > BlockedThreshold;
+}
+
+/**
+ * @brief 获取槽位本地偏移
+ * @return 2D偏移（X=前后，Y=左右）
+ */
+FVector2D UXBSoldierFollowComponent::GetSlotLocalOffset() const
+{
+    // 如果有编队组件，从中获取
+    if (CachedFormationComponent.IsValid() && FormationSlotIndex != INDEX_NONE)
     {
-        return DesiredDirection;
-    }
-
-    AActor* Owner = GetOwner();
-    if (!Owner)
-    {
-        return DesiredDirection;
-    }
-
-    FVector AvoidanceForce = FVector::ZeroVector;
-    FVector MyLocation = Owner->GetActorLocation();
-
-    // 获取所有附近的士兵
-    TArray<AActor*> NearbyActors;
-    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AXBSoldierCharacter::StaticClass(), NearbyActors);
-
-    for (AActor* OtherActor : NearbyActors)
-    {
-        if (OtherActor == Owner)
+        UXBFormationComponent* FormationComp = CachedFormationComponent.Get();
+        if (FormationComp)
         {
-            continue;
-        }
-
-        float Distance = FVector::Dist2D(MyLocation, OtherActor->GetActorLocation());
-        if (Distance < AvoidanceRadius && Distance > KINDA_SMALL_NUMBER)
-        {
-            // 计算远离其他士兵的力
-            FVector AwayDirection = (MyLocation - OtherActor->GetActorLocation()).GetSafeNormal2D();
-            float Strength = 1.0f - (Distance / AvoidanceRadius);
-            AvoidanceForce += AwayDirection * Strength;
+            const TArray<FXBFormationSlot>& Slots = FormationComp->GetFormationSlots();
+            if (Slots.IsValidIndex(FormationSlotIndex))
+            {
+                return Slots[FormationSlotIndex].LocalOffset;
+            }
         }
     }
-
-    // 混合期望方向和避障力
-    if (!AvoidanceForce.IsNearlyZero())
+    
+    // 默认偏移（如果没有编队组件）
+    // 使用简单的行列计算
+    if (FormationSlotIndex >= 0)
     {
-        FVector BlendedDirection = DesiredDirection * (1.0f - AvoidanceStrength) + 
-                                   AvoidanceForce.GetSafeNormal() * AvoidanceStrength;
-        return BlendedDirection.GetSafeNormal();
+        int32 Columns = 4;
+        int32 Row = FormationSlotIndex / Columns;
+        int32 Col = FormationSlotIndex % Columns;
+        
+        float HorizontalSpacing = 100.0f;
+        float VerticalSpacing = 100.0f;
+        float MinDistanceToLeader = 150.0f;
+        
+        float OffsetX = -(MinDistanceToLeader + Row * VerticalSpacing);
+        float OffsetY = (Col - (Columns - 1) * 0.5f) * HorizontalSpacing;
+        
+        return FVector2D(OffsetX, OffsetY);
     }
-
-    return DesiredDirection;
+    
+    return FVector2D::ZeroVector;
 }

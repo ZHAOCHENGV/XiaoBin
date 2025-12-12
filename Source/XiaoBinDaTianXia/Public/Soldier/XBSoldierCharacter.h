@@ -1,13 +1,15 @@
 /* --- 完整文件代码 --- */
-// Source/XiaoBinDaTianXia/Public/Soldier/XBSoldierActor.h
+// Source/XiaoBinDaTianXia/Public/Soldier/XBSoldierCharacter.h
 
 /**
- * @file XBSoldierActor.h
+ * @file XBSoldierCharacter.h
  * @brief 士兵Actor类 - 支持数据驱动和行为树AI
  * 
  * @note 🔧 修改记录:
- *       1. 移除自动 Possess，改为招募时触发
- *       2. 新增招募状态管理
+ *       1. 使用球形检测替代全量Actor搜索
+ *       2. 从数据表读取视野范围和战斗配置
+ *       3. 增强空指针检查
+ *       4. 使用项目专用日志类别
  */
 
 #pragma once
@@ -30,13 +32,8 @@ class UAnimMontage;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnSoldierStateChanged, EXBSoldierState, OldState, EXBSoldierState, NewState);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSoldierDied, AXBSoldierCharacter*, Soldier);
-
-// ✨ 新增 - 士兵招募委托
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnSoldierRecruited, AXBSoldierCharacter*, Soldier, AActor*, Leader);
 
-/**
- * @brief 士兵Actor类
- */
 UCLASS()
 class XIAOBINDATIANXIA_API AXBSoldierCharacter : public ACharacter
 {
@@ -47,15 +44,11 @@ public:
 
     virtual void BeginPlay() override;
     virtual void Tick(float DeltaTime) override;
-
-    // ✨ 新增 - 重写组件初始化完成回调
     virtual void PostInitializeComponents() override;
 
-    // ✨ 新增 - 组件初始化完成标记
     UPROPERTY(BlueprintReadOnly, Category = "状态")
     bool bComponentsInitialized = false;
 
-    // ✨ 新增 - 启用移动和Tick
     void EnableMovementAndTick();
 
     // ==================== 初始化 ====================
@@ -66,27 +59,34 @@ public:
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier", meta = (DisplayName = "初始化士兵"))
     void InitializeSoldier(const FXBSoldierConfig& InConfig, EXBFaction InFaction);
 
+    // ✨ 新增 - 检查是否从数据表初始化
+    UFUNCTION(BlueprintPure, Category = "XB|Soldier", meta = (DisplayName = "是否从数据表初始化"))
+    bool IsInitializedFromDataTable() const { return bInitializedFromDataTable; }
+
+    // ✨ 新增 - 获取视野范围
+    UFUNCTION(BlueprintPure, Category = "XB|Soldier", meta = (DisplayName = "获取视野范围"))
+    float GetVisionRange() const;
+
+    // ✨ 新增 - 获取脱离距离
+    UFUNCTION(BlueprintPure, Category = "XB|Soldier", meta = (DisplayName = "获取脱离距离"))
+    float GetDisengageDistance() const;
+
+    // ✨ 新增 - 获取返回延迟
+    UFUNCTION(BlueprintPure, Category = "XB|Soldier", meta = (DisplayName = "获取返回延迟"))
+    float GetReturnDelay() const;
+
+    // ✨ 新增 - 获取到达阈值
+    UFUNCTION(BlueprintPure, Category = "XB|Soldier", meta = (DisplayName = "获取到达阈值"))
+    float GetArrivalThreshold() const;
+
     // ==================== 招募系统 ====================
 
-    /**
-     * @brief 被将领招募
-     * @param NewLeader 招募的将领
-     * @param SlotIndex 分配的编队槽位
-     * @note ✨ 新增 - 招募时才启动AI控制器
-     */
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier", meta = (DisplayName = "被招募"))
     void OnRecruited(AActor* NewLeader, int32 SlotIndex);
 
-    /**
-     * @brief 检查是否已被招募
-     */
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier", meta = (DisplayName = "是否已招募"))
     bool IsRecruited() const { return bIsRecruited; }
 
-    /**
-     * @brief 检查是否可以被招募
-     * @note 中立阵营且处于待机状态才可招募
-     */
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier", meta = (DisplayName = "是否可招募"))
     bool CanBeRecruited() const;
 
@@ -147,10 +147,24 @@ public:
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier", meta = (DisplayName = "是否可以攻击"))
     bool CanAttack() const { return AttackCooldownTimer <= 0.0f && CurrentState != EXBSoldierState::Dead; }
 
-    // ==================== AI系统 ====================
+    // ==================== AI系统（🔧 修改 - 使用球形检测） ====================
 
+    /**
+     * @brief 寻找最近的敌人
+     * @return 最近的敌人Actor
+     * @note 🔧 修改 - 使用球形检测替代全量Actor搜索
+     */
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier|AI", meta = (DisplayName = "寻找最近敌人"))
     AActor* FindNearestEnemy() const;
+
+    /**
+     * @brief 检查指定范围内是否有敌人
+     * @param Radius 检测半径
+     * @return 是否有敌人
+     * @note 🔧 修改 - 使用球形检测
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Soldier|AI", meta = (DisplayName = "范围内有敌人"))
+    bool HasEnemiesInRadius(float Radius) const;
 
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier|AI", meta = (DisplayName = "获取到目标距离"))
     float GetDistanceToTarget(AActor* Target) const;
@@ -158,96 +172,22 @@ public:
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier|AI", meta = (DisplayName = "是否在攻击范围内"))
     bool IsInAttackRange(AActor* Target) const;
 
-
-
-    // ============ 战斗追踪系统（✨ 新增/增强）============
-
-    /**
-     * @brief 更新战斗逻辑
-     * @param DeltaTime 帧时间
-     * @note 功能：
-     *       1. 搜索最近敌人
-     *       2. 移动到目标（带避障）
-     *       3. 攻击目标
-     *       4. 检测脱离范围
-     */
     void UpdateCombat(float DeltaTime);
 
-    /**
-      * @brief 移动到目标（带避障）
-      * @param Target 目标Actor
-      * @note 使用导航系统自动绕障
-      */
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier|AI", meta = (DisplayName = "移动到目标"))
     void MoveToTarget(AActor* Target);
 
-    /**
-     * @brief 检查是否应该返回队列
-     * @return true表示应该返回
-     * @note 条件：
-     *       1. 距离将领超过脱离距离
-     *       2. 周边无敌人
-     */
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier|AI", meta = (DisplayName = "是否应该脱离战斗"))
     bool ShouldDisengage() const;
 
-    /**
-     * @brief 自动返回队列
-     * @note 退出战斗状态，移动到编队位置
-     */
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier", meta = (DisplayName = "返回队列"))
     void ReturnToFormation();
 
-    // ✨ 新增 - 弓手专用逻辑
-    /**
-     * @brief 检查是否应该后撤（弓手专用）
-     * @return true表示敌人过近，需要后撤
-     */
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier|AI", meta = (DisplayName = "是否应该后撤"))
     bool ShouldRetreat() const;
 
-    
-    /**
-     * @brief 后撤到安全距离（弓手专用）
-     * @param Target 威胁目标
-     */
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier|AI", meta = (DisplayName = "后撤"))
     void RetreatFromTarget(AActor* Target);
-
-    
-protected:
-    // ✨ 新增 - 避障计算
-    /**
-     * @brief 计算避障后的移动方向
-     * @param DesiredDirection 期望方向
-     * @return 修正后的方向
-     */
-    FVector CalculateAvoidanceDirection(const FVector& DesiredDirection);
-
-    // ✨ 新增 - 检查周边是否有敌人
-    /**
-     * @brief 在指定范围内检测敌人
-     * @param Radius 检测半径
-     * @return 是否有敌人
-     */
-    bool HasEnemiesInRadius(float Radius) const;
-    
-    // ✨ 新增 - 战斗配置
-    /** @brief 脱离战斗距离（超过此距离自动返回） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "战斗", meta = (DisplayName = "脱离距离", ClampMin = "100.0"))
-    float DisengageDistance = 1000.0f;
-
-    /** @brief 无敌人后返回延迟（秒） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "战斗", meta = (DisplayName = "返回延迟", ClampMin = "0.0"))
-    float ReturnDelay = 2.0f;
-
-    /** @brief 避障检测半径 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "战斗", meta = (DisplayName = "避障半径", ClampMin = "0.0"))
-    float AvoidanceRadius = 100.0f;
-
-    /** @brief 上次检测到敌人的时间 */
-    float LastEnemySeenTime = 0.0f;
-public:
 
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier|AI", meta = (DisplayName = "移动到编队位置"))
     void MoveToFormationPosition();
@@ -280,7 +220,6 @@ public:
     UPROPERTY(BlueprintAssignable, Category = "XB|Soldier")
     FOnSoldierDied OnSoldierDied;
 
-    // ✨ 新增 - 招募事件
     UPROPERTY(BlueprintAssignable, Category = "XB|Soldier")
     FOnSoldierRecruited OnSoldierRecruited;
 
@@ -326,15 +265,15 @@ protected:
 
     UPROPERTY(BlueprintReadOnly, Category = "状态")
     float AttackCooldownTimer = 0.0f;
-    
+
 public:
     UPROPERTY(BlueprintReadOnly, Category = "状态")
     TWeakObjectPtr<AActor> CurrentAttackTarget;
-    
+
 protected:
     float TargetSearchTimer = 0.0f;
+    float LastEnemySeenTime = 0.0f;
 
-    // ✨ 新增 - 招募状态
     UPROPERTY(BlueprintReadOnly, Category = "状态", meta = (DisplayName = "是否已招募"))
     bool bIsRecruited = false;
 
@@ -356,17 +295,11 @@ public:
     void ApplyVisualConfig();
     void FaceTarget(AActor* Target, float DeltaTime);
 
+protected:
+    FVector CalculateAvoidanceDirection(const FVector& DesiredDirection);
+
 private:
-    // ✨ 新增 - 启动AI控制器
-    /**
-     * @brief 生成并启动AI控制器
-     * @note 只在招募时调用，确保组件已完全初始化
-     */
     void SpawnAndPossessAIController();
-
-    // ✨ 新增 - 初始化AI（行为树等）
     void InitializeAI();
-
-    // ✨ 新增 - 延迟启动AI的定时器句柄
     FTimerHandle DelayedAIStartTimerHandle;
 };

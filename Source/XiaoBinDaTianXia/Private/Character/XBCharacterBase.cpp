@@ -6,12 +6,15 @@
  * @brief 角色基类实现
  * 
  * @note 🔧 修改记录:
- *       1. 将 MagnetFieldComponent 和 FormationComponent 从 PlayerCharacter 移入
- *       2. 添加共用的冲刺系统
- *       3. 添加磁场回调
+ *       1. 修复士兵计数同步问题 - 统一由 Soldiers 数组管理
+ *       2. 修复将领死亡时循环回调问题 - 添加 bIsCleaningUpSoldiers 标记
+ *       3. 使用项目专用日志类别
+ *       4. 使用通用函数库进行阵营判断
  */
 
 #include "Character/XBCharacterBase.h"
+#include "Utils/XBLogCategories.h"
+#include "Utils/XBBlueprintFunctionLibrary.h"
 
 #include "AIController.h"
 #include "Character/Components/XBCombatComponent.h"
@@ -47,14 +50,14 @@ AXBCharacterBase::AXBCharacterBase()
     HealthBarComponent = CreateDefaultSubobject<UXBWorldHealthBarComponent>(TEXT("HealthBarComponent"));
     HealthBarComponent->SetupAttachment(RootComponent);
 
-    // ✨ 新增 - 创建磁场组件
+    // 创建磁场组件
     MagnetFieldComponent = CreateDefaultSubobject<UXBMagnetFieldComponent>(TEXT("MagnetFieldComponent"));
     MagnetFieldComponent->SetupAttachment(RootComponent);
 
-    // ✨ 新增 - 创建编队组件
+    // 创建编队组件
     FormationComponent = CreateDefaultSubobject<UXBFormationComponent>(TEXT("FormationComponent"));
 
-    // 禁用控制器旋转（角色朝向由移动方向决定）
+    // 禁用控制器旋转
     bUseControllerRotationPitch = false;
     bUseControllerRotationYaw = false;
     bUseControllerRotationRoll = false;
@@ -73,7 +76,7 @@ void AXBCharacterBase::BeginPlay()
     // 初始化目标速度
     TargetMoveSpeed = BaseMoveSpeed;
 
-    // ✨ 新增 - 绑定磁场事件
+    // 绑定磁场事件
     if (MagnetFieldComponent)
     {
         if (!MagnetFieldComponent->OnActorEnteredField.IsBound())
@@ -90,7 +93,7 @@ void AXBCharacterBase::BeginPlay()
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("%s: 未配置数据表或行名，跳过数据表初始化"), *GetName());
+        UE_LOG(LogXBCharacter, Warning, TEXT("%s: 未配置数据表或行名，跳过数据表初始化"), *GetName());
     }
 }
 
@@ -102,7 +105,6 @@ void AXBCharacterBase::Tick(float DeltaTime)
     UpdateSprint(DeltaTime);
 }
 
-// ✨ 新增 - 配置移动组件
 void AXBCharacterBase::SetupMovementComponent()
 {
     UCharacterMovementComponent* CMC = GetCharacterMovement();
@@ -120,7 +122,6 @@ void AXBCharacterBase::SetupMovementComponent()
     CMC->BrakingFrictionFactor = 2.0f;
 }
 
-// ✨ 新增 - 磁场回调（虚函数，子类可重写）
 void AXBCharacterBase::OnMagnetFieldActorEntered(AActor* EnteredActor)
 {
     if (!EnteredActor)
@@ -128,9 +129,7 @@ void AXBCharacterBase::OnMagnetFieldActorEntered(AActor* EnteredActor)
         return;
     }
 
-    UE_LOG(LogTemp, Log, TEXT("%s: Actor 进入磁场: %s"), *GetName(), *EnteredActor->GetName());
-
-    // 基类的默认招募逻辑已在 MagnetFieldComponent 中实现
+    UE_LOG(LogXBRecruit, Log, TEXT("%s: Actor 进入磁场: %s"), *GetName(), *EnteredActor->GetName());
 }
 
 void AXBCharacterBase::PossessedBy(AController* NewController)
@@ -153,7 +152,7 @@ void AXBCharacterBase::InitializeAbilitySystem()
     if (AbilitySystemComponent)
     {
         AbilitySystemComponent->InitAbilityActorInfo(this, this);
-        UE_LOG(LogTemp, Log, TEXT("%s: ASC 初始化完成"), *GetName());
+        UE_LOG(LogXBCharacter, Log, TEXT("%s: ASC 初始化完成"), *GetName());
     }
 }
 
@@ -161,20 +160,20 @@ void AXBCharacterBase::InitializeFromDataTable(UDataTable* DataTable, FName RowN
 {
     if (!DataTable)
     {
-        UE_LOG(LogTemp, Error, TEXT("%s: InitializeFromDataTable - 数据表为空"), *GetName());
+        UE_LOG(LogXBCharacter, Error, TEXT("%s: InitializeFromDataTable - 数据表为空"), *GetName());
         return;
     }
 
     if (RowName.IsNone())
     {
-        UE_LOG(LogTemp, Error, TEXT("%s: InitializeFromDataTable - 行名为空"), *GetName());
+        UE_LOG(LogXBCharacter, Error, TEXT("%s: InitializeFromDataTable - 行名为空"), *GetName());
         return;
     }
 
     FXBLeaderTableRow* LeaderRow = DataTable->FindRow<FXBLeaderTableRow>(RowName, TEXT("AXBCharacterBase::InitializeFromDataTable"));
     if (!LeaderRow)
     {
-        UE_LOG(LogTemp, Error, TEXT("%s: InitializeFromDataTable - 找不到行 '%s'"), *GetName(), *RowName.ToString());
+        UE_LOG(LogXBCharacter, Error, TEXT("%s: InitializeFromDataTable - 找不到行 '%s'"), *GetName(), *RowName.ToString());
         return;
     }
 
@@ -201,7 +200,7 @@ void AXBCharacterBase::InitializeFromDataTable(UDataTable* DataTable, FName RowN
         TargetMoveSpeed = BaseMoveSpeed;
     }
 
-    UE_LOG(LogTemp, Log, TEXT("%s: 从数据表加载配置成功"), *GetName());
+    UE_LOG(LogXBCharacter, Log, TEXT("%s: 从数据表加载配置成功"), *GetName());
 }
 
 void AXBCharacterBase::ApplyInitialAttributes()
@@ -230,7 +229,6 @@ void AXBCharacterBase::ApplyInitialAttributes()
 
 void AXBCharacterBase::StartSprint()
 {
-    // ✨ 新增 - 死亡后不能冲刺
     if (bIsDead)
     {
         return;
@@ -247,7 +245,7 @@ void AXBCharacterBase::StartSprint()
     SetSoldiersEscaping(true);
     OnSprintStateChanged.Broadcast(true);
 
-    UE_LOG(LogTemp, Log, TEXT("%s: 开始冲刺，目标速度: %.1f"), *GetName(), TargetMoveSpeed);
+    UE_LOG(LogXBCharacter, Log, TEXT("%s: 开始冲刺，目标速度: %.1f"), *GetName(), TargetMoveSpeed);
 }
 
 void AXBCharacterBase::StopSprint()
@@ -260,13 +258,10 @@ void AXBCharacterBase::StopSprint()
     bIsSprinting = false;
     TargetMoveSpeed = BaseMoveSpeed;
 
-    // 通知士兵恢复正常速度
     SetSoldiersEscaping(false);
-
-    // 广播事件
     OnSprintStateChanged.Broadcast(false);
 
-    UE_LOG(LogTemp, Log, TEXT("%s: 停止冲刺，目标速度: %.1f"), *GetName(), TargetMoveSpeed);
+    UE_LOG(LogXBCharacter, Log, TEXT("%s: 停止冲刺，目标速度: %.1f"), *GetName(), TargetMoveSpeed);
 }
 
 float AXBCharacterBase::GetCurrentMoveSpeed() const
@@ -304,23 +299,8 @@ bool AXBCharacterBase::IsHostileTo(const AXBCharacterBase* Other) const
         return false;
     }
 
-    if (Faction == Other->Faction)
-    {
-        return false;
-    }
-
-    if (Faction == EXBFaction::Neutral || Other->Faction == EXBFaction::Neutral)
-    {
-        return false;
-    }
-
-    if ((Faction == EXBFaction::Player && Other->Faction == EXBFaction::Ally) ||
-        (Faction == EXBFaction::Ally && Other->Faction == EXBFaction::Player))
-    {
-        return false;
-    }
-
-    return true;
+    // 🔧 修改 - 使用通用函数库
+    return UXBBlueprintFunctionLibrary::AreFactionsHostile(Faction, Other->Faction);
 }
 
 bool AXBCharacterBase::IsFriendlyTo(const AXBCharacterBase* Other) const
@@ -330,77 +310,110 @@ bool AXBCharacterBase::IsFriendlyTo(const AXBCharacterBase* Other) const
         return false;
     }
 
-    if (Faction == Other->Faction)
-    {
-        return true;
-    }
-
-    if ((Faction == EXBFaction::Player && Other->Faction == EXBFaction::Ally) ||
-        (Faction == EXBFaction::Ally && Other->Faction == EXBFaction::Player))
-    {
-        return true;
-    }
-
-    return false;
+    // 🔧 修改 - 使用通用函数库
+    return UXBBlueprintFunctionLibrary::AreFactionsFriendly(Faction, Other->Faction);
 }
 
-// ==================== 士兵管理实现 ====================
+// ==================== 士兵管理实现（🔧 重点修改） ====================
 
-void AXBCharacterBase::AddSoldier(AXBSoldierCharacter* Soldier)
-{
-    // ✨ 新增 - 死亡后不能添加士兵
-    if (bIsDead)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("%s: 角色已死亡，无法添加士兵"), *GetName());
-        return;
-    }
-
-    if (!Soldier)
-    {
-        return;
-    }
-
-    if (!Soldiers.Contains(Soldier))
-    {
-        int32 OldCount = Soldiers.Num();
-        
-        int32 SlotIndex = Soldiers.Num();
-        Soldier->SetFormationSlotIndex(SlotIndex);
-        Soldier->SetFollowTarget(this, SlotIndex);
-        Soldier->InitializeSoldier(Soldier->GetSoldierConfig(), Faction);
-        
-        Soldiers.Add(Soldier);
-        
-        OnSoldiersAdded(1);
-        OnSoldierCountChanged.Broadcast(OldCount, Soldiers.Num());
-        
-        if (FormationComponent)
-        {
-            FormationComponent->RegenerateFormation(Soldiers.Num());
-        }
-        
-        UE_LOG(LogTemp, Log, TEXT("%s: 添加士兵 %s，槽位: %d，当前数量: %d"), 
-            *GetName(), *Soldier->GetName(), SlotIndex, Soldiers.Num());
-    }
-}
-
-void AXBCharacterBase::RemoveSoldier(AXBSoldierCharacter* Soldier)
+/**
+ * @brief 内部添加士兵到数组
+ * @param Soldier 士兵
+ * @return 是否添加成功
+ * @note ✨ 新增 - 纯粹的数组操作，不触发成长逻辑
+ */
+bool AXBCharacterBase::Internal_AddSoldierToArray(AXBSoldierCharacter* Soldier)
 {
     if (!Soldier)
     {
-        return;
+        return false;
+    }
+
+    if (Soldiers.Contains(Soldier))
+    {
+        return false;
+    }
+
+    Soldiers.Add(Soldier);
+    return true;
+}
+
+/**
+ * @brief 内部从数组移除士兵
+ * @param Soldier 士兵
+ * @return 是否移除成功
+ * @note ✨ 新增 - 纯粹的数组操作，不触发缩减逻辑
+ */
+bool AXBCharacterBase::Internal_RemoveSoldierFromArray(AXBSoldierCharacter* Soldier)
+{
+    if (!Soldier)
+    {
+        return false;
     }
 
     int32 RemovedIndex = Soldiers.Find(Soldier);
     if (RemovedIndex == INDEX_NONE)
+    {
+        return false;
+    }
+
+    Soldiers.RemoveAt(RemovedIndex);
+    ReassignSoldierSlots(RemovedIndex);
+    return true;
+}
+
+/**
+ * @brief 更新士兵计数并广播事件
+ * @param OldCount 旧计数
+ * @note ✨ 新增 - 统一的计数更新入口
+ */
+void AXBCharacterBase::UpdateSoldierCount(int32 OldCount)
+{
+    int32 NewCount = Soldiers.Num();
+
+    if (OldCount != NewCount)
+    {
+        OnSoldierCountChanged.Broadcast(OldCount, NewCount);
+    }
+}
+
+/**
+ * @brief 添加士兵
+ * @param Soldier 士兵
+ * @note 🔧 修改 - 重构，统一计数管理
+ */
+void AXBCharacterBase::AddSoldier(AXBSoldierCharacter* Soldier)
+{
+    if (bIsDead)
+    {
+        UE_LOG(LogXBCharacter, Warning, TEXT("%s: 角色已死亡，无法添加士兵"), *GetName());
+        return;
+    }
+
+    if (!Soldier)
     {
         return;
     }
 
     int32 OldCount = Soldiers.Num();
 
-    Soldiers.RemoveAt(RemovedIndex);
-    ReassignSoldierSlots(RemovedIndex);
+    // 添加到数组
+    if (!Internal_AddSoldierToArray(Soldier))
+    {
+        return; // 已存在，跳过
+    }
+
+    // 设置士兵槽位
+    int32 SlotIndex = Soldiers.Num() - 1;
+    Soldier->SetFormationSlotIndex(SlotIndex);
+    Soldier->SetFollowTarget(this, SlotIndex);
+    Soldier->InitializeSoldier(Soldier->GetSoldierConfig(), Faction);
+
+    // 应用成长效果
+    ApplyGrowthOnSoldiersAdded(1);
+
+    // 更新计数并广播
+    UpdateSoldierCount(OldCount);
 
     // 更新编队
     if (FormationComponent)
@@ -408,7 +421,41 @@ void AXBCharacterBase::RemoveSoldier(AXBSoldierCharacter* Soldier)
         FormationComponent->RegenerateFormation(Soldiers.Num());
     }
 
-    OnSoldierCountChanged.Broadcast(OldCount, Soldiers.Num());
+    UE_LOG(LogXBSoldier, Log, TEXT("%s: 添加士兵 %s，槽位: %d，当前数量: %d"),
+        *GetName(), *Soldier->GetName(), SlotIndex, Soldiers.Num());
+}
+
+/**
+ * @brief 移除士兵
+ * @param Soldier 士兵
+ * @note 🔧 修改 - 重构，不直接处理成长缩减（由 OnSoldierDied 处理）
+ */
+void AXBCharacterBase::RemoveSoldier(AXBSoldierCharacter* Soldier)
+{
+    if (!Soldier)
+    {
+        return;
+    }
+
+    int32 OldCount = Soldiers.Num();
+
+    // 从数组移除
+    if (!Internal_RemoveSoldierFromArray(Soldier))
+    {
+        return; // 不存在，跳过
+    }
+
+    // 更新计数并广播
+    UpdateSoldierCount(OldCount);
+
+    // 更新编队
+    if (FormationComponent)
+    {
+        FormationComponent->RegenerateFormation(Soldiers.Num());
+    }
+
+    UE_LOG(LogXBSoldier, Log, TEXT("%s: 移除士兵 %s，剩余数量: %d"),
+        *GetName(), *Soldier->GetName(), Soldiers.Num());
 }
 
 void AXBCharacterBase::ReassignSoldierSlots(int32 StartIndex)
@@ -423,9 +470,12 @@ void AXBCharacterBase::ReassignSoldierSlots(int32 StartIndex)
 }
 
 /**
- * @brief 士兵死亡时的缩减逻辑
+ * @brief 士兵死亡回调
  * @param DeadSoldier 死亡的士兵
- * @note 🔧 修改 - 只缩小体型，不减少血量
+ * @note 🔧 修改 - 修复计数同步问题
+ *       1. 先从数组移除
+ *       2. 再应用缩减效果
+ *       3. 不再手动修改计数
  */
 void AXBCharacterBase::OnSoldierDied(AXBSoldierCharacter* DeadSoldier)
 {
@@ -434,32 +484,86 @@ void AXBCharacterBase::OnSoldierDied(AXBSoldierCharacter* DeadSoldier)
         return;
     }
 
-    // 从队列移除
+    // ✨ 新增 - 检查是否正在清理（防止循环回调）
+    if (bIsCleaningUpSoldiers)
+    {
+        UE_LOG(LogXBSoldier, Verbose, TEXT("%s: 正在清理士兵，跳过 OnSoldierDied 回调"), *GetName());
+        return;
+    }
+
+    // 从队列移除（不触发成长逻辑）
     RemoveSoldier(DeadSoldier);
 
-    // 更新士兵计数
-    CurrentSoldierCount = FMath::Max(0, CurrentSoldierCount - 1);
+    // 🔧 修改 - 应用缩减效果
+    ApplyGrowthOnSoldiersRemoved(1);
 
-    // ==================== 1. 缩小体型 ====================
+    UE_LOG(LogXBSoldier, Log, TEXT("将领 %s 失去士兵，剩余: %d，体型: %.2f"),
+        *GetName(), Soldiers.Num(), GetCurrentScale());
+}
+
+/**
+ * @brief 应用士兵增加带来的成长效果
+ * @param SoldierCount 增加的士兵数量
+ * @note ✨ 新增 - 原 OnSoldiersAdded 的核心逻辑
+ */
+void AXBCharacterBase::ApplyGrowthOnSoldiersAdded(int32 SoldierCount)
+{
+    if (bIsDead || SoldierCount <= 0)
+    {
+        return;
+    }
+
+    // 1. 更新体型缩放
     UpdateLeaderScale();
 
-    // ==================== 2. 不减少血量（按需求） ====================
-    // 血量保持不变
+    // 2. 更新血量（支持溢出）
+    const float HealthBonus = SoldierCount * GrowthConfigCache.HealthPerSoldier;
+    AddHealthWithOverflow(HealthBonus);
 
-    // ==================== 3. 更新技能特效缩放 ====================
+    // 3. 更新技能特效缩放
     if (GrowthConfigCache.bEnableSkillEffectScaling)
     {
         UpdateSkillEffectScaling();
     }
 
-    // ==================== 4. 更新攻击范围缩放 ====================
+    // 4. 更新攻击范围缩放
     if (GrowthConfigCache.bEnableAttackRangeScaling)
     {
         UpdateAttackRangeScaling();
     }
 
-    UE_LOG(LogTemp, Log, TEXT("将领 %s 失去士兵，剩余: %d，体型: %.2f"),
-        *GetName(), CurrentSoldierCount, GetCurrentScale());
+    UE_LOG(LogXBCharacter, Log, TEXT("将领 %s 招募 %d 个士兵，当前总数: %d，体型: %.2f"),
+        *GetName(), SoldierCount, Soldiers.Num(), GetCurrentScale());
+}
+
+/**
+ * @brief 应用士兵减少带来的缩减效果
+ * @param SoldierCount 减少的士兵数量
+ * @note ✨ 新增 - 分离出缩减逻辑
+ */
+void AXBCharacterBase::ApplyGrowthOnSoldiersRemoved(int32 SoldierCount)
+{
+    if (SoldierCount <= 0)
+    {
+        return;
+    }
+
+    // 1. 缩小体型
+    UpdateLeaderScale();
+
+    // 2. 不减少血量（按需求）
+
+    // 3. 更新技能特效缩放
+    if (GrowthConfigCache.bEnableSkillEffectScaling)
+    {
+        UpdateSkillEffectScaling();
+    }
+
+    // 4. 更新攻击范围缩放
+    if (GrowthConfigCache.bEnableAttackRangeScaling)
+    {
+        UpdateAttackRangeScaling();
+    }
 }
 
 float AXBCharacterBase::GetCurrentScale() const
@@ -477,17 +581,15 @@ float AXBCharacterBase::GetScaledAttackRange() const
     return BaseAttackRange * CurrentScale * GrowthConfigCache.AttackRangeScaleMultiplier;
 }
 
-
 /**
- * @brief 更新角色体型111
- * @note ✨ 新增方法 - 使用累加方式计算缩放
+ * @brief 更新角色体型
+ * @note 使用累加方式计算缩放
  *       公式：最终缩放 = BaseScale + (士兵数 × 每士兵加成)
- *       示例：1.0 + (10 × 0.02) = 1.2
  */
 void AXBCharacterBase::UpdateLeaderScale()
 {
-    // 计算新缩放（累加方式）
-    const float AdditionalScale = CurrentSoldierCount * GrowthConfigCache.ScalePerSoldier;
+    // 🔧 修改 - 直接使用 Soldiers.Num()
+    const float AdditionalScale = Soldiers.Num() * GrowthConfigCache.ScalePerSoldier;
     const float NewScale = FMath::Min(BaseScale + AdditionalScale, GrowthConfigCache.MaxScale);
 
     // 应用到Actor
@@ -499,29 +601,17 @@ void AXBCharacterBase::UpdateLeaderScale()
         AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetScaleAttribute(), NewScale);
     }
 
-    // ✨ 新增 - 同步更新战斗组件的攻击范围缩放
+    // 同步更新战斗组件的攻击范围缩放
     if (CombatComponent && GrowthConfigCache.bEnableAttackRangeScaling)
     {
         float RangeScale = NewScale * GrowthConfigCache.AttackRangeScaleMultiplier;
         CombatComponent->SetAttackRangeScale(RangeScale);
     }
-    
-    UE_LOG(LogTemp, Verbose, TEXT("体型更新: BaseScale=%.2f, 士兵数=%d, 最终缩放=%.2f"),
-        BaseScale, CurrentSoldierCount, NewScale);
+
+    UE_LOG(LogXBCharacter, Verbose, TEXT("体型更新: BaseScale=%.2f, 士兵数=%d, 最终缩放=%.2f"),
+        BaseScale, Soldiers.Num(), NewScale);
 }
 
-
-/**
- * @brief 增加血量（支持溢出提升最大值）
- * @param HealthToAdd 要增加的血量
- * @note ✨ 新增方法
- *       逻辑说明：
- *       - 当前血量 + 增加值 <= 最大值：只增加当前血量
- *       - 当前血量 + 增加值 > 最大值：提升最大值并填满
- *       
- *       示例1：最大1000，当前800，加100 → 最大1000，当前900
- *       示例2：最大1000，当前953，加100 → 最大1053，当前1053
- */
 void AXBCharacterBase::AddHealthWithOverflow(float HealthToAdd)
 {
     if (!AbilitySystemComponent)
@@ -529,36 +619,27 @@ void AXBCharacterBase::AddHealthWithOverflow(float HealthToAdd)
         return;
     }
 
-    // 获取当前血量和最大血量
     float CurrentHealth = AbilitySystemComponent->GetNumericAttribute(UXBAttributeSet::GetHealthAttribute());
     float CurrentMaxHealth = AbilitySystemComponent->GetNumericAttribute(UXBAttributeSet::GetMaxHealthAttribute());
 
-    // 计算新血量
     float NewHealth = CurrentHealth + HealthToAdd;
 
     if (NewHealth > CurrentMaxHealth)
     {
-        // ✨ 溢出逻辑：提升最大血量
         AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetMaxHealthAttribute(), NewHealth);
         AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetHealthAttribute(), NewHealth);
 
-        UE_LOG(LogTemp, Log, TEXT("血量溢出：最大血量提升 %.0f → %.0f"), CurrentMaxHealth, NewHealth);
+        UE_LOG(LogXBCharacter, Log, TEXT("血量溢出：最大血量提升 %.0f → %.0f"), CurrentMaxHealth, NewHealth);
     }
     else
     {
-        // 正常回复：只增加当前血量
         AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetHealthAttribute(), NewHealth);
 
-        UE_LOG(LogTemp, Verbose, TEXT("血量回复：%.0f → %.0f (最大%.0f)"), 
+        UE_LOG(LogXBCharacter, Verbose, TEXT("血量回复：%.0f → %.0f (最大%.0f)"),
             CurrentHealth, NewHealth, CurrentMaxHealth);
     }
 }
 
-/**
- * @brief 更新技能特效缩放
- * @note ✨ 新增方法
- *       通过 ASC 遍历所有激活的技能实例，应用缩放
- */
 void AXBCharacterBase::UpdateSkillEffectScaling()
 {
     if (!AbilitySystemComponent)
@@ -569,17 +650,8 @@ void AXBCharacterBase::UpdateSkillEffectScaling()
     float CurrentScale = GetCurrentScale();
     float EffectScale = CurrentScale * GrowthConfigCache.SkillEffectScaleMultiplier;
 
-    // 🔧 修改 - 通过 GameplayTag 查找并缩放特效
-    // 这里需要在技能GA中实现 ScaleEffect 接口
-    // 示例：通过自定义GameplayTag标记需要缩放的技能
+    UE_LOG(LogXBCharacter, Verbose, TEXT("技能特效缩放更新: %.2f"), EffectScale);
 
-    // 方案1：通过GE（GameplayEffect）应用缩放
-    // 创建一个动态GE，Modifier 为 Scale 属性
-    // 这里简化处理，假设技能在释放时会读取角色的 Scale 属性
-
-    UE_LOG(LogTemp, Verbose, TEXT("技能特效缩放更新: %.2f"), EffectScale);
-
-    // 方案2：如果技能使用粒子系统，通过 Component 缩放
     TArray<UActorComponent*> Components;
     GetComponents(UParticleSystemComponent::StaticClass(), Components);
 
@@ -587,7 +659,6 @@ void AXBCharacterBase::UpdateSkillEffectScaling()
     {
         if (UParticleSystemComponent* PSC = Cast<UParticleSystemComponent>(Comp))
         {
-            // 只缩放技能特效（通过Tag识别）
             if (PSC->ComponentHasTag(FName("SkillEffect")))
             {
                 PSC->SetWorldScale3D(FVector(EffectScale));
@@ -596,11 +667,6 @@ void AXBCharacterBase::UpdateSkillEffectScaling()
     }
 }
 
-/**
- * @brief 更新攻击范围缩放
- * @note ✨ 新增方法
- *       通过修改碰撞体积实现攻击范围缩放
- */
 void AXBCharacterBase::UpdateAttackRangeScaling()
 {
     if (!CombatComponent)
@@ -611,70 +677,13 @@ void AXBCharacterBase::UpdateAttackRangeScaling()
     float CurrentScale = GetCurrentScale();
     float ScaledRange = BaseAttackRange * CurrentScale * GrowthConfigCache.AttackRangeScaleMultiplier;
 
-    // 🔧 修改 - 通过 CombatComponent 更新攻击范围
-    // 假设 CombatComponent 有攻击范围配置
-    // 这里需要在实际攻击判定时读取缩放后的范围
-
-    UE_LOG(LogTemp, Verbose, TEXT("攻击范围更新: %.0f → %.0f"), BaseAttackRange, ScaledRange);
-
-    // 实际应用方式1：更新武器碰撞体积
-    // 实际应用方式2：在攻击判定时使用 GetScaledAttackRange()
-}
-
-
-
-
-/**
- * @brief 士兵增加时的成长逻辑
- * @param SoldierCount 增加的士兵数量
- * @note 🔧 修改 - 完善血量溢出逻辑和技能缩放
- */
-void AXBCharacterBase::OnSoldiersAdded(int32 SoldierCount)
-{
-    if (bIsDead)
-    {
-        return;
-    }
-
-    if (SoldierCount <= 0)
-    {
-        return;
-    }
-
-    // 更新士兵计数
-    CurrentSoldierCount += SoldierCount;
-
-    // ==================== 1. 更新体型缩放 ====================
-    UpdateLeaderScale();
-
-    // ==================== 2. 更新血量（支持溢出）====================
-    const float HealthBonus = SoldierCount * GrowthConfigCache.HealthPerSoldier;
-    AddHealthWithOverflow(HealthBonus);
-
-    // ==================== 3. 更新技能特效缩放 ====================
-    if (GrowthConfigCache.bEnableSkillEffectScaling)
-    {
-        UpdateSkillEffectScaling();
-    }
-
-    // ==================== 4. 更新攻击范围缩放 ====================
-    if (GrowthConfigCache.bEnableAttackRangeScaling)
-    {
-        UpdateAttackRangeScaling();
-    }
-
-    UE_LOG(LogTemp, Log, TEXT("将领 %s 招募 %d 个士兵，当前总数: %d，体型: %.2f，血量: %.0f/%.0f"),
-        *GetName(), SoldierCount, CurrentSoldierCount, 
-        GetCurrentScale(), 
-        AbilitySystemComponent->GetNumericAttribute(UXBAttributeSet::GetHealthAttribute()),
-        AbilitySystemComponent->GetNumericAttribute(UXBAttributeSet::GetMaxHealthAttribute()));
+    UE_LOG(LogXBCharacter, Verbose, TEXT("攻击范围更新: %.0f → %.0f"), BaseAttackRange, ScaledRange);
 }
 
 // ==================== 战斗状态系统实现 ====================
 
 void AXBCharacterBase::EnterCombat()
 {
-    // ✨ 新增 - 死亡后不能进入战斗
     if (bIsDead)
     {
         return;
@@ -736,43 +745,27 @@ void AXBCharacterBase::ExitCombat()
     OnCombatStateChanged.Broadcast(false);
 }
 
-/**
- * @brief 脱离战斗（逃跑）
- * @note ✨ 新增方法
- *       完整流程：
- *       1. 检查冷却时间
- *       2. 退出战斗状态
- *       3. 召回所有士兵
- *       4. 开启冲刺加速
- *       5. 定时器自动停止冲刺
- */
 void AXBCharacterBase::DisengageFromCombat()
 {
-    // 检查冷却
     float CurrentTime = GetWorld()->GetTimeSeconds();
     if (CurrentTime - LastDisengageTime < DisengageCooldown)
     {
-        UE_LOG(LogTemp, Verbose, TEXT("脱离战斗冷却中，剩余: %.1f秒"), 
+        UE_LOG(LogXBCombat, Verbose, TEXT("脱离战斗冷却中，剩余: %.1f秒"),
             DisengageCooldown - (CurrentTime - LastDisengageTime));
         return;
     }
 
     LastDisengageTime = CurrentTime;
 
-    UE_LOG(LogTemp, Warning, TEXT(">>> 将领 %s 脱离战斗（逃跑） <<<"), *GetName());
+    UE_LOG(LogXBCombat, Warning, TEXT(">>> 将领 %s 脱离战斗（逃跑） <<<"), *GetName());
 
-    // ==================== 1. 退出战斗状态 ====================
     ExitCombat();
-
-    // ==================== 2. 召回所有士兵 ====================
     RecallAllSoldiers();
 
-    // ==================== 3. 开启冲刺加速 ====================
     if (bSprintWhenDisengaging)
     {
         StartSprint();
 
-        // 设置定时器，自动停止冲刺
         GetWorldTimerManager().ClearTimer(DisengageSprintTimerHandle);
         GetWorldTimerManager().SetTimer(
             DisengageSprintTimerHandle,
@@ -782,13 +775,11 @@ void AXBCharacterBase::DisengageFromCombat()
             false
         );
 
-        UE_LOG(LogTemp, Log, TEXT("逃跑冲刺启动，持续时间: %.1f秒"), DisengageSprintDuration);
+        UE_LOG(LogXBCombat, Log, TEXT("逃跑冲刺启动，持续时间: %.1f秒"), DisengageSprintDuration);
     }
 
-    // ==================== 4. 士兵进入逃跑模式 ====================
     SetSoldiersEscaping(true);
 
-    // 定时器自动恢复正常速度
     FTimerHandle TempHandle;
     GetWorldTimerManager().SetTimer(
         TempHandle,
@@ -816,26 +807,17 @@ void AXBCharacterBase::OnAttackHit(AActor* HitTarget)
     EnterCombat();
 }
 
-/**
- * @brief 召回所有士兵
- * @note 🔧 修改 - 增强逻辑，清除战斗目标
- */
 void AXBCharacterBase::RecallAllSoldiers()
 {
-    // 退出战斗状态
     ExitCombat();
 
     for (AXBSoldierCharacter* Soldier : Soldiers)
     {
         if (Soldier && Soldier->GetSoldierState() != EXBSoldierState::Dead)
         {
-            // 设置返回状态
             Soldier->SetSoldierState(EXBSoldierState::Returning);
-            
-            // ✨ 新增 - 清除当前攻击目标
             Soldier->CurrentAttackTarget = nullptr;
-            
-            // ✨ 新增 - 停止移动，准备返回
+
             if (AAIController* AICtrl = Cast<AAIController>(Soldier->GetController()))
             {
                 AICtrl->StopMovement();
@@ -843,14 +825,9 @@ void AXBCharacterBase::RecallAllSoldiers()
         }
     }
 
-    UE_LOG(LogTemp, Log, TEXT("将领 %s 召回所有士兵"), *GetName());
+    UE_LOG(LogXBSoldier, Log, TEXT("将领 %s 召回所有士兵"), *GetName());
 }
 
-/**
- * @brief 设置士兵逃跑状态
- * @param bEscaping 是否逃跑
- * @note 🔧 修改 - 保持原有逻辑
- */
 void AXBCharacterBase::SetSoldiersEscaping(bool bEscaping)
 {
     for (AXBSoldierCharacter* Soldier : Soldiers)
@@ -866,65 +843,55 @@ void AXBCharacterBase::SetSoldiersEscaping(bool bEscaping)
 
 void AXBCharacterBase::HandleDeath()
 {
-     if (bIsDead)
+    if (bIsDead)
     {
         return;
     }
 
     bIsDead = true;
 
-    UE_LOG(LogTemp, Log, TEXT("%s: 角色死亡"), *GetName());
+    UE_LOG(LogXBCharacter, Log, TEXT("%s: 角色死亡"), *GetName());
 
-    // ✨ 新增 - 禁用磁场组件，阻止招募新士兵
     if (MagnetFieldComponent)
     {
         MagnetFieldComponent->SetFieldEnabled(false);
-        UE_LOG(LogTemp, Log, TEXT("%s: 磁场组件已禁用"), *GetName());
+        UE_LOG(LogXBCharacter, Log, TEXT("%s: 磁场组件已禁用"), *GetName());
     }
 
-    // ✨ 新增 - 隐藏血条
     if (HealthBarComponent)
     {
         HealthBarComponent->SetHealthBarVisible(false);
         HealthBarComponent->SetComponentTickEnabled(false);
-        UE_LOG(LogTemp, Log, TEXT("%s: 血条已隐藏"), *GetName());
+        UE_LOG(LogXBCharacter, Log, TEXT("%s: 血条已隐藏"), *GetName());
     }
 
-    // 广播死亡事件
     OnCharacterDeath.Broadcast(this);
 
-    // 生成掉落的士兵
     SpawnDroppedSoldiers();
 
-    // 禁用移动
     if (UCharacterMovementComponent* MovementComp = GetCharacterMovement())
     {
         MovementComp->DisableMovement();
         MovementComp->StopMovementImmediately();
     }
 
-    // 禁用碰撞
     if (UCapsuleComponent* Capsule = GetCapsuleComponent())
     {
         Capsule->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     }
 
-    // 停止所有技能
     if (AbilitySystemComponent)
     {
         AbilitySystemComponent->CancelAllAbilities();
     }
 
-    // 退出战斗状态
     ExitCombat();
 
-    // 停止冲刺
     if (bIsSprinting)
     {
         StopSprint();
     }
 
-    // 播放死亡蒙太奇
     bool bMontageStarted = false;
     if (DeathMontage)
     {
@@ -984,28 +951,28 @@ void AXBCharacterBase::SpawnDroppedSoldiers()
     }
 
     FVector SpawnOrigin = GetActorLocation();
-    
+
     for (int32 i = 0; i < SoldierDropConfig.DropCount; ++i)
     {
         float BaseAngle = (360.0f / SoldierDropConfig.DropCount) * i;
         float RandomAngleOffset = FMath::RandRange(-15.0f, 15.0f);
         float Angle = BaseAngle + RandomAngleOffset;
-        
+
         float Distance = FMath::RandRange(SoldierDropConfig.DropRadius * 0.5f, SoldierDropConfig.DropRadius);
-        
+
         FVector Direction = FRotator(0.0f, Angle, 0.0f).RotateVector(FVector::ForwardVector);
         FVector TargetLocation = SpawnOrigin + Direction * Distance;
-        
+
         FActorSpawnParameters SpawnParams;
         SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
-        
+
         AXBSoldierCharacter* DroppedSoldier = World->SpawnActor<AXBSoldierCharacter>(
             SoldierDropConfig.DropSoldierClass,
             TargetLocation,
             FRotator::ZeroRotator,
             SpawnParams
         );
-        
+
         if (DroppedSoldier)
         {
             DroppedSoldier->InitializeSoldier(DroppedSoldier->GetSoldierConfig(), EXBFaction::Neutral);
@@ -1034,19 +1001,30 @@ void AXBCharacterBase::OnDestroyTimerExpired()
     Destroy();
 }
 
+/**
+ * @brief 销毁前清理
+ * @note 🔧 修改 - 添加 bIsCleaningUpSoldiers 标记防止循环回调
+ */
 void AXBCharacterBase::PreDestroyCleanup()
 {
     GetWorldTimerManager().ClearTimer(CombatTimeoutHandle);
 
+    // ✨ 新增 - 设置清理标记，防止士兵死亡回调
+    bIsCleaningUpSoldiers = true;
+
     for (AXBSoldierCharacter* Soldier : Soldiers)
     {
-        if (Soldier)
+        if (Soldier && IsValid(Soldier))
         {
+            // 直接设置状态，不触发回调
             Soldier->SetSoldierState(EXBSoldierState::Dead);
             Soldier->SetLifeSpan(2.0f);
         }
     }
     Soldiers.Empty();
+
+    // ✨ 新增 - 清除标记
+    bIsCleaningUpSoldiers = false;
 
     if (AbilitySystemComponent)
     {

@@ -5,10 +5,9 @@
  * @file BTTask_XBFindEnemy.h
  * @brief 行为树任务 - 寻找敌人
  * 
- * @note ✨ 新增文件
- *       1. 搜索范围内的敌对目标
- *       2. 选择最近的敌人作为目标
- *       3. 更新黑板中的目标值
+ * @note 🔧 修改记录:
+ *       1. 使用球形检测替代全量Actor搜索
+ *       2. 支持从数据表读取视野范围
  */
 
 #pragma once
@@ -17,14 +16,6 @@
 #include "BehaviorTree/BTTaskNode.h"
 #include "BTTask_XBFindEnemy.generated.h"
 
-/**
- * @brief 寻找敌人任务
- * 
- * @note 功能说明:
- *       - 在检测范围内搜索敌对单位
- *       - 选择最近的敌人
- *       - 将找到的目标写入黑板
- */
 UCLASS()
 class XIAOBINDATIANXIA_API UBTTask_XBFindEnemy : public UBTTaskNode
 {
@@ -33,10 +24,7 @@ class XIAOBINDATIANXIA_API UBTTask_XBFindEnemy : public UBTTaskNode
 public:
     UBTTask_XBFindEnemy();
 
-    /** @brief 执行任务 */
     virtual EBTNodeResult::Type ExecuteTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory) override;
-
-    /** @brief 获取节点描述 */
     virtual FString GetStaticDescription() const override;
 
 protected:
@@ -48,7 +36,7 @@ protected:
     UPROPERTY(EditAnywhere, Category = "黑板", meta = (DisplayName = "检测范围键"))
     FBlackboardKeySelector DetectionRangeKey;
 
-    /** @brief 默认检测范围（如果黑板键无效） */
+    /** @brief 默认检测范围（如果黑板键无效且数据表未配置） */
     UPROPERTY(EditAnywhere, Category = "配置", meta = (DisplayName = "默认检测范围", ClampMin = "100.0"))
     float DefaultDetectionRange = 800.0f;
 
