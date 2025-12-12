@@ -29,6 +29,8 @@ class AXBSoldierAIController;
 class AXBCharacterBase;
 class UDataTable;
 class UAnimMontage;
+// 在现有的前向声明区域添加:
+class UXBSoldierDebugComponent;  // ✨ 新增
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnSoldierStateChanged, EXBSoldierState, OldState, EXBSoldierState, NewState);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSoldierDied, AXBSoldierCharacter*, Soldier);
@@ -223,11 +225,19 @@ public:
     UPROPERTY(BlueprintAssignable, Category = "XB|Soldier")
     FOnSoldierRecruited OnSoldierRecruited;
 
-protected:
     // ==================== 组件 ====================
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "跟随组件"))
     TObjectPtr<UXBSoldierFollowComponent> FollowComponent;
+
+    // ✨ 新增 - 调试组件
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "调试组件"))
+    TObjectPtr<UXBSoldierDebugComponent> DebugComponent;
+    
+protected:
+
+
+    
 
     // ==================== 配置数据 ====================
 

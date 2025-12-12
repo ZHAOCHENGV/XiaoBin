@@ -19,8 +19,6 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Soldier/Component/XBSoldierFollowComponent.h"
 #include "Character/XBCharacterBase.h"
-#include "Character/Components/XBFormationComponent.h"
-#include "Kismet/KismetMathLibrary.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "AIController.h"
 #include "AI/XBSoldierAIController.h"
@@ -29,6 +27,7 @@
 #include "Engine/DataTable.h"
 #include "Animation/AnimInstance.h"
 #include "TimerManager.h"
+#include "Soldier/Component/XBSoldierDebugComponent.h"
 
 AXBSoldierCharacter::AXBSoldierCharacter()
 {
@@ -47,7 +46,9 @@ AXBSoldierCharacter::AXBSoldierCharacter()
     }
 
     FollowComponent = CreateDefaultSubobject<UXBSoldierFollowComponent>(TEXT("FollowComponent"));
-
+    // ✨ 新增 - 创建调试组件
+    DebugComponent = CreateDefaultSubobject<UXBSoldierDebugComponent>(TEXT("DebugComponent"));
+    
     if (UCharacterMovementComponent* MovementComp = GetCharacterMovement())
     {
         MovementComp->bOrientRotationToMovement = true;
@@ -302,9 +303,8 @@ void AXBSoldierCharacter::OnRecruited(AActor* NewLeader, int32 SlotIndex)
         FollowComponent->SetFollowTarget(NewLeader);
         FollowComponent->SetFormationSlotIndex(SlotIndex);
         
-        // 🔧 修改 - 立即传送到编队位置，然后切换到锁定模式
-        FollowComponent->TeleportToFormationPosition();
-        FollowComponent->SetFollowMode(EXBFollowMode::Locked);
+        // 🔧 修改 - 使用招募过渡模式（移动组件驱动的平滑移动）
+        FollowComponent->StartRecruitTransition();
     }
     
     // 更新阵营为将领阵营
@@ -1044,7 +1044,7 @@ void AXBSoldierCharacter::ExitCombat()
 
     CurrentAttackTarget = nullptr;
     
-    // 🔧 修改 - 通知跟随组件退出战斗模式（会传送回编队位置）
+    // 🔧 修改 - 通知跟随组件退出战斗模式
     if (FollowComponent)
     {
         FollowComponent->ExitCombatMode();
@@ -1058,7 +1058,7 @@ void AXBSoldierCharacter::ExitCombat()
 
     SetSoldierState(EXBSoldierState::Following);
 
-    UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 退出战斗，传送回队列"), *GetName());
+    UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 退出战斗"), *GetName());
 }
 
 float AXBSoldierCharacter::TakeSoldierDamage(float DamageAmount, AActor* DamageSource)
@@ -1292,22 +1292,22 @@ void AXBSoldierCharacter::SetEscaping(bool bEscaping)
 
     if (bEscaping)
     {
-        // 🔧 修改 - 逃跑时立即传送回编队位置
+        // 🔧 修改 - 逃跑时退出战斗状态
         if (FollowComponent)
         {
-            // 如果在战斗中，先退出战斗
+            // 设置战斗状态为false
+            FollowComponent->SetCombatState(false);
+            
             if (CurrentState == EXBSoldierState::Combat)
             {
                 CurrentAttackTarget = nullptr;
                 SetSoldierState(EXBSoldierState::Following);
             }
             
-            // 传送回编队位置
-            FollowComponent->TeleportToFormationPosition();
-            FollowComponent->SetFollowMode(EXBFollowMode::Locked);
+            // 使用插值模式回到编队位置
+            FollowComponent->StartInterpolateToFormation();
         }
         
-        // 停止AI移动
         if (AAIController* AICtrl = Cast<AAIController>(GetController()))
         {
             AICtrl->StopMovement();
