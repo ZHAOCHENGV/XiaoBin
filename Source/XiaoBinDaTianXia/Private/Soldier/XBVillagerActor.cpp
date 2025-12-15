@@ -13,17 +13,33 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "NiagaraComponent.h"
 #include "NiagaraSystem.h"
+#include "XBCollisionChannels.h"
 #include "Animation/AnimInstance.h"
+#include "Utils/XBLogCategories.h"
 
 AXBVillagerActor::AXBVillagerActor()
 {
     PrimaryActorTick.bCanEverTick = true;
 
-    // 🔧 修改 - 配置胶囊体（与士兵相同）
+    // 🔧 修改 - 配置士兵碰撞通道
+    /**
+     * @note 设置胶囊体使用士兵专用碰撞通道
+     *       与将领通道和自身通道配置为 Overlap，避免相互阻挡
+     *       同时保持与地面、墙壁等的正常碰撞
+     */
     if (UCapsuleComponent* Capsule = GetCapsuleComponent())
     {
         Capsule->InitCapsuleSize(34.0f, 88.0f);
-        Capsule->SetCollisionProfileName(TEXT("Pawn"));
+        
+     
+        Capsule->SetCollisionObjectType(XBCollision::Soldier);
+        
+ 
+        Capsule->SetCollisionResponseToChannel(XBCollision::Leader, ECR_Overlap);
+        // 与其他士兵 Overlap（友军士兵不互相阻挡）
+        Capsule->SetCollisionResponseToChannel(XBCollision::Soldier, ECR_Overlap);
+        
+        UE_LOG(LogXBSoldier, Log, TEXT("村民碰撞通道配置完成"));
     }
 
     // 🔧 修改 - 配置网格体偏移

@@ -17,6 +17,7 @@
 #include "Soldier/XBVillagerActor.h" // ✨ 新增
 #include "GAS/XBAbilitySystemComponent.h"
 #include "AbilitySystemBlueprintLibrary.h"
+#include "XBCollisionChannels.h"
 #include "Data/XBSoldierDataTable.h"
 #include "Engine/DataTable.h"
 
@@ -25,7 +26,7 @@ UXBMagnetFieldComponent::UXBMagnetFieldComponent()
     PrimaryComponentTick.bCanEverTick = false;
     bWantsInitializeComponent = true;
 
-    SetCollisionProfileName(UCollisionProfile::NoCollision_ProfileName);
+
     SetGenerateOverlapEvents(false);
     InitSphereRadius(300.0f);
     SetHiddenInGame(true);
@@ -35,11 +36,30 @@ void UXBMagnetFieldComponent::InitializeComponent()
 {
     Super::InitializeComponent();
 
+    // 启用碰撞查询
     SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+    
+    // 设置自身为 WorldDynamic 类型
     SetCollisionObjectType(ECC_WorldDynamic);
+    
+    // 🔧 修改 - 配置碰撞响应
+    // 先忽略所有通道
     SetCollisionResponseToAllChannels(ECR_Ignore);
+    
+    // 检测默认 Pawn 通道（村民使用默认 Pawn）
     SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+    
+    // ✨ 新增 - 检测自定义 Soldier 通道（士兵使用此通道）
+    SetCollisionResponseToChannel(XBCollision::Soldier, ECR_Overlap);
+    
+    // ✨ 新增 - 检测自定义 Leader 通道（其他将领，如果需要）
+    SetCollisionResponseToChannel(XBCollision::Leader, ECR_Overlap);
+    
+    // ✨ 新增 - 检测 WorldDynamic（村民可能使用此通道）
     SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
+    
+    UE_LOG(LogTemp, Log, TEXT("磁场组件 %s: 碰撞配置完成 - 检测 Pawn/Soldier/Leader/WorldDynamic"), 
+        *GetOwner()->GetName());
 }
 
 void UXBMagnetFieldComponent::BeginPlay()
@@ -54,6 +74,11 @@ void UXBMagnetFieldComponent::BeginPlay()
     }
 
     SetGenerateOverlapEvents(bIsFieldEnabled);
+    // ✨ 新增 - 输出调试信息确认配置
+    UE_LOG(LogTemp, Warning, TEXT("磁场组件 %s BeginPlay - 半径: %.1f, 启用: %s"), 
+        *GetOwner()->GetName(), 
+        GetScaledSphereRadius(),
+        bIsFieldEnabled ? TEXT("是") : TEXT("否"));
 }
 
 void UXBMagnetFieldComponent::SetFieldRadius(float NewRadius)
@@ -83,7 +108,10 @@ void UXBMagnetFieldComponent::OnSphereBeginOverlap(UPrimitiveComponent* Overlapp
     {
         return;
     }
-
+    // ✨ 新增 - 调试日志
+    UE_LOG(LogTemp, Log, TEXT("磁场检测到: %s (类型: %s)"), 
+        *OtherActor->GetName(), 
+        *OtherActor->GetClass()->GetName());
     AXBCharacterBase* Leader = Cast<AXBCharacterBase>(GetOwner());
     if (!Leader || Leader->IsDead())
     {

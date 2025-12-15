@@ -27,6 +27,7 @@
 #include "Engine/DataTable.h"
 #include "Animation/AnimInstance.h"
 #include "TimerManager.h"
+#include "XBCollisionChannels.h"
 #include "Soldier/Component/XBSoldierDebugComponent.h"
 
 AXBSoldierCharacter::AXBSoldierCharacter()
@@ -34,10 +35,30 @@ AXBSoldierCharacter::AXBSoldierCharacter()
     PrimaryActorTick.bCanEverTick = true;
     PrimaryActorTick.bStartWithTickEnabled = false;
 
+    // 🔧 修改 - 配置士兵碰撞通道
+    /**
+     * @note 设置胶囊体使用士兵专用碰撞通道
+     *       与将领通道和自身通道配置为 Overlap，避免相互阻挡
+     *       同时保持与地面、墙壁等的正常碰撞
+     */
     if (UCapsuleComponent* Capsule = GetCapsuleComponent())
     {
         Capsule->InitCapsuleSize(34.0f, 88.0f);
-        Capsule->SetCollisionProfileName(TEXT("Pawn"));
+        
+        // ✨ 新增 - 设置碰撞对象类型为士兵通道
+        Capsule->SetCollisionObjectType(XBCollision::Soldier);
+        
+        // 配置碰撞响应
+        Capsule->SetCollisionResponseToChannel(XBCollision::Leader, ECR_Overlap);
+        Capsule->SetCollisionResponseToChannel(XBCollision::Soldier, ECR_Overlap);
+        
+        // ✨ 新增 - 输出详细配置信息
+        UE_LOG(LogXBSoldier, Warning, TEXT("士兵碰撞配置: ObjectType=%d, 对Leader(%d)响应=%d, 对Soldier(%d)响应=%d"),
+            (int32)Capsule->GetCollisionObjectType(),
+            (int32)XBCollision::Leader,
+            (int32)Capsule->GetCollisionResponseToChannel(XBCollision::Leader),
+            (int32)XBCollision::Soldier,
+            (int32)Capsule->GetCollisionResponseToChannel(XBCollision::Soldier));
     }
 
     if (USkeletalMeshComponent* MeshComp = GetMesh())
@@ -106,6 +127,7 @@ void AXBSoldierCharacter::PostInitializeComponents()
 void AXBSoldierCharacter::BeginPlay()
 {
     Super::BeginPlay();
+
 
     if (bInitializedFromDataTable)
     {
@@ -189,40 +211,85 @@ void AXBSoldierCharacter::Tick(float DeltaTime)
 }
 
 // ==================== 配置访问方法（✨ 新增） ====================
-
+/**
+ * @brief 获取视野范围
+ * @return 视野范围值
+ * @note 🔧 修改 - 优先使用 SoldierConfig
+ */
 float AXBSoldierCharacter::GetVisionRange() const
 {
+    // 🔧 修改 - 优先使用 SoldierConfig 中的值
+    if (SoldierConfig.VisionRange > 0.0f)
+    {
+        return SoldierConfig.VisionRange;
+    }
+
+    // 降级：使用缓存的数据表行
     if (bInitializedFromDataTable)
     {
         return CachedTableRow.GetVisionRange();
     }
+
     return 800.0f; // 默认值
 }
-
+/**
+ * @brief 获取脱离距离
+ * @return 脱离距离值
+ * @note 🔧 修改 - 优先使用 SoldierConfig
+ */
 float AXBSoldierCharacter::GetDisengageDistance() const
 {
+    // 🔧 修改 - 优先使用 SoldierConfig
+    if (SoldierConfig.DisengageDistance > 0.0f)
+    {
+        return SoldierConfig.DisengageDistance;
+    }
+
     if (bInitializedFromDataTable)
     {
         return CachedTableRow.AIConfig.DisengageDistance;
     }
+
     return 1000.0f; // 默认值
 }
-
+/**
+ * @brief 获取返回延迟
+ * @return 返回延迟时间（秒）
+ * @note 🔧 修改 - 优先使用 SoldierConfig
+ */
 float AXBSoldierCharacter::GetReturnDelay() const
 {
+    // 🔧 修改 - 优先使用 SoldierConfig
+    if (SoldierConfig.ReturnDelay > 0.0f)
+    {
+        return SoldierConfig.ReturnDelay;
+    }
+
     if (bInitializedFromDataTable)
     {
         return CachedTableRow.AIConfig.ReturnDelay;
     }
+
     return 2.0f; // 默认值
 }
-
+/**
+ * @brief 获取到达阈值
+ * @return 到达阈值距离
+ * @note 🔧 修改 - 优先使用 SoldierConfig
+ */
 float AXBSoldierCharacter::GetArrivalThreshold() const
 {
+    // 🔧 修改 - 优先使用 SoldierConfig
+    if (SoldierConfig.ArrivalThreshold > 0.0f)
+    {
+        return SoldierConfig.ArrivalThreshold;
+    }
+
     if (bInitializedFromDataTable)
     {
         return CachedTableRow.AIConfig.ArrivalThreshold;
     }
+
     return 50.0f; // 默认值
 }
 
@@ -452,8 +519,13 @@ void AXBSoldierCharacter::InitializeAI()
     }
 }
 
-// ==================== 初始化实现 ====================
-
+/**
+ * @brief 从数据表初始化士兵
+ * @param DataTable 数据表
+ * @param RowName 行名
+ * @param InFaction 阵营
+ * @note 🔧 修改 - 使用 ToSoldierConfig() 方法统一初始化 SoldierConfig
+ */
 void AXBSoldierCharacter::InitializeFromDataTable(UDataTable* DataTable, FName RowName, EXBFaction InFaction)
 {
     if (!DataTable)
@@ -475,71 +547,101 @@ void AXBSoldierCharacter::InitializeFromDataTable(UDataTable* DataTable, FName R
         return;
     }
 
+    // 缓存原始数据表行
     CachedTableRow = *Row;
     bInitializedFromDataTable = true;
 
+    // 🔧 修改 - 使用 ToSoldierConfig() 统一转换
+    /**
+     * @note 将数据表行数据完整转换为 SoldierConfig
+     *       确保所有运行时配置都从数据表获取
+     */
+    Row->ToSoldierConfig(SoldierConfig, RowName);
+
+    // 设置基础属性
     SoldierType = Row->SoldierType;
     Faction = InFaction;
     CurrentHealth = Row->MaxHealth;
 
+    // 应用移动组件配置
     if (UCharacterMovementComponent* MovementComp = GetCharacterMovement())
     {
         MovementComp->MaxWalkSpeed = Row->MoveSpeed;
         MovementComp->RotationRate = FRotator(0.0f, Row->RotationSpeed, 0.0f);
     }
 
+    // 应用跟随组件配置
     if (FollowComponent)
     {
         FollowComponent->SetFollowSpeed(Row->MoveSpeed);
         FollowComponent->SetFollowInterpSpeed(Row->FollowInterpSpeed);
     }
 
+    // 加载行为树
     if (!Row->AIConfig.BehaviorTree.IsNull())
     {
         BehaviorTreeAsset = Row->AIConfig.BehaviorTree.LoadSynchronous();
     }
 
+    // 应用视觉配置
     ApplyVisualConfig();
 
-    SoldierConfig.SoldierType = Row->SoldierType;
-    SoldierConfig.MaxHealth = Row->MaxHealth;
-    SoldierConfig.BaseDamage = Row->BaseDamage;
-    SoldierConfig.AttackRange = Row->AttackRange;
-    SoldierConfig.AttackInterval = Row->AttackInterval;
-    SoldierConfig.MoveSpeed = Row->MoveSpeed;
-    SoldierConfig.FollowInterpSpeed = Row->FollowInterpSpeed;
-    SoldierConfig.HealthBonusToLeader = Row->HealthBonusToLeader;
-    SoldierConfig.DamageBonusToLeader = Row->DamageBonusToLeader;
-
-    UE_LOG(LogXBSoldier, Log, TEXT("士兵从数据表初始化: %s, 类型=%d, 血量=%.1f, 视野=%.0f"), 
-        *RowName.ToString(), static_cast<int32>(SoldierType), CurrentHealth, GetVisionRange());
+    UE_LOG(LogXBSoldier, Log, TEXT("士兵从数据表初始化: %s, 类型=%s, 血量=%.1f, 视野=%.0f, 攻击范围=%.0f"), 
+        *RowName.ToString(), 
+        *UEnum::GetValueAsString(SoldierType),
+        CurrentHealth, 
+        SoldierConfig.VisionRange,
+        SoldierConfig.AttackRange);
 }
-
+/**
+ * @brief 初始化士兵（使用配置结构）
+ * @param InConfig 士兵配置
+ * @param InFaction 阵营
+ * @note 🔧 修改 - 完整应用配置中的所有属性
+ */
 void AXBSoldierCharacter::InitializeSoldier(const FXBSoldierConfig& InConfig, EXBFaction InFaction)
 {
+    // 🔧 修改 - 完整复制配置
     SoldierConfig = InConfig;
     SoldierType = InConfig.SoldierType;
     Faction = InFaction;
     CurrentHealth = InConfig.MaxHealth;
 
+    // 应用移动组件配置
     if (UCharacterMovementComponent* MovementComp = GetCharacterMovement())
     {
         MovementComp->MaxWalkSpeed = InConfig.MoveSpeed;
+        MovementComp->RotationRate = FRotator(0.0f, InConfig.RotationSpeed, 0.0f);
     }
 
+    // 应用跟随组件配置
     if (FollowComponent)
     {
         FollowComponent->SetFollowSpeed(InConfig.MoveSpeed);
         FollowComponent->SetFollowInterpSpeed(InConfig.FollowInterpSpeed);
     }
 
+    // 应用视觉配置
     if (InConfig.SoldierMesh)
     {
         GetMesh()->SetSkeletalMesh(InConfig.SoldierMesh);
     }
 
-    UE_LOG(LogXBSoldier, Log, TEXT("士兵初始化: Type=%d, Health=%.1f"), 
-        static_cast<int32>(SoldierType), CurrentHealth);
+    if (InConfig.AnimClass)
+    {
+        GetMesh()->SetAnimInstanceClass(InConfig.AnimClass);
+    }
+
+    if (!FMath::IsNearlyEqual(InConfig.MeshScale, 1.0f))
+    {
+        SetActorScale3D(FVector(InConfig.MeshScale));
+    }
+
+    UE_LOG(LogXBSoldier, Log, TEXT("士兵初始化: ID=%s, 类型=%s, 血量=%.1f, 视野=%.0f"), 
+        *InConfig.SoldierId.ToString(),
+        *UEnum::GetValueAsString(SoldierType), 
+        CurrentHealth,
+        InConfig.VisionRange);
 }
 
 void AXBSoldierCharacter::ApplyVisualConfig()

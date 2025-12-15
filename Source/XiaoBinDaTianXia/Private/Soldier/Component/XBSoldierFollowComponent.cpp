@@ -205,8 +205,10 @@ void UXBSoldierFollowComponent::SetSoldierCollisionEnabled(bool bEnableCollision
     
     if (bEnableCollision)
     {
+        // 🔧 修改 - 恢复碰撞时，保持与将领和友军士兵的 Overlap 配置
         if (bCollisionModified)
         {
+            // 恢复与普通 Pawn（敌人）的碰撞
             Capsule->SetCollisionResponseToChannel(ECC_Pawn, OriginalPawnResponse);
             bCollisionModified = false;
             UE_LOG(LogXBSoldier, Verbose, TEXT("跟随组件: 恢复Pawn碰撞"));
@@ -214,6 +216,7 @@ void UXBSoldierFollowComponent::SetSoldierCollisionEnabled(bool bEnableCollision
     }
     else
     {
+        // 🔧 修改 - 禁用碰撞时，临时忽略所有 Pawn（用于招募过渡）
         if (!bCollisionModified)
         {
             OriginalPawnResponse = Capsule->GetCollisionResponseToChannel(ECC_Pawn);

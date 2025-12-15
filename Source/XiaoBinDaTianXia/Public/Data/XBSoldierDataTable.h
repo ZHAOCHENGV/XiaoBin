@@ -6,9 +6,9 @@
  * @brief 士兵配置数据表结构
  * 
  * @note 🔧 修改记录:
- *       1. 新增视野范围（VisionRange）配置
- *       2. 将硬编码的魔法数值移入数据表
- *       3. 完善AI配置结构
+ *       1. 添加 SoldierId 字段
+ *       2. 添加 SoldierTags 字段
+ *       3. 添加 ToSoldierConfig() 转换方法
  */
 
 #pragma once
@@ -26,7 +26,6 @@ class UAnimMontage;
 
 /**
  * @brief 士兵AI配置
- * @note 🔧 修改 - 将硬编码的魔法数值集中到此结构
  */
 USTRUCT(BlueprintType)
 struct XIAOBINDATIANXIA_API FXBSoldierAIConfig
@@ -37,13 +36,11 @@ struct XIAOBINDATIANXIA_API FXBSoldierAIConfig
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI", meta = (DisplayName = "行为树"))
     TSoftObjectPtr<UBehaviorTree> BehaviorTree;
 
-    // ✨ 新增 - 视野范围（用于检测敌人）
     /** @brief 视野范围（检测敌人的最大距离） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|检测", meta = (DisplayName = "视野范围", ClampMin = "100.0"))
     float VisionRange = 800.0f;
 
-    // 🔧 修改 - 重命名为更清晰的名称
-    /** @brief 敌人检测范围（向后兼容，等同于视野范围） */
+    /** @brief 敌人检测范围（向后兼容） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|检测", meta = (DisplayName = "检测范围", ClampMin = "100.0", DeprecatedProperty, DeprecationMessage = "请使用 VisionRange"))
     float DetectionRange = 800.0f;
 
@@ -51,7 +48,6 @@ struct XIAOBINDATIANXIA_API FXBSoldierAIConfig
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|战斗", meta = (DisplayName = "脱离距离", ClampMin = "100.0"))
     float DisengageDistance = 1000.0f;
 
-    // ✨ 新增 - 无敌人后返回延迟
     /** @brief 无敌人后返回将领的延迟时间（秒） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|战斗", meta = (DisplayName = "返回延迟", ClampMin = "0.0"))
     float ReturnDelay = 2.0f;
@@ -68,12 +64,10 @@ struct XIAOBINDATIANXIA_API FXBSoldierAIConfig
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "避让权重", ClampMin = "0.0", ClampMax = "1.0"))
     float AvoidanceWeight = 0.3f;
 
-    // ✨ 新增 - 到达编队位置的阈值
     /** @brief 到达编队位置的判定阈值 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "到达阈值", ClampMin = "10.0"))
     float ArrivalThreshold = 50.0f;
 
-    // ✨ 新增 - 黑板更新间隔
     /** @brief 黑板数据更新间隔（秒） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI", meta = (DisplayName = "黑板更新间隔", ClampMin = "0.05"))
     float BlackboardUpdateInterval = 0.1f;
@@ -127,7 +121,7 @@ struct XIAOBINDATIANXIA_API FXBArcherConfig
 
 /**
  * @brief 士兵配置数据表行
- * @note 🔧 修改 - 完善配置结构，移除硬编码
+ * @note 🔧 修改 - 添加 ToSoldierConfig() 方法用于转换为运行时配置
  */
 USTRUCT(BlueprintType)
 struct XIAOBINDATIANXIA_API FXBSoldierTableRow : public FTableRowBase
@@ -147,6 +141,11 @@ struct XIAOBINDATIANXIA_API FXBSoldierTableRow : public FTableRowBase
     /** @brief 士兵描述 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "基础", meta = (DisplayName = "描述"))
     FText Description;
+
+    // ✨ 新增 - 士兵标签
+    /** @brief 士兵标签（用于技能系统等） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "基础", meta = (DisplayName = "士兵标签"))
+    FGameplayTagContainer SoldierTags;
 
     // ==================== 战斗配置 ====================
 
@@ -225,10 +224,71 @@ struct XIAOBINDATIANXIA_API FXBSoldierTableRow : public FTableRowBase
     /**
      * @brief 获取视野范围
      * @return 视野范围值
-     * @note 优先使用 VisionRange，回退到 DetectionRange
      */
     float GetVisionRange() const
     {
         return AIConfig.VisionRange > 0.0f ? AIConfig.VisionRange : AIConfig.DetectionRange;
+    }
+
+    // ✨ 新增 - 转换为运行时配置
+    /**
+     * @brief 转换为 FXBSoldierConfig 运行时配置
+     * @param OutConfig 输出的配置结构
+     * @param RowName 数据表行名（作为 SoldierId）
+     * @note 将数据表行数据转换为运行时使用的配置格式
+     */
+    void ToSoldierConfig(FXBSoldierConfig& OutConfig, FName RowName = NAME_None) const
+    {
+        // 基础信息
+        OutConfig.SoldierType = SoldierType;
+        OutConfig.SoldierId = RowName;
+        OutConfig.DisplayName = DisplayName;
+
+        // 视觉资源（需要同步加载软引用）
+        if (!VisualConfig.SkeletalMesh.IsNull())
+        {
+            OutConfig.SoldierMesh = VisualConfig.SkeletalMesh.LoadSynchronous();
+        }
+        OutConfig.AnimClass = VisualConfig.AnimClass;
+        OutConfig.MeshScale = VisualConfig.MeshScale;
+
+        // 战斗属性
+        OutConfig.MaxHealth = MaxHealth;
+        OutConfig.BaseDamage = BaseDamage;
+        OutConfig.AttackRange = AttackRange;
+        OutConfig.AttackInterval = AttackInterval;
+
+        // 移动属性
+        OutConfig.MoveSpeed = MoveSpeed;
+        OutConfig.FollowInterpSpeed = FollowInterpSpeed;
+        OutConfig.SprintSpeedMultiplier = SprintSpeedMultiplier;
+        OutConfig.RotationSpeed = RotationSpeed;
+
+        // AI属性
+        OutConfig.VisionRange = GetVisionRange();
+        OutConfig.DisengageDistance = AIConfig.DisengageDistance;
+        OutConfig.ReturnDelay = AIConfig.ReturnDelay;
+        OutConfig.ArrivalThreshold = AIConfig.ArrivalThreshold;
+
+        // 加成属性
+        OutConfig.HealthBonusToLeader = HealthBonusToLeader;
+        OutConfig.DamageBonusToLeader = DamageBonusToLeader;
+        OutConfig.ScaleBonusToLeader = ScaleBonusToLeader;
+
+        // 标签
+        OutConfig.SoldierTags = SoldierTags;
+    }
+
+    // ✨ 新增 - 便捷转换方法
+    /**
+     * @brief 创建并返回 FXBSoldierConfig
+     * @param RowName 数据表行名
+     * @return 转换后的配置
+     */
+    FXBSoldierConfig CreateSoldierConfig(FName RowName = NAME_None) const
+    {
+        FXBSoldierConfig Config;
+        ToSoldierConfig(Config, RowName);
+        return Config;
     }
 };

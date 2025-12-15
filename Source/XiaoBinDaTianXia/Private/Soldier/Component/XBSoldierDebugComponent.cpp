@@ -216,25 +216,28 @@ void UXBSoldierDebugComponent::DrawStateText()
     FVector Location = Soldier->GetActorLocation();
     FVector TextLocation = Location + FVector(0.0f, 0.0f, TextHeightOffset);
 
+    // 🔧 修改 - 获取更详细的配置信息
+    const FXBSoldierConfig& Config = Soldier->GetSoldierConfig();
+
     // 构建状态信息字符串
     FString StateInfo = FString::Printf(
-        TEXT("[%s]\n阵营:%s | 类型:%s\n槽位:%d | 招募:%s"),
+        TEXT("[%s]\n阵营:%s | 类型:%s\n槽位:%d | 招募:%s\nID:%s"),
         *GetStateName(Soldier->GetSoldierState()),
         *GetFactionName(Soldier->GetFaction()),
         *GetSoldierTypeName(Soldier->GetSoldierType()),
         Soldier->GetFormationSlotIndex(),
-        Soldier->IsRecruited() ? TEXT("是") : TEXT("否")
+        Soldier->IsRecruited() ? TEXT("是") : TEXT("否"),
+        Config.SoldierId.IsNone() ? TEXT("未设置") : *Config.SoldierId.ToString()
     );
 
-    // 🔧 修改 - bDrawShadow 改为 false，避免黑色区域
     DrawDebugString(
         World,
         TextLocation,
         StateInfo,
         nullptr,
         StateTextColor,
-        0.0f,      // Duration: 0 表示每帧刷新
-        false,     // 🔧 bDrawShadow: false，禁用阴影
+        0.0f,
+        false,
         TextScale
     );
 }

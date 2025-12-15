@@ -15,7 +15,6 @@
 #include "Character/XBCharacterBase.h"
 #include "Utils/XBLogCategories.h"
 #include "Utils/XBBlueprintFunctionLibrary.h"
-
 #include "AIController.h"
 #include "Character/Components/XBCombatComponent.h"
 #include "Character/Components/XBMagnetFieldComponent.h"
@@ -30,12 +29,37 @@
 #include "Components/CapsuleComponent.h"
 #include "Animation/AnimInstance.h"
 #include "TimerManager.h"
-#include "Kismet/GameplayStatics.h"
+#include "XBCollisionChannels.h"
 #include "Particles/ParticleSystemComponent.h"
 
 AXBCharacterBase::AXBCharacterBase()
 {
     PrimaryActorTick.bCanEverTick = true;
+
+  
+    // ✨ 新增 - 配置将领碰撞通道
+    /**
+     * @note 设置胶囊体使用将领专用碰撞通道
+     *       与士兵通道配置为 Overlap，避免相互阻挡
+     */
+    if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+    {
+        // 设置碰撞对象类型为将领通道
+        Capsule->SetCollisionObjectType(XBCollision::Leader);
+        
+        // 配置碰撞响应
+        Capsule->SetCollisionResponseToChannel(XBCollision::Soldier, ECR_Overlap);
+        Capsule->SetCollisionResponseToChannel(XBCollision::Leader, ECR_Block);
+        
+        // ✨ 新增 - 输出详细配置信息
+        UE_LOG(LogXBCharacter, Warning, TEXT("将领碰撞配置: ObjectType=%d, 对Soldier(%d)响应=%d, 对Leader(%d)响应=%d"),
+            (int32)Capsule->GetCollisionObjectType(),
+            (int32)XBCollision::Soldier,
+            (int32)Capsule->GetCollisionResponseToChannel(XBCollision::Soldier),
+            (int32)XBCollision::Leader,
+            (int32)Capsule->GetCollisionResponseToChannel(XBCollision::Leader));
+   
+    }
 
     // 创建 ASC
     AbilitySystemComponent = CreateDefaultSubobject<UXBAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
