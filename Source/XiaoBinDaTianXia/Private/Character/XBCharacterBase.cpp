@@ -44,12 +44,14 @@ AXBCharacterBase::AXBCharacterBase()
      */
     if (UCapsuleComponent* Capsule = GetCapsuleComponent())
     {
-        // 设置碰撞对象类型为将领通道
+        // 设置自己的身份是 Leader
         Capsule->SetCollisionObjectType(XBCollision::Leader);
         
-        // 配置碰撞响应
-        Capsule->SetCollisionResponseToChannel(XBCollision::Soldier, ECR_Overlap);
+        // 关键设置：对其他 Leader (将领) 必须是 Block (阻挡)
         Capsule->SetCollisionResponseToChannel(XBCollision::Leader, ECR_Block);
+        
+        // 对 Soldier (士兵) 是 Overlap (重叠/穿过)
+        Capsule->SetCollisionResponseToChannel(XBCollision::Soldier, ECR_Overlap);
         
         // ✨ 新增 - 输出详细配置信息
         UE_LOG(LogXBCharacter, Warning, TEXT("将领碰撞配置: ObjectType=%d, 对Soldier(%d)响应=%d, 对Leader(%d)响应=%d"),
@@ -60,7 +62,19 @@ AXBCharacterBase::AXBCharacterBase()
             (int32)Capsule->GetCollisionResponseToChannel(XBCollision::Leader));
    
     }
-
+    // 🔧 关键修复 - 配置网格体碰撞忽略
+    /**
+     * @note 解决碰撞阻挡问题的核心：
+     * 默认的 CharacterMesh 预设没有处理自定义通道，默认会 Block。
+     * 这里必须显式让网格体忽略 Soldier 和 Leader 通道，防止 Mesh 产生物理推挤。
+     */
+    if (USkeletalMeshComponent* MeshComp = GetMesh())
+    {
+        // 关键设置：网格体忽略 Leader 和 Soldier
+        // 这样即使模型穿模，也不会产生物理推挤力
+        MeshComp->SetCollisionResponseToChannel(XBCollision::Leader, ECR_Ignore);
+        MeshComp->SetCollisionResponseToChannel(XBCollision::Soldier, ECR_Ignore);
+    }
     // 创建 ASC
     AbilitySystemComponent = CreateDefaultSubobject<UXBAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
 

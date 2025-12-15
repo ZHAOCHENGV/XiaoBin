@@ -60,10 +60,18 @@ AXBSoldierCharacter::AXBSoldierCharacter()
             (int32)XBCollision::Soldier,
             (int32)Capsule->GetCollisionResponseToChannel(XBCollision::Soldier));
     }
-
+    // 🔧 关键修复 - 配置网格体碰撞忽略
+    /**
+     * @note 解决碰撞阻挡问题的核心：
+     * 默认的 CharacterMesh 预设没有处理自定义通道，默认会 Block。
+     * 这里必须显式让网格体忽略 Soldier 和 Leader 通道，防止 Mesh 产生物理推挤。
+     */
     if (USkeletalMeshComponent* MeshComp = GetMesh())
     {
         MeshComp->SetRelativeLocation(FVector(0.0f, 0.0f, -88.0f));
+        // 显式忽略自定义通道
+        MeshComp->SetCollisionResponseToChannel(XBCollision::Soldier, ECR_Ignore);
+        MeshComp->SetCollisionResponseToChannel(XBCollision::Leader, ECR_Ignore);
     }
 
     FollowComponent = CreateDefaultSubobject<UXBSoldierFollowComponent>(TEXT("FollowComponent"));
