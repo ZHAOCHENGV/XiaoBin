@@ -3,98 +3,85 @@
 
 /**
  * @file XBVillagerActor.cpp
- * @brief 村民Actor实现
- * 
- * @note ✨ 新增文件
+ * @brief 村民Actor实现 - 继承AActor版本
  */
 
 #include "Soldier/XBVillagerActor.h"
 #include "Components/CapsuleComponent.h"
-#include "GameFramework/CharacterMovementComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "NiagaraComponent.h"
 #include "NiagaraSystem.h"
+#include "Animation/AnimSequence.h"
 #include "XBCollisionChannels.h"
-#include "Animation/AnimInstance.h"
-#include "Utils/XBLogCategories.h"
 
 AXBVillagerActor::AXBVillagerActor()
 {
-    PrimaryActorTick.bCanEverTick = true;
+    // 不需要 Tick
+    PrimaryActorTick.bCanEverTick = false;
 
-    // 🔧 修改 - 配置士兵碰撞通道
-    /**
-     * @note 设置胶囊体使用士兵专用碰撞通道
-     *       与将领通道和自身通道配置为 Overlap，避免相互阻挡
-     *       同时保持与地面、墙壁等的正常碰撞
-     */
-    if (UCapsuleComponent* Capsule = GetCapsuleComponent())
-    {
-        Capsule->InitCapsuleSize(34.0f, 88.0f);
-        
-     
-        Capsule->SetCollisionObjectType(XBCollision::Soldier);
-        
- 
-        Capsule->SetCollisionResponseToChannel(XBCollision::Leader, ECR_Overlap);
-        // 与其他士兵 Overlap（友军士兵不互相阻挡）
-        Capsule->SetCollisionResponseToChannel(XBCollision::Soldier, ECR_Overlap);
-        
-        UE_LOG(LogXBSoldier, Log, TEXT("村民碰撞通道配置完成"));
-    }
+    // ============ 1. 创建胶囊体作为根组件 ============
+    CapsuleComponent = CreateDefaultSubobject<UCapsuleComponent>(TEXT("CapsuleComponent"));
+    SetRootComponent(CapsuleComponent);
+    CapsuleComponent->InitCapsuleSize(34.0f, 88.0f);
 
-    // 🔧 修改 - 配置网格体偏移
-    if (USkeletalMeshComponent* MeshComp = GetMesh())
-    {
-        MeshComp->SetRelativeLocation(FVector(0.0f, 0.0f, -88.0f));
-    }
+    // 配置碰撞
+    CapsuleComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    CapsuleComponent->SetCollisionObjectType(XBCollision::Soldier);
+    CapsuleComponent->SetCollisionResponseToAllChannels(ECR_Ignore);
+    CapsuleComponent->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
+    CapsuleComponent->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
+    CapsuleComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+    CapsuleComponent->SetCollisionResponseToChannel(XBCollision::Leader, ECR_Overlap);
+    CapsuleComponent->SetCollisionResponseToChannel(XBCollision::Soldier, ECR_Overlap);
 
-    // ✨ 新增 - 创建 Zzz 特效组件
+    // 物理配置（静止村民不需要物理模拟）
+    CapsuleComponent->SetSimulatePhysics(false);
+    CapsuleComponent->SetEnableGravity(false);
+
+    // ============ 2. 创建骨骼网格体 ============
+    MeshComponent = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("MeshComponent"));
+    MeshComponent->SetupAttachment(CapsuleComponent);
+    // 调整位置使脚部对齐胶囊体底部（胶囊体半高88）
+    MeshComponent->SetRelativeLocation(FVector(0.0f, 0.0f, -88.0f));
+
+    // 网格体不参与碰撞
+    MeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+    // ============ 3. 创建 Zzz 特效组件 ============
     ZzzEffectComponent = CreateDefaultSubobject<UNiagaraComponent>(TEXT("ZzzEffectComponent"));
-    ZzzEffectComponent->SetupAttachment(RootComponent);
-    ZzzEffectComponent->SetRelativeLocation(FVector(0.0f, 0.0f, 100.0f)); // 头顶上方
+    ZzzEffectComponent->SetupAttachment(CapsuleComponent);
+    ZzzEffectComponent->SetRelativeLocation(ZzzEffectOffset);
     ZzzEffectComponent->SetAutoActivate(false);
-
-    // 🔧 修改 - 禁用移动（村民静止）
-    if (UCharacterMovementComponent* MovementComp = GetCharacterMovement())
-    {
-        MovementComp->DisableMovement();
-        MovementComp->SetComponentTickEnabled(false);
-    }
-
-    // 禁用AI控制
-    AutoPossessAI = EAutoPossessAI::Disabled;
 }
 
 void AXBVillagerActor::BeginPlay()
 {
     Super::BeginPlay();
 
-    // ✨ 新增 - 加载 Zzz 特效资源
-    if (!ZzzEffectAsset.IsNull())
+    // 加载 Zzz 特效资源
+    if (!ZzzEffectAsset.IsNull() && ZzzEffectComponent)
     {
-        UNiagaraSystem* LoadedEffect = ZzzEffectAsset.LoadSynchronous();
-        if (LoadedEffect && ZzzEffectComponent)
+        if (UNiagaraSystem* LoadedEffect = ZzzEffectAsset.LoadSynchronous())
         {
             ZzzEffectComponent->SetAsset(LoadedEffect);
         }
     }
 
+    // 更新特效位置（以防在编辑器中修改了偏移值）
+    if (ZzzEffectComponent)
+    {
+        ZzzEffectComponent->SetRelativeLocation(ZzzEffectOffset);
+    }
+
     // 初始化状态
-    SetVillagerState(CurrentState);
+    UpdateAnimation();
+    UpdateZzzEffect();
+
+    UE_LOG(LogTemp, Log, TEXT("村民 %s 初始化完成 - 状态: %s"),
+        *GetName(),
+        CurrentState == EXBVillagerState::Sleeping ? TEXT("睡眠") : TEXT("待机"));
 }
 
-void AXBVillagerActor::Tick(float DeltaTime)
-{
-    Super::Tick(DeltaTime);
-}
-
-/**
- * @brief 设置村民状态
- * @param NewState 新状态
- * @note 功能：
- *       1. 切换动画蒙太奇
- *       2. 控制 Zzz 特效显示
- */
 void AXBVillagerActor::SetVillagerState(EXBVillagerState NewState)
 {
     if (CurrentState == NewState)
@@ -104,32 +91,22 @@ void AXBVillagerActor::SetVillagerState(EXBVillagerState NewState)
 
     CurrentState = NewState;
 
-    // 更新动画
-    UpdateAnimationState();
-
-    // 更新 Zzz 特效
+    UpdateAnimation();
     UpdateZzzEffect();
 
-    UE_LOG(LogTemp, Log, TEXT("村民 %s 状态切换为: %d"), *GetName(), static_cast<int32>(NewState));
+    UE_LOG(LogTemp, Log, TEXT("村民 %s 状态切换为: %s"),
+        *GetName(),
+        CurrentState == EXBVillagerState::Sleeping ? TEXT("睡眠") : TEXT("待机"));
 }
 
 bool AXBVillagerActor::CanBeRecruited() const
 {
-    // 条件：未被招募且存活
     return !bIsRecruited && !IsPendingKillPending();
 }
 
-/**
- * @brief 被招募回调
- * @param Leader 招募的将领
- * @note 功能：
- *       1. 标记为已招募
- *       2. 禁用 Zzz 特效
- *       3. 销毁自身（转化为士兵由磁场组件处理）
- */
 void AXBVillagerActor::OnRecruited(AActor* Leader)
 {
-    if (!Leader)
+    if (!Leader || bIsRecruited)
     {
         return;
     }
@@ -142,9 +119,15 @@ void AXBVillagerActor::OnRecruited(AActor* Leader)
         ZzzEffectComponent->Deactivate();
     }
 
+    // 停止动画
+    if (MeshComponent)
+    {
+        MeshComponent->Stop();
+    }
+
     UE_LOG(LogTemp, Log, TEXT("村民 %s 被 %s 招募"), *GetName(), *Leader->GetName());
 
-    // ✨ 新增 - 延迟销毁，给磁场组件时间转化士兵
+    // 延迟销毁，给磁场组件时间处理转化逻辑
     SetLifeSpan(0.1f);
 }
 
@@ -154,48 +137,27 @@ void AXBVillagerActor::SetZzzEffectEnabled(bool bEnabled)
     UpdateZzzEffect();
 }
 
-/**
- * @brief 更新动画状态
- * @note 根据当前状态播放对应蒙太奇
- */
-void AXBVillagerActor::UpdateAnimationState()
+void AXBVillagerActor::UpdateAnimation()
 {
-    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
-    if (!AnimInstance)
-    {
-        return;
-    }
-
-    // 停止当前蒙太奇
-    AnimInstance->StopAllMontages(0.2f);
-
-    // 播放新蒙太奇
-    UAnimMontage* MontageToPlay = nullptr;
+    UAnimSequence* AnimToPlay = nullptr;
 
     switch (CurrentState)
     {
-    case EXBVillagerState::Sleeping:
-        MontageToPlay = SleepingMontage;
+    case EXBVillagerState::Idle:
+        AnimToPlay = IdleAnimation;
         break;
 
-    case EXBVillagerState::Idle:
-        MontageToPlay = IdleMontage;
+    case EXBVillagerState::Sleeping:
+        AnimToPlay = SleepingAnimation;
         break;
 
     default:
         break;
     }
 
-    if (MontageToPlay)
-    {
-        AnimInstance->Montage_Play(MontageToPlay);
-    }
+    PlayAnimation(AnimToPlay, true);
 }
 
-/**
- * @brief 更新 Zzz 特效显示
- * @note 只有睡眠状态且启用特效时才显示
- */
 void AXBVillagerActor::UpdateZzzEffect()
 {
     if (!ZzzEffectComponent)
@@ -203,7 +165,7 @@ void AXBVillagerActor::UpdateZzzEffect()
         return;
     }
 
-    bool bShouldShowZzz = (CurrentState == EXBVillagerState::Sleeping) && bEnableZzzEffect;
+    const bool bShouldShowZzz = (CurrentState == EXBVillagerState::Sleeping) && bEnableZzzEffect;
 
     if (bShouldShowZzz)
     {
@@ -212,5 +174,25 @@ void AXBVillagerActor::UpdateZzzEffect()
     else
     {
         ZzzEffectComponent->Deactivate();
+    }
+}
+
+void AXBVillagerActor::PlayAnimation(UAnimSequence* Animation, bool bLoop)
+{
+    if (!MeshComponent)
+    {
+        return;
+    }
+
+    if (Animation)
+    {
+        // 使用 PlayAnimation 直接播放动画序列
+        // 第二个参数 bLooping 控制是否循环
+        MeshComponent->PlayAnimation(Animation, bLoop);
+    }
+    else
+    {
+        // 没有动画时停止播放
+        MeshComponent->Stop();
     }
 }
