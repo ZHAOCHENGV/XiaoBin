@@ -13,6 +13,7 @@
  *       5. ✨ 新增 UXBSoldierDataAccessor 数据访问器组件
  *       6. 🔧 所有配置数据访问委托给 DataAccessor
  *       7. 🔧 保留运行时状态（CurrentHealth, CurrentState等）
+ *       8. ✨ 新增 bIsDead 死亡状态变量（蓝图可读）
  */
 
 #pragma once
@@ -28,7 +29,8 @@
 
 class UXBSoldierFollowComponent;
 class UXBSoldierDebugComponent;
-class UXBSoldierDataAccessor;           // ✨ 新增
+class UXBSoldierDataAccessor;
+class UXBSoldierBehaviorInterface;
 class UBehaviorTree;
 class AAIController;
 class AXBSoldierAIController;
@@ -218,6 +220,15 @@ public:
     UFUNCTION(BlueprintPure, Category = "XB|Soldier", meta = (DisplayName = "获取阵营"))
     EXBFaction GetFaction() const { return Faction; }
 
+    // ✨ 新增 - 死亡状态检查
+    /**
+     * @brief 检查士兵是否已死亡
+     * @return 是否已死亡
+     * @note 蓝图可读，用于 UI 和逻辑判断
+     */
+    UFUNCTION(BlueprintPure, Category = "XB|Soldier", meta = (DisplayName = "是否已死亡"))
+    bool IsDead() const { return bIsDead; }
+
     // ==================== 战斗系统 ====================
 
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier", meta = (DisplayName = "进入战斗"))
@@ -375,6 +386,15 @@ protected:
     UPROPERTY(BlueprintReadOnly, Category = "状态", meta = (DisplayName = "是否已招募"))
     bool bIsRecruited = false;
 
+    // ✨ 新增 - 死亡状态变量
+    /**
+     * @brief 是否已死亡
+     * @note 蓝图可读，用于 UI 显示和逻辑判断
+     *       在 HandleDeath() 中设置为 true
+     */
+    UPROPERTY(BlueprintReadOnly, Category = "状态", meta = (DisplayName = "是否已死亡"))
+    bool bIsDead = false;
+
     // ==================== AI配置 ====================
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI", meta = (DisplayName = "行为树"))
@@ -384,9 +404,6 @@ protected:
     TSubclassOf<AXBSoldierAIController> SoldierAIControllerClass;
 
     // ==================== 内部方法 ====================
-
-
-
 
     void HandleDeath();
     bool PlayAttackMontage();

@@ -10,6 +10,7 @@
  *       2. 修复将领死亡时循环回调问题 - 添加 bIsCleaningUpSoldiers 标记
  *       3. 使用项目专用日志类别
  *       4. 使用通用函数库进行阵营判断
+ *       5. 🔧 修复将领死亡时士兵不播放死亡蒙太奇的问题
  */
 
 #include "Character/XBCharacterBase.h"
@@ -114,6 +115,9 @@ void AXBCharacterBase::BeginPlay()
 
     // 初始化目标速度
     TargetMoveSpeed = BaseMoveSpeed;
+
+    // ✨ 新增 - 绑定战斗组件事件
+    BindCombatEvents();
 
     // 绑定磁场事件
     if (MagnetFieldComponent)
@@ -258,7 +262,6 @@ void AXBCharacterBase::ApplyInitialAttributes()
     AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetMaxHealthAttribute(), CachedLeaderData.MaxHealth);
     AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetHealthAttribute(), CachedLeaderData.MaxHealth);
     AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetHealthMultiplierAttribute(), CachedLeaderData.HealthMultiplier);
-    AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetBaseDamageAttribute(), CachedLeaderData.BaseDamage);
     AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetDamageMultiplierAttribute(), CachedLeaderData.DamageMultiplier);
     AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetMoveSpeedAttribute(), CachedLeaderData.MoveSpeed);
     AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetScaleAttribute(), CachedLeaderData.Scale);
@@ -616,6 +619,46 @@ float AXBCharacterBase::GetScaledAttackRange() const
 }
 
 /**
+ * @brief 攻击状态变化回调
+ * @param bIsAttacking 是否正在攻击
+ * @note ✨ 新增 - 根据攻击状态禁用/启用移动
+ */
+void AXBCharacterBase::OnCombatAttackStateChanged(bool bIsAttacking)
+{
+    if (!CombatComponent)
+    {
+        return;
+    }
+
+    bool bShouldBlock = CombatComponent->ShouldBlockMovement();
+    
+    if (UCharacterMovementComponent* MovementComp = GetCharacterMovement())
+    {
+        if (bShouldBlock)
+        {
+            // 禁用移动
+            MovementComp->DisableMovement();
+            UE_LOG(LogXBCharacter, Log, TEXT("%s: 技能释放中，禁用移动"), *GetName());
+        }
+        else
+        {
+            // 恢复移动
+            MovementComp->SetMovementMode(MOVE_Walking);
+            UE_LOG(LogXBCharacter, Log, TEXT("%s: 技能结束，恢复移动"), *GetName());
+        }
+    }
+}
+
+void AXBCharacterBase::BindCombatEvents()
+{
+    if (CombatComponent)
+    {
+        CombatComponent->OnAttackStateChanged.AddDynamic(this, &AXBCharacterBase::OnCombatAttackStateChanged);
+        UE_LOG(LogXBCharacter, Log, TEXT("%s: 已绑定战斗组件攻击状态委托"), *GetName());
+    }
+}
+
+/**
  * @brief 更新角色体型
  * @note 使用累加方式计算缩放
  *       公式：最终缩放 = BaseScale + (士兵数 × 每士兵加成)
@@ -945,6 +988,9 @@ void AXBCharacterBase::HandleDeath()
         StopSprint();
     }
 
+    // 🔧 修改 - 立即触发士兵死亡，不等待蒙太奇
+    KillAllSoldiers();
+
     bool bMontageStarted = false;
     if (DeathMontage)
     {
@@ -989,10 +1035,13 @@ void AXBCharacterBase::HandleDeath()
         );
     }
 }
-
+/**
+ * @brief 生成掉落的士兵
+ * @note 🔧 修改 - 使用击杀者的士兵配置而非自身配置
+ */
 void AXBCharacterBase::SpawnDroppedSoldiers()
 {
-    if (SoldierDropConfig.DropCount <= 0 || !SoldierDropConfig.DropSoldierClass)
+     if (SoldierDropConfig.DropCount <= 0 || !SoldierDropConfig.DropSoldierClass)
     {
         return;
     }
@@ -1001,6 +1050,34 @@ void AXBCharacterBase::SpawnDroppedSoldiers()
     if (!World)
     {
         return;
+    }
+
+    // ✨ 新增 - 获取击杀者的士兵配置
+    UDataTable* DropSoldierDataTable = nullptr;
+    FName DropSoldierRowName = NAME_None;
+    EXBFaction DropFaction = EXBFaction::Neutral;
+
+    if (LastDamageInstigator.IsValid())
+    {
+        if (AXBCharacterBase* Killer = Cast<AXBCharacterBase>(LastDamageInstigator.Get()))
+        {
+            DropSoldierDataTable = Killer->GetSoldierDataTable();
+            DropSoldierRowName = Killer->GetRecruitSoldierRowName();
+            DropFaction = EXBFaction::Neutral; // 掉落的士兵为中立阵营，等待被招募
+            
+            UE_LOG(LogXBCharacter, Log, TEXT("掉落士兵使用击杀者 %s 的配置: %s"), 
+                *Killer->GetName(), *DropSoldierRowName.ToString());
+        }
+    }
+
+    // 🔧 回退逻辑 - 如果没有击杀者信息，使用自身配置
+    if (!DropSoldierDataTable || DropSoldierRowName.IsNone())
+    {
+        DropSoldierDataTable = SoldierDataTable;
+        DropSoldierRowName = RecruitSoldierRowName;
+        
+        UE_LOG(LogXBCharacter, Warning, TEXT("未找到击杀者，掉落士兵使用自身配置: %s"), 
+            *DropSoldierRowName.ToString());
     }
 
     FVector SpawnOrigin = GetActorLocation();
@@ -1028,12 +1105,15 @@ void AXBCharacterBase::SpawnDroppedSoldiers()
 
         if (DroppedSoldier)
         {
-            // 🔧 修复 - 使用 InitializeFromDataTable
-            if (SoldierDataTable && !RecruitSoldierRowName.IsNone())
+            // 🔧 修改 - 使用击杀者的配置初始化士兵
+            if (DropSoldierDataTable && !DropSoldierRowName.IsNone())
             {
-                DroppedSoldier->InitializeFromDataTable(SoldierDataTable, RecruitSoldierRowName, EXBFaction::Neutral);
+                DroppedSoldier->InitializeFromDataTable(DropSoldierDataTable, DropSoldierRowName, DropFaction);
             }
             DroppedSoldier->SetSoldierState(EXBSoldierState::Idle);
+            
+            UE_LOG(LogXBCharacter, Log, TEXT("掉落士兵 %s 已生成，配置: %s"), 
+                *DroppedSoldier->GetName(), *DropSoldierRowName.ToString());
         }
     }
 }
@@ -1059,29 +1139,54 @@ void AXBCharacterBase::OnDestroyTimerExpired()
 }
 
 /**
+ * @brief 杀死所有士兵（将领死亡时调用）
+ * @note ✨ 新增方法 - 确保士兵正确执行死亡流程并播放蒙太奇
+ */
+void AXBCharacterBase::KillAllSoldiers()
+{
+    // 设置清理标记，防止 OnSoldierDied 回调
+    bIsCleaningUpSoldiers = true;
+
+    UE_LOG(LogXBSoldier, Log, TEXT("将领 %s 死亡，开始处理 %d 个士兵的死亡"), 
+        *GetName(), Soldiers.Num());
+
+    // 遍历所有士兵，调用其死亡处理
+    for (AXBSoldierCharacter* Soldier : Soldiers)
+    {
+        if (Soldier && IsValid(Soldier))
+        {
+            // 🔧 修改 - 检查士兵是否已死亡，避免重复处理
+            if (Soldier->GetSoldierState() != EXBSoldierState::Dead)
+            {
+                // 将士兵血量设为0，触发正常的死亡流程（包括蒙太奇）
+                Soldier->TakeSoldierDamage(Soldier->GetCurrentHealth() + 100.0f, this);
+                
+                UE_LOG(LogXBSoldier, Verbose, TEXT("士兵 %s 因将领死亡而阵亡"), 
+                    *Soldier->GetName());
+            }
+        }
+    }
+
+    // 清空士兵数组
+    Soldiers.Empty();
+
+    // 清除标记
+    bIsCleaningUpSoldiers = false;
+
+    UE_LOG(LogXBSoldier, Log, TEXT("将领 %s 的所有士兵已处理完毕"), *GetName());
+}
+
+/**
  * @brief 销毁前清理
- * @note 🔧 修改 - 添加 bIsCleaningUpSoldiers 标记防止循环回调
+ * @note 🔧 修改 - 移除士兵死亡处理逻辑，现在由 KillAllSoldiers 处理
  */
 void AXBCharacterBase::PreDestroyCleanup()
 {
     GetWorldTimerManager().ClearTimer(CombatTimeoutHandle);
 
-    // ✨ 新增 - 设置清理标记，防止士兵死亡回调
-    bIsCleaningUpSoldiers = true;
-
-    for (AXBSoldierCharacter* Soldier : Soldiers)
-    {
-        if (Soldier && IsValid(Soldier))
-        {
-            // 直接设置状态，不触发回调
-            Soldier->SetSoldierState(EXBSoldierState::Dead);
-            Soldier->SetLifeSpan(2.0f);
-        }
-    }
+    // 🔧 修改 - 士兵死亡已在 HandleDeath 中通过 KillAllSoldiers 处理
+    // 这里只做最终清理，确保数组为空
     Soldiers.Empty();
-
-    // ✨ 新增 - 清除标记
-    bIsCleaningUpSoldiers = false;
 
     if (AbilitySystemComponent)
     {

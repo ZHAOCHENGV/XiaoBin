@@ -10,12 +10,13 @@
  *       2. 移除 FXBSoldierConfig 和 ToSoldierConfig()
  *       3. 简化初始化流程
  *       4. 保持运行时状态管理不变
+ *       5. ✨ 新增 bIsDead 死亡状态变量
  */
 
 #include "Soldier/XBSoldierCharacter.h"
 #include "Utils/XBLogCategories.h"
 #include "Utils/XBBlueprintFunctionLibrary.h"
-#include "Data/XBSoldierDataAccessor.h"              // ✨ 新增
+#include "Data/XBSoldierDataAccessor.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Soldier/Component/XBSoldierFollowComponent.h"
@@ -30,7 +31,7 @@
 #include "Animation/AnimInstance.h"
 #include "TimerManager.h"
 #include "XBCollisionChannels.h"
-#include "Soldier/Component/XBSoldierBehaviorInterface.h"  // ✨ 新增
+#include "Soldier/Component/XBSoldierBehaviorInterface.h"
 
 AXBSoldierCharacter::AXBSoldierCharacter()
 {
@@ -68,6 +69,7 @@ AXBSoldierCharacter::AXBSoldierCharacter()
     DebugComponent = CreateDefaultSubobject<UXBSoldierDebugComponent>(TEXT("DebugComponent"));
     // ✨ 新增 - 创建行为接口组件
     BehaviorInterface = CreateDefaultSubobject<UXBSoldierBehaviorInterface>(TEXT("BehaviorInterface"));
+    
     // ==================== 移动组件配置 ====================
     if (UCharacterMovementComponent* MovementComp = GetCharacterMovement())
     {
@@ -749,18 +751,41 @@ void AXBSoldierCharacter::ExitCombat()
     UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 退出战斗"), *GetName());
 }
 
+/**
+ * @brief 士兵受到伤害
+ * @param DamageAmount 伤害量
+ * @param DamageSource 伤害来源
+ * @return 实际造成的伤害
+ * @note 🔧 修改 - 添加防御性检查和详细日志
+ */
 float AXBSoldierCharacter::TakeSoldierDamage(float DamageAmount, AActor* DamageSource)
 {
-    if (CurrentState == EXBSoldierState::Dead)
+    // ✨ 新增 - 检查是否已死亡
+    if (bIsDead || CurrentState == EXBSoldierState::Dead)
     {
+        UE_LOG(LogXBCombat, Verbose, TEXT("士兵 %s 已死亡，忽略伤害"), *GetName());
+        return 0.0f;
+    }
+
+    // 🔧 修改 - 添加伤害值校验
+    if (DamageAmount <= 0.0f)
+    {
+        UE_LOG(LogXBCombat, Warning, TEXT("士兵 %s 收到无效伤害值: %.1f，来源: %s"), 
+            *GetName(), 
+            DamageAmount, 
+            DamageSource ? *DamageSource->GetName() : TEXT("未知"));
         return 0.0f;
     }
 
     float ActualDamage = FMath::Min(DamageAmount, CurrentHealth);
     CurrentHealth -= ActualDamage;
 
-    UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 受到 %.1f 伤害, 剩余血量: %.1f"), 
-        *GetName(), ActualDamage, CurrentHealth);
+    UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 受到 %.1f 伤害 (请求: %.1f), 剩余血量: %.1f, 来源: %s"), 
+        *GetName(), 
+        ActualDamage, 
+        DamageAmount,
+        CurrentHealth,
+        DamageSource ? *DamageSource->GetName() : TEXT("未知"));
 
     if (CurrentHealth <= 0.0f)
     {
@@ -812,7 +837,8 @@ bool AXBSoldierCharacter::CanAttack() const
     if (BehaviorInterface)
     {
         return BehaviorInterface->GetAttackCooldownRemaining() <= 0.0f && 
-               CurrentState != EXBSoldierState::Dead;
+               CurrentState != EXBSoldierState::Dead &&
+               !bIsDead;  // ✨ 新增 - 检查 bIsDead
     }
     return false;
 }
@@ -1051,9 +1077,22 @@ void AXBSoldierCharacter::SetEscaping(bool bEscaping)
 
 // ==================== 死亡系统实现 ====================
 
+/**
+ * @brief 处理士兵死亡
+ * @note 🔧 修改 - 设置 bIsDead 变量
+ */
 void AXBSoldierCharacter::HandleDeath()
 {
+    // ✨ 新增 - 防止重复调用
+    if (bIsDead)
+    {
+        return;
+    }
+
     GetWorldTimerManager().ClearTimer(DelayedAIStartTimerHandle);
+    
+    // ✨ 新增 - 设置死亡标记
+    bIsDead = true;
     
     SetSoldierState(EXBSoldierState::Dead);
 

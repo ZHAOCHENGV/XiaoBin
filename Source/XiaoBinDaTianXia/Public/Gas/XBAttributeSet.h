@@ -1,4 +1,7 @@
-﻿// Copyright XiaoBing Project. All Rights Reserved.
+﻿/* --- 完整文件代码 --- */
+// Source/XiaoBinDaTianXia/Public/GAS/XBAttributeSet.h
+
+// Copyright XiaoBing Project. All Rights Reserved.
 
 #pragma once
 
@@ -16,6 +19,7 @@
 
 /**
  * 属性集 - 定义所有游戏属性
+ * @note 🔧 修改 - 移除 BaseDamage 属性（现在由技能配置提供）
  */
 UCLASS()
 class XIAOBINDATIANXIA_API UXBAttributeSet : public UAttributeSet
@@ -46,16 +50,12 @@ public:
     FGameplayAttributeData MaxHealth;
     ATTRIBUTE_ACCESSORS(UXBAttributeSet, MaxHealth)
 
-    
     /** 生命值倍率 */
     UPROPERTY(BlueprintReadOnly, Category = "XB|Attribute|Health", ReplicatedUsing = OnRep_HealthMultiplier)
     FGameplayAttributeData HealthMultiplier;
     ATTRIBUTE_ACCESSORS(UXBAttributeSet, HealthMultiplier)
 
-    /** 基础伤害 */
-    UPROPERTY(BlueprintReadOnly, Category = "XB|Attribute|Damage", ReplicatedUsing = OnRep_BaseDamage)
-    FGameplayAttributeData BaseDamage;
-    ATTRIBUTE_ACCESSORS(UXBAttributeSet, BaseDamage)
+    // ❌ 删除 - BaseDamage（现在由技能配置提供）
 
     /** 伤害倍率 */
     UPROPERTY(BlueprintReadOnly, Category = "XB|Attribute|Damage", ReplicatedUsing = OnRep_DamageMultiplier)
@@ -94,8 +94,7 @@ protected:
     UFUNCTION()
     virtual void OnRep_HealthMultiplier(const FGameplayAttributeData& OldValue);
 
-    UFUNCTION()
-    virtual void OnRep_BaseDamage(const FGameplayAttributeData& OldValue);
+    // ❌ 删除 - OnRep_BaseDamage
 
     UFUNCTION()
     virtual void OnRep_DamageMultiplier(const FGameplayAttributeData& OldValue);

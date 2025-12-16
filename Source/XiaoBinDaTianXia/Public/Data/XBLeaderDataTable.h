@@ -4,6 +4,11 @@
 /**
  * @file XBLeaderDataTable.h
  * @brief 主将数据表结构定义 - 与XBAttributeSet属性对应
+ * 
+ * @note 🔧 修改记录:
+ *       1. ❌ 删除 FXBAbilityConfig 的 DamageMultiplier（倍率统一由 AttributeSet 管理）
+ *       2. ✨ 新增 FXBAbilityConfig 的 BaseDamage（每个技能独立配置伤害）
+ *       3. ❌ 删除 FXBLeaderTableRow 的 BaseDamage（移到技能配置中）
  */
 
 #pragma once
@@ -18,6 +23,7 @@ class UGameplayEffect;
 
 /**
  * @brief 技能配置结构体
+ * @note 🔧 修改 - BaseDamage 现在在此配置，而非 FXBLeaderTableRow
  */
 USTRUCT(BlueprintType)
 struct XIAOBINDATIANXIA_API FXBAbilityConfig
@@ -32,11 +38,16 @@ struct XIAOBINDATIANXIA_API FXBAbilityConfig
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "技能", meta = (DisplayName = "技能蒙太奇"))
     TSoftObjectPtr<UAnimMontage> AbilityMontage;
 
-    /** @brief 技能伤害倍率 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "技能", meta = (DisplayName = "伤害倍率", ClampMin = "0.0"))
-    float DamageMultiplier = 1.0f;
+    // ✨ 新增 - 技能基础伤害（从 FXBLeaderTableRow 移动过来）
+    /**
+     * @brief 技能基础伤害
+     * @note 实际伤害 = BaseDamage * DamageMultiplier（来自AttributeSet）
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "技能", meta = (DisplayName = "基础伤害", ClampMin = "0.0"))
+    float BaseDamage = 10.0f;
 
-    // ✨ 新增 - 冷却时间配置
+    // ❌ 删除 - DamageMultiplier（倍率统一由 UXBAttributeSet::DamageMultiplier 管理）
+
     /** @brief 冷却时间（秒），0表示无冷却 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "技能", meta = (DisplayName = "冷却时间", ClampMin = "0.0"))
     float Cooldown = 0.0f;
@@ -44,6 +55,7 @@ struct XIAOBINDATIANXIA_API FXBAbilityConfig
 
 /**
  * @brief 主将数据表行 - 属性与XBAttributeSet对应
+ * @note 🔧 修改 - 移除 BaseDamage，现在由各技能独立配置
  */
 USTRUCT(BlueprintType)
 struct XIAOBINDATIANXIA_API FXBLeaderTableRow : public FTableRowBase
@@ -70,9 +82,7 @@ struct XIAOBINDATIANXIA_API FXBLeaderTableRow : public FTableRowBase
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "核心属性", meta = (DisplayName = "生命值倍率", ClampMin = "0.1"))
     float HealthMultiplier = 1.0f;
 
-    /** @brief 基础伤害 - 对应 BaseDamage */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "核心属性", meta = (DisplayName = "基础伤害", ClampMin = "0.0"))
-    float BaseDamage = 10.0f;
+    // ❌ 删除 - BaseDamage（移到 FXBAbilityConfig 中）
 
     /** @brief 伤害倍率 - 对应 DamageMultiplier */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "核心属性", meta = (DisplayName = "伤害倍率", ClampMin = "0.1"))
@@ -109,6 +119,4 @@ struct XIAOBINDATIANXIA_API FXBLeaderTableRow : public FTableRowBase
     /** @brief 技能配置 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "战斗配置", meta = (DisplayName = "技能配置"))
     FXBAbilityConfig SpecialSkillConfig;
-
-
 };

@@ -11,15 +11,14 @@
 struct FXBDamageStatics
 {
     // 声明需要捕获的属性
-    DECLARE_ATTRIBUTE_CAPTUREDEF(BaseDamage);
+
     DECLARE_ATTRIBUTE_CAPTUREDEF(DamageMultiplier);
     DECLARE_ATTRIBUTE_CAPTUREDEF(Scale);
     DECLARE_ATTRIBUTE_CAPTUREDEF(IncomingDamage);
 
     FXBDamageStatics()
     {
-        // 从源捕获 BaseDamage（快照）
-        DEFINE_ATTRIBUTE_CAPTUREDEF(UXBAttributeSet, BaseDamage, Source, true);
+       
         // 从源捕获 DamageMultiplier（快照）
         DEFINE_ATTRIBUTE_CAPTUREDEF(UXBAttributeSet, DamageMultiplier, Source, true);
         // 从源捕获 Scale（快照）
@@ -39,7 +38,7 @@ static const FXBDamageStatics& DamageStatics()
 UXBDamageExecutionCalculation::UXBDamageExecutionCalculation()
 {
     // 注册需要捕获的属性
-    RelevantAttributesToCapture.Add(DamageStatics().BaseDamageDef);
+
     RelevantAttributesToCapture.Add(DamageStatics().DamageMultiplierDef);
     RelevantAttributesToCapture.Add(DamageStatics().ScaleDef);
 }
@@ -70,9 +69,7 @@ void UXBDamageExecutionCalculation::Execute_Implementation(
     float BaseDamage = 0.0f;
     float DamageMultiplier = 1.0f;
     float Scale = 1.0f;
-
-    ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(
-        DamageStatics().BaseDamageDef, EvaluateParams, BaseDamage);
+    
     ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(
         DamageStatics().DamageMultiplierDef, EvaluateParams, DamageMultiplier);
     ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(

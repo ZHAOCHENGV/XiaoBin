@@ -168,6 +168,13 @@ public:
     UFUNCTION(BlueprintPure, Category = "成长", meta = (DisplayName = "获取当前攻击范围"))
     float GetScaledAttackRange() const;
 
+    // ✨ 新增 - 攻击状态回调
+    UFUNCTION()
+    void OnCombatAttackStateChanged(bool bIsAttacking);
+
+    // ✨ 新增 - 绑定战斗组件事件
+    void BindCombatEvents();
+    
     // ============ 死亡系统 ============
 
     UFUNCTION(BlueprintCallable, Category = "死亡")
@@ -227,6 +234,15 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "士兵")
     virtual void SetSoldiersEscaping(bool bEscaping);
+
+    // ✨ 新增 - 设置最后伤害来源
+    /**
+     * @brief 设置最后造成伤害的 Actor
+     * @param Instigator 伤害来源
+     * @note 由伤害系统调用，用于死亡时确定掉落士兵配置
+     */
+    UFUNCTION(BlueprintCallable, Category = "死亡", meta = (DisplayName = "设置伤害来源"))
+    void SetLastDamageInstigator(AActor* InInstigator) { LastDamageInstigator = InInstigator; }
 
     // ============ 委托事件 ============
 
@@ -300,6 +316,9 @@ protected:
      * @param SoldierCount 减少的士兵数量
      */
     void ApplyGrowthOnSoldiersRemoved(int32 SoldierCount);
+
+
+
 
     void UpdateSkillEffectScaling();
     void UpdateAttackRangeScaling();
@@ -418,7 +437,22 @@ protected:
     UPROPERTY(BlueprintReadOnly, Category = "死亡")
     bool bIsCleaningUpSoldiers = false;
 
+    // ✨ 新增 - 最后伤害来源
+    /**
+     * @brief 最后造成伤害的 Actor
+     * @note 用于判断掉落士兵的阵营和配置
+     */
+    UPROPERTY(BlueprintReadOnly, Category = "死亡", meta = (DisplayName = "最后伤害来源"))
+    TWeakObjectPtr<AActor> LastDamageInstigator;
+
     FTimerHandle DeathDestroyTimerHandle;
+
+    // ✨ 新增 - 杀死所有士兵
+    /**
+     * @brief 杀死所有跟随的士兵
+     * @note 将领死亡时调用，确保士兵正确执行死亡流程并播放蒙太奇
+     */
+    void KillAllSoldiers();
 
     // ==================== 逃跑配置 ====================
 

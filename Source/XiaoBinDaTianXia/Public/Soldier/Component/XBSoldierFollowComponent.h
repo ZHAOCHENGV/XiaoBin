@@ -1,3 +1,4 @@
+/* --- 完整文件代码 --- */
 // Source/XiaoBinDaTianXia/Public/Soldier/Component/XBSoldierFollowComponent.h
 
 /**
@@ -9,6 +10,7 @@
  *       2. 战斗中启用移动组件和RVO避障
  *       3. 非战斗时禁用移动组件，直接设置位置
  *       4. 招募过渡使用插值实时追踪目标位置
+ *       5. ✨ 新增 - 地面追踪功能，确保士兵贴地移动
  */
 
 #pragma once
@@ -28,28 +30,16 @@ class UCapsuleComponent;
 UENUM(BlueprintType)
 enum class EXBFollowMode : uint8
 {
-    /** @brief 锁定模式 - 完全跟随将领，位置实时同步 */
     Locked      UMETA(DisplayName = "锁定跟随"),
-    
-    /** @brief 插值模式 - 被阻挡后，平滑回编队位置 */
     Interpolating   UMETA(DisplayName = "插值中"),
-    
-    /** @brief 自由模式 - 战斗中，使用AI和移动组件 */
     Free        UMETA(DisplayName = "自由移动"),
-    
-    /** @brief 招募过渡模式 - 招募后插值移动到编队位置 */
     RecruitTransition   UMETA(DisplayName = "招募过渡")
 };
 
-// ✨ 新增 - 战斗状态变化委托
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCombatStateChangedDelegate, bool, bInCombat);
 
 /**
  * @brief 士兵跟随组件
- * 
- * @note 核心逻辑:
- *       - 战斗中(bIsInCombat=true)：启用移动组件和RVO避障，使用AI逻辑
- *       - 非战斗(bIsInCombat=false)：禁用移动组件，直接设置位置
  */
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent, DisplayName = "XB Soldier Follow"))
 class XIAOBINDATIANXIA_API UXBSoldierFollowComponent : public UActorComponent
@@ -102,19 +92,11 @@ public:
     UFUNCTION(BlueprintCallable, Category = "XB|Follow", meta = (DisplayName = "开始招募过渡"))
     void StartRecruitTransition();
 
-    // ==================== 战斗状态控制（✨ 新增） ====================
+    // ==================== 战斗状态控制 ====================
 
-    /**
-     * @brief 设置战斗状态
-     * @param bInCombat 是否处于战斗中
-     * @note 战斗中启用移动组件和RVO避障，非战斗时禁用
-     */
     UFUNCTION(BlueprintCallable, Category = "XB|Follow|Combat", meta = (DisplayName = "设置战斗状态"))
     void SetCombatState(bool bInCombat);
 
-    /**
-     * @brief 获取是否处于战斗中
-     */
     UFUNCTION(BlueprintPure, Category = "XB|Follow|Combat", meta = (DisplayName = "是否战斗中"))
     bool IsInCombat() const { return bIsInCombat; }
 
@@ -154,7 +136,6 @@ public:
 
     // ==================== 委托事件 ====================
 
-    /** @brief 战斗状态变化委托 */
     UPROPERTY(BlueprintAssignable, Category = "XB|Follow|Combat", meta = (DisplayName = "战斗状态变化"))
     FOnCombatStateChangedDelegate OnCombatStateChanged;
 
@@ -169,22 +150,7 @@ protected:
     FRotator CalculateFormationWorldRotation() const;
     FVector2D GetSlotLocalOffset() const;
 
-    /**
-     * @brief 直接设置位置移动到目标（非战斗时使用）
-     * @param TargetPosition 目标位置
-     * @param DeltaTime 帧时间
-     * @param MoveSpeed 移动速度
-     * @return 是否已到达
-     */
     bool MoveTowardsTargetDirect(const FVector& TargetPosition, float DeltaTime, float MoveSpeed);
-
-    /**
-     * @brief 使用插值移动到目标位置
-     * @param TargetPosition 目标位置
-     * @param DeltaTime 帧时间
-     * @param InterpSpeed 插值速度
-     * @return 是否已到达
-     */
     bool MoveTowardsTargetInterp(const FVector& TargetPosition, float DeltaTime, float InterpSpeed);
 
     float GetLeaderMoveSpeed() const;
@@ -192,24 +158,26 @@ protected:
     UCharacterMovementComponent* GetCachedMovementComponent();
     UCapsuleComponent* GetCachedCapsuleComponent();
 
-    /**
-     * @brief 设置与其他士兵的碰撞状态
-     */
     void SetSoldierCollisionEnabled(bool bEnableCollision);
-
-    // ✨ 新增 - 移动组件控制
-    /**
-     * @brief 启用或禁用移动组件
-     * @param bEnable 是否启用
-     * @note 战斗时启用，非战斗时禁用
-     */
     void SetMovementComponentEnabled(bool bEnable);
+    void SetRVOAvoidanceEnabled(bool bEnable);
+
+    // ✨ 新增 - 地面追踪
+    /**
+     * @brief 获取指定位置的地面高度
+     * @param InLocation 输入位置
+     * @param OutGroundZ 输出的地面Z坐标
+     * @return 是否成功找到地面
+     * @note 使用射线检测从上往下查找地面
+     */
+    bool GetGroundHeight(const FVector& InLocation, float& OutGroundZ) const;
 
     /**
-     * @brief 启用或禁用RVO避障
-     * @param bEnable 是否启用
+     * @brief 将位置调整到地面上
+     * @param InOutLocation 输入输出的位置
+     * @note 确保角色始终贴地
      */
-    void SetRVOAvoidanceEnabled(bool bEnable);
+    void AdjustToGround(FVector& InOutLocation) const;
 
 protected:
     // ==================== 引用 ====================
@@ -234,61 +202,58 @@ protected:
     UPROPERTY(BlueprintReadOnly, Category = "XB|Follow", meta = (DisplayName = "当前模式"))
     EXBFollowMode CurrentMode = EXBFollowMode::RecruitTransition;
 
-    /** @brief 旋转插值速度 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Speed", meta = (DisplayName = "旋转插值速度", ClampMin = "1.0"))
     float RotationInterpolateSpeed = 15.0f;
 
-    /** @brief 到达编队位置的阈值 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow", meta = (DisplayName = "到达阈值", ClampMin = "1.0"))
     float ArrivalThreshold = 30.0f;
 
-    /** @brief 阻挡检测阈值 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow", meta = (DisplayName = "阻挡阈值", ClampMin = "10.0"))
     float BlockedThreshold = 150.0f;
 
-    /** @brief 是否跟随将领旋转 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow", meta = (DisplayName = "跟随旋转"))
     bool bFollowRotation = true;
 
-    /** @brief 移动速度（用于插值模式） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Speed", meta = (DisplayName = "移动速度", ClampMin = "100.0"))
     float MovementSpeed = 600.0f;
 
-    /** @brief 招募过渡插值速度 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "招募过渡速度", ClampMin = "1.0", ClampMax = "50.0"))
     float RecruitTransitionSpeed = 8.0f;
 
-    /** @brief 招募完成后是否自动切换到锁定模式 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "过渡完成后锁定"))
     bool bLockAfterRecruitTransition = true;
 
-    /** @brief 过渡时禁用与其他士兵的碰撞 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "过渡时禁用碰撞"))
     bool bDisableCollisionDuringTransition = true;
 
-    // ==================== 战斗状态（✨ 新增） ====================
+    // ✨ 新增 - 地面追踪配置
+    /** @brief 是否启用地面追踪（确保士兵贴地） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Ground", meta = (DisplayName = "启用地面追踪"))
+    bool bEnableGroundTracking = true;
 
-    /** 
-     * @brief 是否处于战斗中
-     * @note 战斗中启用移动组件和RVO避障，非战斗时禁用
-     */
+    /** @brief 地面检测的起始高度偏移（从角色位置向上） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Ground", meta = (DisplayName = "检测起始高度偏移", ClampMin = "0.0"))
+    float GroundTraceStartOffset = 200.0f;
+
+    /** @brief 地面检测的距离（从起始点向下） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Ground", meta = (DisplayName = "检测距离", ClampMin = "100.0"))
+    float GroundTraceDistance = 500.0f;
+
+    // ==================== 战斗状态 ====================
+
     UPROPERTY(BlueprintReadOnly, Category = "XB|Follow|Combat", meta = (DisplayName = "是否战斗中"))
     bool bIsInCombat = false;
 
     // ==================== 状态 ====================
 
-    /** @brief 上一帧位置（用于计算移动速度） */
     FVector LastFrameLocation = FVector::ZeroVector;
 
-    /** @brief 当前移动速度（供动画蓝图读取） */
     UPROPERTY(BlueprintReadOnly, Category = "XB|Follow", meta = (DisplayName = "当前移动速度"))
     float CurrentMoveSpeed = 0.0f;
 
-    /** @brief 记录原始碰撞响应 */
     ECollisionResponse OriginalPawnResponse = ECR_Block;
     bool bCollisionModified = false;
 
-    /** @brief 记录移动组件原始状态 */
     bool bOriginalMovementEnabled = true;
     bool bMovementStateModified = false;
 };

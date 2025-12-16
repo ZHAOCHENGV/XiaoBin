@@ -4,11 +4,21 @@
 /**
  * @file XBCombatComponent.cpp
  * @brief 战斗组件实现
+ * 
+ * @note 🔧 修改记录:
+ *       1. ✨ 新增 攻击上下文追踪
+ *       2. ✨ 新增 GetCurrentAttackDamage() 和 GetCurrentAttackFinalDamage()
+ *       3. 🔧 修改 PerformBasicAttack/PerformSpecialSkill 设置攻击类型
+ *       4. 🔧 修改 ResetAttackState 重置攻击类型
+ *       5. ✨ 新增 攻击状态变化委托广播
+ *       6. ✨ 新增 ShouldBlockMovement() 判断
+ *       7. 🔧 修改 - 增加蒙太奇互斥检查，正在播放蒙太奇时禁止触发新攻击
  */
 
 #include "Character/Components/XBCombatComponent.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
+#include "GAS/XBAttributeSet.h"
 #include "GameFramework/Character.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Animation/AnimInstance.h"
@@ -66,15 +76,6 @@ void UXBCombatComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAc
     }
 }
 
-/**
- * @brief 从数据表初始化战斗组件
- * @param DataTable 数据表资源
- * @param RowName 行名称
- * @note 核心流程：
- *       1. 加载配置数据（普攻/技能）
- *       2. 预加载蒙太奇资源
- *       3. 🔧 修改 - 自动赋予 GA 到 ASC
- */
 void UXBCombatComponent::InitializeFromDataTable(UDataTable* DataTable, FName RowName)
 {
     if (!DataTable)
@@ -96,14 +97,12 @@ void UXBCombatComponent::InitializeFromDataTable(UDataTable* DataTable, FName Ro
         return;
     }
 
-    // 复制配置（包含冷却时间）
     BasicAttackConfig = Row->BasicAttackConfig;
     SpecialSkillConfig = Row->SpecialSkillConfig;
 
     UE_LOG(LogTemp, Log, TEXT("===== 战斗组件配置加载 ====="));
     UE_LOG(LogTemp, Log, TEXT("数据表: %s, 行: %s"), *DataTable->GetName(), *RowName.ToString());
     
-    // 加载普攻蒙太奇
     if (!BasicAttackConfig.AbilityMontage.IsNull())
     {
         UE_LOG(LogTemp, Log, TEXT("普攻蒙太奇路径: %s"), *BasicAttackConfig.AbilityMontage.ToString());
@@ -123,9 +122,9 @@ void UXBCombatComponent::InitializeFromDataTable(UDataTable* DataTable, FName Ro
         UE_LOG(LogTemp, Warning, TEXT("普攻蒙太奇路径为空"));
     }
     
+    UE_LOG(LogTemp, Log, TEXT("普攻基础伤害: %.1f"), BasicAttackConfig.BaseDamage);
     UE_LOG(LogTemp, Log, TEXT("普攻冷却时间: %.2f秒"), BasicAttackConfig.Cooldown);
 
-    // 加载技能蒙太奇
     if (!SpecialSkillConfig.AbilityMontage.IsNull())
     {
         UE_LOG(LogTemp, Log, TEXT("技能蒙太奇路径: %s"), *SpecialSkillConfig.AbilityMontage.ToString());
@@ -145,19 +144,11 @@ void UXBCombatComponent::InitializeFromDataTable(UDataTable* DataTable, FName Ro
         UE_LOG(LogTemp, Warning, TEXT("技能蒙太奇路径为空"));
     }
     
+    UE_LOG(LogTemp, Log, TEXT("技能基础伤害: %.1f"), SpecialSkillConfig.BaseDamage);
     UE_LOG(LogTemp, Log, TEXT("技能冷却时间: %.2f秒"), SpecialSkillConfig.Cooldown);
 
-    // 🔧 修改 - 核心修复：自动赋予 GA 到 ASC
-    /**
-     * @note 修复原因：
-     *       之前仅配置了 GA 类，但未调用 GiveAbility，导致运行时激活失败。
-     *       现在在初始化时自动赋予，确保技能系统完整。
-     * @note 权限检查：
-     *       只有服务端或单机模式下才能赋予 GA。
-     */
     if (GetOwner()->HasAuthority() && CachedASC.IsValid())
     {
-        // 赋予普攻技能
         if (BasicAttackConfig.AbilityClass)
         {
             FGameplayAbilitySpec BasicAttackSpec(BasicAttackConfig.AbilityClass, 1, INDEX_NONE, this);
@@ -172,7 +163,6 @@ void UXBCombatComponent::InitializeFromDataTable(UDataTable* DataTable, FName Ro
             UE_LOG(LogTemp, Warning, TEXT("普攻GA类未配置"));
         }
 
-        // 赋予特殊技能
         if (SpecialSkillConfig.AbilityClass)
         {
             FGameplayAbilitySpec SkillSpec(SpecialSkillConfig.AbilityClass, 1, INDEX_NONE, this);
@@ -201,39 +191,93 @@ void UXBCombatComponent::InitializeFromDataTable(UDataTable* DataTable, FName Ro
     bInitialized = true;
 }
 
+void UXBCombatComponent::SetAttackingState(bool bNewAttacking)
+{
+    if (bIsAttacking != bNewAttacking)
+    {
+        bIsAttacking = bNewAttacking;
+        
+        OnAttackStateChanged.Broadcast(bIsAttacking);
+        
+        UE_LOG(LogTemp, Log, TEXT("攻击状态变化: %s"), bIsAttacking ? TEXT("开始攻击") : TEXT("结束攻击"));
+    }
+}
+
+bool UXBCombatComponent::ShouldBlockMovement() const
+{
+    if (!bIsAttacking)
+    {
+        return false;
+    }
+
+    switch (CurrentAttackType)
+    {
+    case EXBAttackType::BasicAttack:
+        return bBlockMovementDuringBasicAttack;
+        
+    case EXBAttackType::SpecialSkill:
+        return bBlockMovementDuringSkill;
+        
+    default:
+        return false;
+    }
+}
+
+/**
+ * @brief 检查是否有任何攻击/技能蒙太奇正在播放
+ * @return 是否有蒙太奇正在播放
+ * @note ✨ 新增 - 用于蒙太奇互斥检查
+ */
+bool UXBCombatComponent::IsAnyAttackMontagePlayingInternal() const
+{
+    if (!CachedAnimInstance.IsValid())
+    {
+        return false;
+    }
+
+    UAnimInstance* AnimInstance = CachedAnimInstance.Get();
+
+    // 检查普攻蒙太奇是否正在播放
+    if (LoadedBasicAttackMontage && AnimInstance->Montage_IsPlaying(LoadedBasicAttackMontage))
+    {
+        return true;
+    }
+
+    // 检查技能蒙太奇是否正在播放
+    if (LoadedSkillMontage && AnimInstance->Montage_IsPlaying(LoadedSkillMontage))
+    {
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * @brief 执行普通攻击
+ * @return 是否成功
+ * @note 🔧 修改 - 增加蒙太奇互斥检查
+ */
 bool UXBCombatComponent::PerformBasicAttack()
 {
     UE_LOG(LogTemp, Log, TEXT("执行普通攻击 - bIsAttacking: %s, Cooldown: %.2f"), 
         bIsAttacking ? TEXT("true") : TEXT("false"),
         BasicAttackCooldownTimer);
 
+    // 冷却检查
     if (BasicAttackCooldownTimer > 0.0f)
     {
         UE_LOG(LogTemp, Log, TEXT("普攻冷却中: %.2f秒"), BasicAttackCooldownTimer);
         return false;
     }
 
-    if (bIsAttacking)
+    // ✨ 新增 - 蒙太奇互斥检查：如果有任何攻击蒙太奇正在播放，则拒绝新的攻击
+    if (IsAnyAttackMontagePlayingInternal())
     {
-        if (CachedAnimInstance.IsValid() && LoadedBasicAttackMontage)
-        {
-            if (!CachedAnimInstance->Montage_IsPlaying(LoadedBasicAttackMontage))
-            {
-                UE_LOG(LogTemp, Warning, TEXT("检测到攻击状态异常，正在重置"));
-                ResetAttackState();
-            }
-            else
-            {
-                UE_LOG(LogTemp, Log, TEXT("普攻正在进行中，忽略输入"));
-                return false;
-            }
-        }
-        else
-        {
-            ResetAttackState();
-        }
+        UE_LOG(LogTemp, Log, TEXT("普攻被拒绝: 已有攻击蒙太奇正在播放"));
+        return false;
     }
 
+    // 🔧 修改 - 移除旧的状态重置逻辑，由蒙太奇互斥检查替代
     UAnimMontage* MontageToPlay = LoadedBasicAttackMontage;
     if (!MontageToPlay)
     {
@@ -261,7 +305,9 @@ bool UXBCombatComponent::PerformBasicAttack()
         return false;
     }
 
-    bIsAttacking = true;
+    SetCurrentAttackType(EXBAttackType::BasicAttack);
+    SetAttackingState(true);
+    
     BasicAttackCooldownTimer = BasicAttackConfig.Cooldown;
 
     if (BasicAttackConfig.AbilityClass)
@@ -269,26 +315,33 @@ bool UXBCombatComponent::PerformBasicAttack()
         TryActivateAbility(BasicAttackConfig.AbilityClass);
     }
 
-    UE_LOG(LogTemp, Log, TEXT("普攻释放成功，冷却: %.2f秒"), BasicAttackConfig.Cooldown);
+    UE_LOG(LogTemp, Log, TEXT("普攻释放成功，伤害: %.1f，冷却: %.2f秒"), 
+        BasicAttackConfig.BaseDamage, BasicAttackConfig.Cooldown);
     return true;
 }
 
+/**
+ * @brief 执行技能攻击
+ * @return 是否成功
+ * @note 🔧 修改 - 增加蒙太奇互斥检查
+ */
 bool UXBCombatComponent::PerformSpecialSkill()
 {
     UE_LOG(LogTemp, Log, TEXT("尝试使用技能 - bIsAttacking: %s, Cooldown: %.2f"), 
         bIsAttacking ? TEXT("true") : TEXT("false"), SkillCooldownTimer);
 
+    // 冷却检查
     if (SkillCooldownTimer > 0.0f)
     {
         UE_LOG(LogTemp, Log, TEXT("技能冷却中: %.2f秒"), SkillCooldownTimer);
         return false;
     }
 
-    if (bIsAttacking && CachedAnimInstance.IsValid())
+    // ✨ 新增 - 蒙太奇互斥检查：如果有任何攻击蒙太奇正在播放，则拒绝新的攻击
+    if (IsAnyAttackMontagePlayingInternal())
     {
-        CachedAnimInstance->Montage_Stop(0.2f);
-        ResetAttackState();
-        UE_LOG(LogTemp, Log, TEXT("技能打断了普攻"));
+        UE_LOG(LogTemp, Log, TEXT("技能被拒绝: 已有攻击蒙太奇正在播放"));
+        return false;
     }
 
     UAnimMontage* MontageToPlay = LoadedSkillMontage;
@@ -318,7 +371,9 @@ bool UXBCombatComponent::PerformSpecialSkill()
         return false;
     }
 
-    bIsAttacking = true;
+    SetCurrentAttackType(EXBAttackType::SpecialSkill);
+    SetAttackingState(true);
+    
     SkillCooldownTimer = SpecialSkillConfig.Cooldown;
 
     if (SpecialSkillConfig.AbilityClass)
@@ -326,14 +381,54 @@ bool UXBCombatComponent::PerformSpecialSkill()
         TryActivateAbility(SpecialSkillConfig.AbilityClass);
     }
 
-    UE_LOG(LogTemp, Log, TEXT("技能释放成功，冷却: %.2f秒"), SpecialSkillConfig.Cooldown);
+    UE_LOG(LogTemp, Log, TEXT("技能释放成功，伤害: %.1f，冷却: %.2f秒"), 
+        SpecialSkillConfig.BaseDamage, SpecialSkillConfig.Cooldown);
     return true;
 }
 
 void UXBCombatComponent::ResetAttackState()
 {
-    bIsAttacking = false;
+    SetCurrentAttackType(EXBAttackType::None);
+    SetAttackingState(false);
     UE_LOG(LogTemp, Log, TEXT("攻击状态已重置"));
+}
+
+void UXBCombatComponent::SetCurrentAttackType(EXBAttackType NewType)
+{
+    CurrentAttackType = NewType;
+}
+
+float UXBCombatComponent::GetCurrentAttackDamage() const
+{
+    switch (CurrentAttackType)
+    {
+    case EXBAttackType::BasicAttack:
+        return BasicAttackConfig.BaseDamage;
+        
+    case EXBAttackType::SpecialSkill:
+        return SpecialSkillConfig.BaseDamage;
+        
+    case EXBAttackType::None:
+    default:
+        UE_LOG(LogTemp, Warning, TEXT("GetCurrentAttackDamage: 当前没有活跃的攻击类型"));
+        return 0.0f;
+    }
+}
+
+float UXBCombatComponent::GetDamageMultiplier() const
+{
+    if (CachedASC.IsValid())
+    {
+        return CachedASC->GetNumericAttribute(UXBAttributeSet::GetDamageMultiplierAttribute());
+    }
+    return 1.0f;
+}
+
+float UXBCombatComponent::GetCurrentAttackFinalDamage() const
+{
+    float BaseDamage = GetCurrentAttackDamage();
+    float Multiplier = GetDamageMultiplier();
+    return BaseDamage * Multiplier;
 }
 
 bool UXBCombatComponent::PlayMontage(UAnimMontage* Montage, float PlayRate)
@@ -384,12 +479,6 @@ void UXBCombatComponent::OnMontageEnded(UAnimMontage* Montage, bool bInterrupted
     ResetAttackState();
 }
 
-/**
- * @brief 尝试激活 GameplayAbility
- * @param AbilityClass GA 类
- * @return 是否成功激活
- * @note 核心逻辑：通过 ASC 的 TryActivateAbilityByClass 激活技能
- */
 bool UXBCombatComponent::TryActivateAbility(TSubclassOf<UGameplayAbility> AbilityClass)
 {
     if (!AbilityClass)
@@ -419,11 +508,6 @@ bool UXBCombatComponent::TryActivateAbility(TSubclassOf<UGameplayAbility> Abilit
     return bSuccess;
 }
 
-/**
- * @brief 设置攻击范围缩放倍率
- * @param ScaleMultiplier 缩放倍率
- * @note ✨ 新增方法
- */
 void UXBCombatComponent::SetAttackRangeScale(float ScaleMultiplier)
 {
     AttackRangeScaleMultiplier = FMath::Max(0.1f, ScaleMultiplier);
@@ -432,22 +516,11 @@ void UXBCombatComponent::SetAttackRangeScale(float ScaleMultiplier)
         AttackRangeScaleMultiplier, GetScaledAttackRange());
 }
 
-/**
- * @brief 设置攻击范围缩放倍率
- * @param ScaleMultiplier 缩放倍率
- * @note ✨ 新增方法
- */
 float UXBCombatComponent::GetScaledAttackRange() const
 {
     return BaseAttackRange * AttackRangeScaleMultiplier;
 }
 
-/**
- * @brief 检查目标是否在攻击范围内
- * @param Target 目标Actor
- * @return 是否在范围内
- * @note ✨ 新增方法
- */
 bool UXBCombatComponent::IsTargetInRange(AActor* Target) const
 {
     if (!Target)
@@ -463,5 +536,4 @@ bool UXBCombatComponent::IsTargetInRange(AActor* Target) const
 
     float Distance = FVector::Dist(Owner->GetActorLocation(), Target->GetActorLocation());
     return Distance <= GetScaledAttackRange();
-    
 }
