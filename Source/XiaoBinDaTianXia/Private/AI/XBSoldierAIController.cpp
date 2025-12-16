@@ -555,7 +555,6 @@ void AXBSoldierAIController::RefreshBlackboardValuesSafe()
     AActor* Leader = Soldier->GetFollowTarget();
     SetLeader(Leader);
     
-    // 🔧 修改 - 使用 Int 类型设置状态
     SetSoldierState(static_cast<uint8>(Soldier->GetSoldierState()));
     
     int32 SlotIndex = Soldier->GetFormationSlotIndex();
@@ -564,15 +563,9 @@ void AXBSoldierAIController::RefreshBlackboardValuesSafe()
     FVector CurrentPosition = Soldier->GetActorLocation();
     SetFormationPosition(CurrentPosition);
     
-    // 从数据表获取配置
-    const FXBSoldierConfig& Config = Soldier->GetSoldierConfig();
-    SetAttackRange(Config.AttackRange);
-    
-    // ✨ 新增 - 设置视野范围（从数据表读取）
-    // 这里使用 Config 中的数据，如果有 CachedTableRow 则优先使用
-    float VisionRange = 800.0f; // 默认值
-    // 后续可以从 CachedTableRow.AIConfig.VisionRange 读取
-    SetVisionRange(VisionRange);
+    // 🔧 修复 - 直接调用 Getter 方法
+    SetAttackRange(Soldier->GetAttackRange());
+    SetVisionRange(Soldier->GetVisionRange());
     
     BlackboardComp->SetValueAsBool(XBSoldierBBKeys::CanAttack, true);
     BlackboardComp->SetValueAsBool(XBSoldierBBKeys::IsAtFormation, true);

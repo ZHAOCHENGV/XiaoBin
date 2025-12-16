@@ -1,17 +1,6 @@
 /* --- 完整文件代码 --- */
 // Source/XiaoBinDaTianXia/Private/AI/BehaviorTree/BTTask_XBFindEnemy.cpp
 
-/**
- * @file BTTask_XBFindEnemy.cpp
- * @brief 行为树任务 - 寻找敌人实现
- * 
- * @note 🔧 修改记录:
- *       1. 使用通用函数库的球形检测替代全量Actor搜索
- *       2. 增强空指针检查
- *       3. 使用项目专用日志类别
- *       4. 从数据表读取视野范围
- */
-
 #include "AI/BehaviorTree/BTTask_XBFindEnemy.h"
 #include "Utils/XBLogCategories.h"
 #include "Utils/XBBlueprintFunctionLibrary.h"
@@ -31,8 +20,6 @@ UBTTask_XBFindEnemy::UBTTask_XBFindEnemy()
 
 EBTNodeResult::Type UBTTask_XBFindEnemy::ExecuteTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory)
 {
-    // ==================== 安全检查 ====================
-    
     AAIController* AIController = OwnerComp.GetAIOwner();
     if (!AIController)
     {
@@ -41,7 +28,6 @@ EBTNodeResult::Type UBTTask_XBFindEnemy::ExecuteTask(UBehaviorTreeComponent& Own
     }
     
     APawn* ControlledPawn = AIController->GetPawn();
-    // ✨ 新增 - 增强空指针检查
     if (!ControlledPawn || !IsValid(ControlledPawn))
     {
         UE_LOG(LogXBAI, Warning, TEXT("BTTask_FindEnemy: Pawn 无效"));
@@ -55,7 +41,6 @@ EBTNodeResult::Type UBTTask_XBFindEnemy::ExecuteTask(UBehaviorTreeComponent& Own
         return EBTNodeResult::Failed;
     }
     
-    // ✨ 新增 - 检查士兵是否存活
     if (Soldier->GetSoldierState() == EXBSoldierState::Dead)
     {
         UE_LOG(LogXBAI, Verbose, TEXT("BTTask_FindEnemy: 士兵已死亡"));
@@ -73,7 +58,6 @@ EBTNodeResult::Type UBTTask_XBFindEnemy::ExecuteTask(UBehaviorTreeComponent& Own
     
     float DetectionRange = DefaultDetectionRange;
     
-    // 优先从黑板读取
     if (DetectionRangeKey.SelectedKeyName != NAME_None)
     {
         float BBRange = BlackboardComp->GetValueAsFloat(DetectionRangeKey.SelectedKeyName);
@@ -83,14 +67,11 @@ EBTNodeResult::Type UBTTask_XBFindEnemy::ExecuteTask(UBehaviorTreeComponent& Own
         }
     }
     
-    // 🔧 修改 - 从士兵数据表读取视野范围
-    if (Soldier->IsInitializedFromDataTable())
+    // 🔧 修复 - 从 DataAccessor 读取视野范围（移除 IsInitializedFromDataTable 检查）
+    float VisionRange = Soldier->GetVisionRange();
+    if (VisionRange > 0.0f)
     {
-        float VisionRange = Soldier->GetVisionRange();
-        if (VisionRange > 0.0f)
-        {
-            DetectionRange = VisionRange;
-        }
+        DetectionRange = VisionRange;
     }
     
     // ==================== 使用球形检测寻找敌人 ====================
@@ -98,13 +79,12 @@ EBTNodeResult::Type UBTTask_XBFindEnemy::ExecuteTask(UBehaviorTreeComponent& Own
     EXBFaction SoldierFaction = Soldier->GetFaction();
     FVector SoldierLocation = Soldier->GetActorLocation();
     
-    // 🔧 修改 - 使用通用函数库的球形检测
     AActor* NearestEnemy = UXBBlueprintFunctionLibrary::FindNearestEnemy(
-        Soldier,                    // WorldContext
-        SoldierLocation,            // Origin
-        DetectionRange,             // Radius
-        SoldierFaction,             // SourceFaction
-        bIgnoreDeadTargets          // bIgnoreDead
+        Soldier,
+        SoldierLocation,
+        DetectionRange,
+        SoldierFaction,
+        bIgnoreDeadTargets
     );
     
     // ==================== 更新黑板 ====================

@@ -140,11 +140,7 @@ void UXBMagnetFieldComponent::OnSphereBeginOverlap(UPrimitiveComponent* Overlapp
             {
                 Soldier->InitializeFromDataTable(SoldierDT, SoldierRowName, Leader->GetFaction());
             }
-            else
-            {
-                FXBSoldierConfig DefaultConfig;
-                Soldier->InitializeSoldier(DefaultConfig, Leader->GetFaction());
-            }
+           
 
             int32 SlotIndex = Leader->GetSoldierCount();
             Soldier->OnRecruited(Leader, SlotIndex);

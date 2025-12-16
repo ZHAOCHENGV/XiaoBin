@@ -435,25 +435,20 @@ void AXBCharacterBase::AddSoldier(AXBSoldierCharacter* Soldier)
 
     int32 OldCount = Soldiers.Num();
 
-    // 添加到数组
     if (!Internal_AddSoldierToArray(Soldier))
     {
-        return; // 已存在，跳过
+        return;
     }
 
-    // 设置士兵槽位
     int32 SlotIndex = Soldiers.Num() - 1;
     Soldier->SetFormationSlotIndex(SlotIndex);
     Soldier->SetFollowTarget(this, SlotIndex);
-    Soldier->InitializeSoldier(Soldier->GetSoldierConfig(), Faction);
 
-    // 应用成长效果
+
     ApplyGrowthOnSoldiersAdded(1);
 
-    // 更新计数并广播
     UpdateSoldierCount(OldCount);
 
-    // 更新编队
     if (FormationComponent)
     {
         FormationComponent->RegenerateFormation(Soldiers.Num());
@@ -1013,7 +1008,11 @@ void AXBCharacterBase::SpawnDroppedSoldiers()
 
         if (DroppedSoldier)
         {
-            DroppedSoldier->InitializeSoldier(DroppedSoldier->GetSoldierConfig(), EXBFaction::Neutral);
+            // 🔧 修复 - 使用 InitializeFromDataTable
+            if (SoldierDataTable && !RecruitSoldierRowName.IsNone())
+            {
+                DroppedSoldier->InitializeFromDataTable(SoldierDataTable, RecruitSoldierRowName, EXBFaction::Neutral);
+            }
             DroppedSoldier->SetSoldierState(EXBSoldierState::Idle);
         }
     }

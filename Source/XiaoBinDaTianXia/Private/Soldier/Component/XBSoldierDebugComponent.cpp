@@ -18,6 +18,7 @@
 #include "Character/Components/XBFormationComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "DrawDebugHelpers.h"
+#include "Data/XBSoldierDataAccessor.h"
 #include "Engine/World.h"
 
 // ✨ 新增 - 静态变量初始化
@@ -216,18 +217,18 @@ void UXBSoldierDebugComponent::DrawStateText()
     FVector Location = Soldier->GetActorLocation();
     FVector TextLocation = Location + FVector(0.0f, 0.0f, TextHeightOffset);
 
-    // 🔧 修改 - 获取更详细的配置信息
-    const FXBSoldierConfig& Config = Soldier->GetSoldierConfig();
+    // 🔧 修复 - 移除 GetSoldierConfig() 调用
+    FString SoldierIdText = Soldier->GetDataAccessor() && Soldier->GetDataAccessor()->IsInitialized() ?
+        Soldier->GetDataAccessor()->GetRawData().SoldierTags.ToStringSimple() : TEXT("未初始化");
 
-    // 构建状态信息字符串
     FString StateInfo = FString::Printf(
-        TEXT("[%s]\n阵营:%s | 类型:%s\n槽位:%d | 招募:%s\nID:%s"),
+        TEXT("[%s]\n阵营:%s | 类型:%s\n槽位:%d | 招募:%s\n标签:%s"),
         *GetStateName(Soldier->GetSoldierState()),
         *GetFactionName(Soldier->GetFaction()),
         *GetSoldierTypeName(Soldier->GetSoldierType()),
         Soldier->GetFormationSlotIndex(),
         Soldier->IsRecruited() ? TEXT("是") : TEXT("否"),
-        Config.SoldierId.IsNone() ? TEXT("未设置") : *Config.SoldierId.ToString()
+        *SoldierIdText
     );
 
     DrawDebugString(
@@ -468,9 +469,8 @@ void UXBSoldierDebugComponent::DrawAttackRange()
         return;
     }
 
-    // 获取攻击范围
-    const FXBSoldierConfig& Config = Soldier->GetSoldierConfig();
-    float AttackRange = Config.AttackRange;
+    // 🔧 修复 - 直接调用 GetAttackRange()
+    float AttackRange = Soldier->GetAttackRange();
 
     if (AttackRange <= 0.0f)
     {
@@ -479,7 +479,6 @@ void UXBSoldierDebugComponent::DrawAttackRange()
 
     FVector Location = Soldier->GetActorLocation();
 
-    // 绘制攻击范围圆圈
     DrawDebugCircle(
         World,
         Location + FVector(0, 0, 10),

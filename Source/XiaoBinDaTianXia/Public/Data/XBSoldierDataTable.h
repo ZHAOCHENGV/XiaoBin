@@ -3,12 +3,13 @@
 
 /**
  * @file XBSoldierDataTable.h
- * @brief 士兵配置数据表结构
+ * @brief 士兵配置数据表 - 统一数据源架构
  * 
- * @note 🔧 修改记录:
- *       1. 添加 SoldierId 字段
- *       2. 添加 SoldierTags 字段
- *       3. 添加 ToSoldierConfig() 转换方法
+ * @note 🔧 重构记录:
+ *       1. ❌ 删除 FXBSoldierConfig 冗余结构
+ *       2. ❌ 删除 ToSoldierConfig() 手动转换方法
+ *       3. ✨ 新增 智能访问器模式
+ *       4. ✨ 新增 运行时数据校验
  */
 
 #pragma once
@@ -24,8 +25,13 @@ class USkeletalMesh;
 class UAnimInstance;
 class UAnimMontage;
 
+// ============================================
+// 配置子结构（保持不变，增强注释）
+// ============================================
+
 /**
  * @brief 士兵AI配置
+ * @note 所有AI参数集中管理，便于行为树读取
  */
 USTRUCT(BlueprintType)
 struct XIAOBINDATIANXIA_API FXBSoldierAIConfig
@@ -39,10 +45,6 @@ struct XIAOBINDATIANXIA_API FXBSoldierAIConfig
     /** @brief 视野范围（检测敌人的最大距离） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|检测", meta = (DisplayName = "视野范围", ClampMin = "100.0"))
     float VisionRange = 800.0f;
-
-    /** @brief 敌人检测范围（向后兼容） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|检测", meta = (DisplayName = "检测范围", ClampMin = "100.0", DeprecatedProperty, DeprecationMessage = "请使用 VisionRange"))
-    float DetectionRange = 800.0f;
 
     /** @brief 脱离战斗距离（超过此距离自动返回将领） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|战斗", meta = (DisplayName = "脱离距离", ClampMin = "100.0"))
@@ -87,7 +89,7 @@ struct XIAOBINDATIANXIA_API FXBSoldierVisualConfig
 
     /** @brief 动画蓝图类 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "视觉", meta = (DisplayName = "动画蓝图"))
-    TSubclassOf<UAnimInstance> AnimClass;
+    TSoftClassPtr<UAnimInstance> AnimClass;
 
     /** @brief 模型缩放 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "视觉", meta = (DisplayName = "模型缩放", ClampMin = "0.1"))
@@ -119,9 +121,21 @@ struct XIAOBINDATIANXIA_API FXBArcherConfig
     float RetreatDistance = 150.0f;
 };
 
+// ============================================
+// ✨ 新增：数据访问器前向声明
+// ============================================
+class UXBSoldierDataAccessor;
+
+// ============================================
+// 士兵配置数据表行 - 唯一数据源
+// ============================================
+
 /**
- * @brief 士兵配置数据表行
- * @note 🔧 修改 - 添加 ToSoldierConfig() 方法用于转换为运行时配置
+ * @brief 士兵配置数据表行 - 项目唯一数据源
+ * @note 🔧 架构变更:
+ *       - 所有运行时代码直接从此结构读取数据
+ *       - 通过 UXBSoldierDataAccessor 提供类型安全的访问接口
+ *       - 资源加载由访问器统一管理（支持异步/同步/缓存）
  */
 USTRUCT(BlueprintType)
 struct XIAOBINDATIANXIA_API FXBSoldierTableRow : public FTableRowBase
@@ -142,7 +156,6 @@ struct XIAOBINDATIANXIA_API FXBSoldierTableRow : public FTableRowBase
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "基础", meta = (DisplayName = "描述"))
     FText Description;
 
-    // ✨ 新增 - 士兵标签
     /** @brief 士兵标签（用于技能系统等） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "基础", meta = (DisplayName = "士兵标签"))
     FGameplayTagContainer SoldierTags;
@@ -219,76 +232,70 @@ struct XIAOBINDATIANXIA_API FXBSoldierTableRow : public FTableRowBase
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "弓手", meta = (DisplayName = "弓手配置"))
     FXBArcherConfig ArcherConfig;
 
-    // ==================== 便捷访问方法 ====================
+    // ==================== ✨ 新增：便捷访问方法 ====================
 
     /**
      * @brief 获取视野范围
      * @return 视野范围值
+     * @note 提供向后兼容的快捷访问
      */
-    float GetVisionRange() const
+    FORCEINLINE float GetVisionRange() const
     {
-        return AIConfig.VisionRange > 0.0f ? AIConfig.VisionRange : AIConfig.DetectionRange;
+        return AIConfig.VisionRange;
     }
 
-    // ✨ 新增 - 转换为运行时配置
     /**
-     * @brief 转换为 FXBSoldierConfig 运行时配置
-     * @param OutConfig 输出的配置结构
-     * @param RowName 数据表行名（作为 SoldierId）
-     * @note 将数据表行数据转换为运行时使用的配置格式
+     * @brief 获取脱离距离
+     * @return 脱离战斗距离
      */
-    void ToSoldierConfig(FXBSoldierConfig& OutConfig, FName RowName = NAME_None) const
+    FORCEINLINE float GetDisengageDistance() const
     {
-        // 基础信息
-        OutConfig.SoldierType = SoldierType;
-        OutConfig.SoldierId = RowName;
-        OutConfig.DisplayName = DisplayName;
+        return AIConfig.DisengageDistance;
+    }
 
-        // 视觉资源（需要同步加载软引用）
-        if (!VisualConfig.SkeletalMesh.IsNull())
+    /**
+     * @brief 获取返回延迟
+     * @return 返回延迟时间（秒）
+     */
+    FORCEINLINE float GetReturnDelay() const
+    {
+        return AIConfig.ReturnDelay;
+    }
+
+    /**
+     * @brief 获取到达阈值
+     * @return 到达判定阈值
+     */
+    FORCEINLINE float GetArrivalThreshold() const
+    {
+        return AIConfig.ArrivalThreshold;
+    }
+
+    /**
+     * @brief 数据校验
+     * @return 数据是否有效
+     * @note 用于编辑器验证和运行时检查
+     */
+    bool Validate(FText& OutError) const
+    {
+        if (MaxHealth <= 0.0f)
         {
-            OutConfig.SoldierMesh = VisualConfig.SkeletalMesh.LoadSynchronous();
+            OutError = FText::FromString(TEXT("最大血量必须大于0"));
+            return false;
         }
-        OutConfig.AnimClass = VisualConfig.AnimClass;
-        OutConfig.MeshScale = VisualConfig.MeshScale;
 
-        // 战斗属性
-        OutConfig.MaxHealth = MaxHealth;
-        OutConfig.BaseDamage = BaseDamage;
-        OutConfig.AttackRange = AttackRange;
-        OutConfig.AttackInterval = AttackInterval;
+        if (AttackRange < 10.0f)
+        {
+            OutError = FText::FromString(TEXT("攻击范围过小"));
+            return false;
+        }
 
-        // 移动属性
-        OutConfig.MoveSpeed = MoveSpeed;
-        OutConfig.FollowInterpSpeed = FollowInterpSpeed;
-        OutConfig.SprintSpeedMultiplier = SprintSpeedMultiplier;
-        OutConfig.RotationSpeed = RotationSpeed;
+        if (MoveSpeed <= 0.0f)
+        {
+            OutError = FText::FromString(TEXT("移动速度必须大于0"));
+            return false;
+        }
 
-        // AI属性
-        OutConfig.VisionRange = GetVisionRange();
-        OutConfig.DisengageDistance = AIConfig.DisengageDistance;
-        OutConfig.ReturnDelay = AIConfig.ReturnDelay;
-        OutConfig.ArrivalThreshold = AIConfig.ArrivalThreshold;
-
-        // 加成属性
-        OutConfig.HealthBonusToLeader = HealthBonusToLeader;
-        OutConfig.DamageBonusToLeader = DamageBonusToLeader;
-        OutConfig.ScaleBonusToLeader = ScaleBonusToLeader;
-
-        // 标签
-        OutConfig.SoldierTags = SoldierTags;
-    }
-
-    // ✨ 新增 - 便捷转换方法
-    /**
-     * @brief 创建并返回 FXBSoldierConfig
-     * @param RowName 数据表行名
-     * @return 转换后的配置
-     */
-    FXBSoldierConfig CreateSoldierConfig(FName RowName = NAME_None) const
-    {
-        FXBSoldierConfig Config;
-        ToSoldierConfig(Config, RowName);
-        return Config;
+        return true;
     }
 };
