@@ -30,6 +30,7 @@
 #include "Animation/AnimInstance.h"
 #include "TimerManager.h"
 #include "XBCollisionChannels.h"
+#include "AI/XBSoldierPerceptionSubsystem.h"
 #include "Particles/ParticleSystemComponent.h"
 
 AXBCharacterBase::AXBCharacterBase()
@@ -737,6 +738,16 @@ void AXBCharacterBase::EnterCombat()
 
     bIsInCombat = true;
 
+    // ✨ 新增 - 标记当前位置为热点区域
+    if (UWorld* World = GetWorld())
+    {
+        if (UXBSoldierPerceptionSubsystem* Perception = World->GetSubsystem<UXBSoldierPerceptionSubsystem>())
+        {
+            // 以将领为中心，标记 1500 单位半径为热点
+            Perception->MarkHotspotRegion(GetActorLocation(), 1500.0f);
+        }
+    }
+
     for (AXBSoldierCharacter* Soldier : Soldiers)
     {
         if (Soldier && Soldier->GetSoldierState() != EXBSoldierState::Dead)
@@ -766,6 +777,15 @@ void AXBCharacterBase::ExitCombat()
     bIsInCombat = false;
 
     GetWorldTimerManager().ClearTimer(CombatTimeoutHandle);
+
+    // ✨ 新增 - 清除热点区域标记
+    if (UWorld* World = GetWorld())
+    {
+        if (UXBSoldierPerceptionSubsystem* Perception = World->GetSubsystem<UXBSoldierPerceptionSubsystem>())
+        {
+            Perception->ClearHotspotRegion(GetActorLocation());
+        }
+    }
 
     for (AXBSoldierCharacter* Soldier : Soldiers)
     {

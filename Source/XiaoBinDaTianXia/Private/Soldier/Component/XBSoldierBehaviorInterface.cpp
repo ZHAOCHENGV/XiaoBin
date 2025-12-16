@@ -104,10 +104,10 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
         return false;
     }
 
+    // 检查本地缓存是否有效
     float CurrentTime = GetWorld()->GetTimeSeconds();
     if (CurrentTime - PerceptionCacheTime < PerceptionCacheValidity)
     {
-        // 🔧 修改 - 直接访问原始指针，增加有效性检查
         if (CachedPerceptionResult.NearestEnemy && IsValid(CachedPerceptionResult.NearestEnemy))
         {
             OutEnemy = CachedPerceptionResult.NearestEnemy;
@@ -116,21 +116,33 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
         return false;
     }
 
+    // ✨ 新增 - 根据战斗状态决定查询优先级
+    EXBQueryPriority Priority = EXBQueryPriority::Normal;
+    if (Soldier->GetSoldierState() == EXBSoldierState::Combat)
+    {
+        Priority = EXBQueryPriority::High;
+    }
+    else if (Soldier->GetSoldierState() == EXBSoldierState::Idle)
+    {
+        Priority = EXBQueryPriority::Low;
+    }
+
     float VisionRange = Soldier->GetVisionRange();
     FVector Location = Soldier->GetActorLocation();
     EXBFaction Faction = Soldier->GetFaction();
 
-    bool bFound = Perception->QueryNearestEnemy(
+    // 🔧 修改 - 使用带优先级的查询接口
+    bool bFound = Perception->QueryNearestEnemyWithPriority(
         Soldier,
         Location,
         VisionRange,
         Faction,
+        Priority,
         CachedPerceptionResult
     );
 
     PerceptionCacheTime = CurrentTime;
 
-    // 🔧 修改 - 直接访问原始指针
     if (bFound && CachedPerceptionResult.NearestEnemy && IsValid(CachedPerceptionResult.NearestEnemy))
     {
         OutEnemy = CachedPerceptionResult.NearestEnemy;
