@@ -365,21 +365,61 @@ FVector UXBFormationComponent::GetSlotWorldPosition(int32 SlotIndex) const
         return FVector::ZeroVector;
     }
 
+    // 1. 获取基础参考点 (将领位置)
+    FVector LeaderLocation = Owner->GetActorLocation();
+    
     if (!FormationSlots.IsValidIndex(SlotIndex))
     {
-        return Owner->GetActorLocation();
+        return LeaderLocation;
     }
 
     const FXBFormationSlot& Slot = FormationSlots[SlotIndex];
 
+    // 2. 计算平面偏移 (XY)
     FVector LocalOffset3D(Slot.LocalOffset.X, Slot.LocalOffset.Y, 0.0f);
     FVector WorldOffset = Owner->GetActorRotation().RotateVector(LocalOffset3D);
+    
+    // 3. 初始目标点 (先假设和将领一样高)
+    FVector TargetXY = LeaderLocation + WorldOffset;
+    
+    // ==================== ✨ 地面检测逻辑开始 ====================
+    UWorld* World = GetWorld();
+    if (World)
+    {
+        FHitResult HitResult;
+        
+        // 从将领高度上方 500 开始，向下探测 1000 单位
+        // 这样即使地形有较大起伏也能检测到
+        FVector TraceStart = FVector(TargetXY.X, TargetXY.Y, LeaderLocation.Z + 500.0f);
+        FVector TraceEnd = FVector(TargetXY.X, TargetXY.Y, LeaderLocation.Z - 1000.0f);
 
-    FVector LeaderLocation = Owner->GetActorLocation();
-    FVector SlotWorldPosition = LeaderLocation + WorldOffset;
-    SlotWorldPosition.Z = LeaderLocation.Z;
+        FCollisionQueryParams QueryParams;
+        QueryParams.AddIgnoredActor(Owner); // 忽略将领自身
 
-    return SlotWorldPosition;
+        // 使用 Visibility 或 WorldStatic 通道检测地面
+        bool bHit = World->LineTraceSingleByChannel(
+            HitResult,
+            TraceStart,
+            TraceEnd,
+            ECC_WorldStatic, // 通常地面是 WorldStatic
+            QueryParams
+        );
+
+        if (bHit)
+        {
+            // 如果检测到地面，使用击中点的高度
+            // 🔧 士兵半高修正：假设士兵胶囊体半高约 88，原点在中心
+            // 但如果士兵原点在脚底 (Mesh offset -88)，则直接使用 HitResult.Location
+            // 您的士兵 Mesh 设置为 -88，说明 Actor Location 是中心点，需要抬高 CapsuleHalfHeight
+            // 通常由 Navigation 系统处理，但如果手动插值，需要目标点在地面之上
+            
+            return HitResult.Location; 
+        }
+    }
+    // ==================== 地面检测逻辑结束 ====================
+
+    // 如果未检测到地面 (例如在空中)，回退到将领的高度
+    return FVector(TargetXY.X, TargetXY.Y, LeaderLocation.Z);
 }
 
 int32 UXBFormationComponent::GetFirstAvailableSlot() const
