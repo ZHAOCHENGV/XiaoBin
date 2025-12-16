@@ -1,0 +1,617 @@
+﻿/* --- 完整文件代码 --- */
+// Source/XiaoBinDaTianXia/Private/Soldier/Component/XBSoldierBehaviorInterface.cpp
+
+/**
+ * @file XBSoldierBehaviorInterface.cpp
+ * @brief 士兵行为接口组件实现
+ * 
+ * @note ✨ 新增文件
+ */
+
+#include "Soldier/Component/XBSoldierBehaviorInterface.h"
+#include "Utils/XBLogCategories.h"
+#include "AI/XBSoldierPerceptionSubsystem.h"
+#include "Soldier/XBSoldierCharacter.h"
+#include "Soldier/Component/XBSoldierFollowComponent.h"
+#include "Data/XBSoldierDataAccessor.h"
+#include "Character/XBCharacterBase.h"
+#include "AIController.h"
+#include "Navigation/PathFollowingComponent.h"  // ✨ 新增 - 包含枚举定义
+#include "NavigationSystem.h"
+#include "Animation/AnimInstance.h"
+#include "GameFramework/CharacterMovementComponent.h"
+
+UXBSoldierBehaviorInterface::UXBSoldierBehaviorInterface()
+{
+    PrimaryComponentTick.bCanEverTick = true;
+    PrimaryComponentTick.bStartWithTickEnabled = true;
+}
+
+void UXBSoldierBehaviorInterface::BeginPlay()
+{
+    Super::BeginPlay();
+
+    // 缓存士兵引用
+    CachedSoldier = Cast<AXBSoldierCharacter>(GetOwner());
+
+    // 缓存感知子系统
+    if (UWorld* World = GetWorld())
+    {
+        CachedPerceptionSubsystem = World->GetSubsystem<UXBSoldierPerceptionSubsystem>();
+
+        // 注册到感知子系统
+        if (CachedPerceptionSubsystem.IsValid() && CachedSoldier.IsValid())
+        {
+            CachedPerceptionSubsystem->RegisterActor(
+                CachedSoldier.Get(),
+                CachedSoldier->GetFaction()
+            );
+        }
+    }
+
+    UE_LOG(LogXBAI, Log, TEXT("士兵行为接口组件初始化: %s"), 
+        CachedSoldier.IsValid() ? *CachedSoldier->GetName() : TEXT("无效"));
+}
+
+void UXBSoldierBehaviorInterface::TickComponent(float DeltaTime, ELevelTick TickType,
+    FActorComponentTickFunction* ThisTickFunction)
+{
+    Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+
+    // 更新攻击冷却
+    UpdateAttackCooldown(DeltaTime);
+}
+
+// ==================== 内部辅助方法 ====================
+
+AXBSoldierCharacter* UXBSoldierBehaviorInterface::GetOwnerSoldier() const
+{
+    return CachedSoldier.Get();
+}
+
+UXBSoldierPerceptionSubsystem* UXBSoldierBehaviorInterface::GetPerceptionSubsystem() const
+{
+    return CachedPerceptionSubsystem.Get();
+}
+
+void UXBSoldierBehaviorInterface::UpdateAttackCooldown(float DeltaTime)
+{
+    if (AttackCooldownTimer > 0.0f)
+    {
+        AttackCooldownTimer -= DeltaTime;
+        if (AttackCooldownTimer < 0.0f)
+        {
+            AttackCooldownTimer = 0.0f;
+        }
+    }
+}
+
+// ==================== 感知行为实现 ====================
+
+/**
+ * @brief 搜索最近的敌人
+ * @note ✨ 核心优化 - 通过感知子系统执行，支持缓存和批量处理
+ */
+bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
+{
+    OutEnemy = nullptr;
+
+    AXBSoldierCharacter* Soldier = GetOwnerSoldier();
+    UXBSoldierPerceptionSubsystem* Perception = GetPerceptionSubsystem();
+
+    if (!Soldier || !Perception)
+    {
+        return false;
+    }
+
+    float CurrentTime = GetWorld()->GetTimeSeconds();
+    if (CurrentTime - PerceptionCacheTime < PerceptionCacheValidity)
+    {
+        // 🔧 修改 - 直接访问原始指针，增加有效性检查
+        if (CachedPerceptionResult.NearestEnemy && IsValid(CachedPerceptionResult.NearestEnemy))
+        {
+            OutEnemy = CachedPerceptionResult.NearestEnemy;
+            return true;
+        }
+        return false;
+    }
+
+    float VisionRange = Soldier->GetVisionRange();
+    FVector Location = Soldier->GetActorLocation();
+    EXBFaction Faction = Soldier->GetFaction();
+
+    bool bFound = Perception->QueryNearestEnemy(
+        Soldier,
+        Location,
+        VisionRange,
+        Faction,
+        CachedPerceptionResult
+    );
+
+    PerceptionCacheTime = CurrentTime;
+
+    // 🔧 修改 - 直接访问原始指针
+    if (bFound && CachedPerceptionResult.NearestEnemy && IsValid(CachedPerceptionResult.NearestEnemy))
+    {
+        OutEnemy = CachedPerceptionResult.NearestEnemy;
+        RecordEnemySeen();
+        return true;
+    }
+
+    return false;
+}
+
+bool UXBSoldierBehaviorInterface::HasEnemyInSight() const
+{
+    float CurrentTime = GetWorld()->GetTimeSeconds();
+    if (CurrentTime - PerceptionCacheTime < PerceptionCacheValidity)
+    {
+        // 🔧 修改 - 清理后检查数量
+        // 注意：这里需要 const_cast 或者将方法改为非 const
+        return CachedPerceptionResult.DetectedEnemies.Num() > 0;
+    }
+
+    // 缓存过期，执行新查询
+    AXBSoldierCharacter* Soldier = GetOwnerSoldier();
+    UXBSoldierPerceptionSubsystem* Perception = GetPerceptionSubsystem();
+
+    if (!Soldier || !Perception)
+    {
+        return false;
+    }
+
+    FXBPerceptionResult Result;
+    Perception->QueryNearestEnemy(
+        Soldier,
+        Soldier->GetActorLocation(),
+        Soldier->GetVisionRange(),
+        Soldier->GetFaction(),
+        Result
+    );
+
+    return Result.DetectedEnemies.Num() > 0;
+}
+
+bool UXBSoldierBehaviorInterface::IsTargetValid(AActor* Target) const
+{
+    if (!Target || !IsValid(Target))
+    {
+        return false;
+    }
+
+    // 检查是否是士兵且已死亡
+    if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(Target))
+    {
+        return TargetSoldier->GetSoldierState() != EXBSoldierState::Dead;
+    }
+
+    // 检查是否是将领且已死亡
+    if (AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(Target))
+    {
+        return !TargetLeader->IsDead();
+    }
+
+    return true;
+}
+
+// ==================== 战斗行为实现 ====================
+
+/**
+ * @brief 执行攻击
+ * @note 包含完整的攻击逻辑：冷却检查、距离检查、动画播放、伤害应用
+ */
+EXBBehaviorResult UXBSoldierBehaviorInterface::ExecuteAttack(AActor* Target)
+{
+    AXBSoldierCharacter* Soldier = GetOwnerSoldier();
+    if (!Soldier)
+    {
+        return EXBBehaviorResult::Failed;
+    }
+
+    // 检查是否可以攻击
+    if (!CanAttack(Target))
+    {
+        // 如果只是冷却中，返回进行中
+        if (AttackCooldownTimer > 0.0f && IsInAttackRange(Target))
+        {
+            return EXBBehaviorResult::InProgress;
+        }
+        return EXBBehaviorResult::Failed;
+    }
+
+    // 播放攻击蒙太奇
+    PlayAttackMontage();
+
+    // 设置攻击冷却
+    float AttackInterval = Soldier->GetAttackInterval();
+    AttackCooldownTimer = AttackInterval;
+
+    // 应用伤害
+    float Damage = Soldier->GetBaseDamage();
+    ApplyDamageToTarget(Target, Damage);
+
+    UE_LOG(LogXBCombat, Verbose, TEXT("士兵 %s 攻击 %s，伤害: %.1f"),
+        *Soldier->GetName(), *Target->GetName(), Damage);
+
+    // 广播行为完成
+    OnBehaviorCompleted.Broadcast(FName("Attack"), EXBBehaviorResult::Success);
+
+    return EXBBehaviorResult::Success;
+}
+
+bool UXBSoldierBehaviorInterface::CanAttack(AActor* Target) const
+{
+    if (!Target || !IsValid(Target))
+    {
+        return false;
+    }
+
+    // 冷却检查
+    if (AttackCooldownTimer > 0.0f)
+    {
+        return false;
+    }
+
+    // 目标有效性检查
+    if (!IsTargetValid(Target))
+    {
+        return false;
+    }
+
+    // 距离检查
+    if (!IsInAttackRange(Target))
+    {
+        return false;
+    }
+
+    return true;
+}
+
+bool UXBSoldierBehaviorInterface::IsInAttackRange(AActor* Target) const
+{
+    AXBSoldierCharacter* Soldier = GetOwnerSoldier();
+    if (!Soldier || !Target)
+    {
+        return false;
+    }
+
+    float AttackRange = Soldier->GetAttackRange();
+    float Distance = FVector::Dist(Soldier->GetActorLocation(), Target->GetActorLocation());
+
+    return Distance <= AttackRange;
+}
+
+bool UXBSoldierBehaviorInterface::PlayAttackMontage()
+{
+    AXBSoldierCharacter* Soldier = GetOwnerSoldier();
+    if (!Soldier)
+    {
+        return false;
+    }
+
+    UXBSoldierDataAccessor* DataAccessor = Soldier->GetDataAccessor();
+    if (!DataAccessor || !DataAccessor->IsInitialized())
+    {
+        return false;
+    }
+
+    UAnimMontage* AttackMontage = DataAccessor->GetBasicAttackMontage();
+    if (!AttackMontage)
+    {
+        return false;
+    }
+
+    USkeletalMeshComponent* Mesh = Soldier->GetMesh();
+    if (!Mesh)
+    {
+        return false;
+    }
+
+    UAnimInstance* AnimInstance = Mesh->GetAnimInstance();
+    if (!AnimInstance)
+    {
+        return false;
+    }
+
+    return AnimInstance->Montage_Play(AttackMontage) > 0.0f;
+}
+
+void UXBSoldierBehaviorInterface::ApplyDamageToTarget(AActor* Target, float Damage)
+{
+    if (!Target)
+    {
+        return;
+    }
+
+    // 对士兵应用伤害
+    if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(Target))
+    {
+        TargetSoldier->TakeSoldierDamage(Damage, GetOwner());
+    }
+    // 对将领应用伤害（通过 GAS）
+    else if (AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(Target))
+    {
+        // TODO: 通过 GAS 应用伤害
+        UE_LOG(LogXBCombat, Verbose, TEXT("士兵攻击将领，伤害待 GAS 处理"));
+    }
+}
+
+// ==================== 移动行为实现 ====================
+
+EXBBehaviorResult UXBSoldierBehaviorInterface::MoveToLocation(const FVector& TargetLocation, float AcceptanceRadius)
+{
+    AXBSoldierCharacter* Soldier = GetOwnerSoldier();
+    if (!Soldier)
+    {
+        return EXBBehaviorResult::Failed;
+    }
+
+    AAIController* AIController = Cast<AAIController>(Soldier->GetController());
+    if (!AIController)
+    {
+        return EXBBehaviorResult::Failed;
+    }
+
+    // 检查是否已到达
+    float Distance = FVector::Dist(Soldier->GetActorLocation(), TargetLocation);
+    if (Distance <= AcceptanceRadius)
+    {
+        return EXBBehaviorResult::Success;
+    }
+
+    // 发起移动请求
+    EPathFollowingRequestResult::Type Result = AIController->MoveToLocation(
+        TargetLocation,
+        AcceptanceRadius,
+        true,
+        true,
+        true,
+        true
+    );
+
+    // 🔧 修改 - 使用 if-else 替代 switch（避免枚举不完整问题）
+    if (Result == EPathFollowingRequestResult::Type::RequestSuccessful)
+    {
+        return EXBBehaviorResult::InProgress;
+    }
+    else if (Result == EPathFollowingRequestResult::Type::AlreadyAtGoal)
+    {
+        return EXBBehaviorResult::Success;
+    }
+    else
+    {
+        return EXBBehaviorResult::Failed;
+    }
+}
+
+EXBBehaviorResult UXBSoldierBehaviorInterface::MoveToActor(AActor* Target, float AcceptanceRadius)
+{
+    AXBSoldierCharacter* Soldier = GetOwnerSoldier();
+    if (!Soldier || !Target)
+    {
+        return EXBBehaviorResult::Failed;
+    }
+
+    if (AcceptanceRadius < 0.0f)
+    {
+        AcceptanceRadius = Soldier->GetAttackRange() * 0.9f;
+    }
+
+    AAIController* AIController = Cast<AAIController>(Soldier->GetController());
+    if (!AIController)
+    {
+        return EXBBehaviorResult::Failed;
+    }
+
+    float Distance = FVector::Dist(Soldier->GetActorLocation(), Target->GetActorLocation());
+    if (Distance <= AcceptanceRadius)
+    {
+        return EXBBehaviorResult::Success;
+    }
+
+    EPathFollowingRequestResult::Type Result = AIController->MoveToActor(
+        Target,
+        AcceptanceRadius,
+        true,
+        true
+    );
+
+    // 🔧 修改 - 使用 if-else 替代 switch
+    if (Result == EPathFollowingRequestResult::Type::RequestSuccessful)
+    {
+        return EXBBehaviorResult::InProgress;
+    }
+    else if (Result == EPathFollowingRequestResult::Type::AlreadyAtGoal)
+    {
+        return EXBBehaviorResult::Success;
+    }
+    else
+    {
+        return EXBBehaviorResult::Failed;
+    }
+}
+
+EXBBehaviorResult UXBSoldierBehaviorInterface::ReturnToFormation()
+{
+    AXBSoldierCharacter* Soldier = GetOwnerSoldier();
+    if (!Soldier)
+    {
+        return EXBBehaviorResult::Failed;
+    }
+
+    // 检查是否已在编队位置
+    if (IsAtFormationPosition())
+    {
+        return EXBBehaviorResult::Success;
+    }
+
+    // 获取编队位置
+    FVector FormationPosition = Soldier->GetFormationWorldPositionSafe();
+    if (FormationPosition.IsZero())
+    {
+        return EXBBehaviorResult::Failed;
+    }
+
+    // 移动到编队位置
+    return MoveToLocation(FormationPosition, Soldier->GetArrivalThreshold());
+}
+
+void UXBSoldierBehaviorInterface::StopMovement()
+{
+    AXBSoldierCharacter* Soldier = GetOwnerSoldier();
+    if (!Soldier)
+    {
+        return;
+    }
+
+    if (AAIController* AIController = Cast<AAIController>(Soldier->GetController()))
+    {
+        AIController->StopMovement();
+    }
+}
+
+bool UXBSoldierBehaviorInterface::IsAtFormationPosition() const
+{
+    AXBSoldierCharacter* Soldier = GetOwnerSoldier();
+    if (!Soldier)
+    {
+        return true;
+    }
+
+    FVector FormationPosition = Soldier->GetFormationWorldPositionSafe();
+    if (FormationPosition.IsZero())
+    {
+        return true;
+    }
+
+    float Distance = FVector::Dist2D(Soldier->GetActorLocation(), FormationPosition);
+    return Distance <= Soldier->GetArrivalThreshold();
+}
+
+// ==================== 弓手特殊行为实现 ====================
+
+bool UXBSoldierBehaviorInterface::ShouldRetreat(AActor* Target) const
+{
+    AXBSoldierCharacter* Soldier = GetOwnerSoldier();
+    if (!Soldier || !Target)
+    {
+        return false;
+    }
+
+    // 只有弓手需要后撤
+    if (Soldier->GetSoldierType() != EXBSoldierType::Archer)
+    {
+        return false;
+    }
+
+    UXBSoldierDataAccessor* DataAccessor = Soldier->GetDataAccessor();
+    if (!DataAccessor || !DataAccessor->IsInitialized())
+    {
+        return false;
+    }
+
+    const FXBArcherConfig& ArcherConfig = DataAccessor->GetRawData().ArcherConfig;
+    float DistToTarget = FVector::Dist(Soldier->GetActorLocation(), Target->GetActorLocation());
+
+    return DistToTarget < ArcherConfig.MinAttackDistance;
+}
+
+EXBBehaviorResult UXBSoldierBehaviorInterface::ExecuteRetreat(AActor* Target)
+{
+    AXBSoldierCharacter* Soldier = GetOwnerSoldier();
+    if (!Soldier || !Target)
+    {
+        return EXBBehaviorResult::Failed;
+    }
+
+    UXBSoldierDataAccessor* DataAccessor = Soldier->GetDataAccessor();
+    if (!DataAccessor || !DataAccessor->IsInitialized())
+    {
+        return EXBBehaviorResult::Failed;
+    }
+
+    const FXBArcherConfig& ArcherConfig = DataAccessor->GetRawData().ArcherConfig;
+
+    // 计算后撤方向和目标位置
+    FVector RetreatDirection = (Soldier->GetActorLocation() - Target->GetActorLocation()).GetSafeNormal2D();
+    FVector RetreatTarget = Soldier->GetActorLocation() + RetreatDirection * ArcherConfig.RetreatDistance;
+
+    return MoveToLocation(RetreatTarget, 10.0f);
+}
+
+// ==================== 决策辅助实现 ====================
+
+bool UXBSoldierBehaviorInterface::ShouldDisengage() const
+{
+    AXBSoldierCharacter* Soldier = GetOwnerSoldier();
+    if (!Soldier)
+    {
+        return false;
+    }
+
+    // 条件1：距离将领过远
+    float DisengageDistance = Soldier->GetDisengageDistance();
+    float DistToLeader = GetDistanceToLeader();
+    if (DistToLeader > DisengageDistance)
+    {
+        UE_LOG(LogXBAI, Verbose, TEXT("士兵 %s 距离将领过远: %.0f > %.0f"),
+            *Soldier->GetName(), DistToLeader, DisengageDistance);
+        return true;
+    }
+
+    // 条件2：长时间无敌人
+    float ReturnDelay = Soldier->GetReturnDelay();
+    float CurrentTime = GetWorld()->GetTimeSeconds();
+    float TimeSinceLastEnemy = CurrentTime - LastEnemySeenTime;
+
+    if (!HasEnemyInSight() && TimeSinceLastEnemy > ReturnDelay)
+    {
+        UE_LOG(LogXBAI, Verbose, TEXT("士兵 %s 长时间无敌人: %.1f > %.1f"),
+            *Soldier->GetName(), TimeSinceLastEnemy, ReturnDelay);
+        return true;
+    }
+
+    return false;
+}
+
+float UXBSoldierBehaviorInterface::GetDistanceToLeader() const
+{
+    AXBSoldierCharacter* Soldier = GetOwnerSoldier();
+    if (!Soldier)
+    {
+        return MAX_FLT;
+    }
+
+    AActor* Leader = Soldier->GetFollowTarget();
+    if (!Leader || !IsValid(Leader))
+    {
+        return MAX_FLT;
+    }
+
+    return FVector::Dist(Soldier->GetActorLocation(), Leader->GetActorLocation());
+}
+
+void UXBSoldierBehaviorInterface::RecordEnemySeen()
+{
+    LastEnemySeenTime = GetWorld()->GetTimeSeconds();
+}
+
+void UXBSoldierBehaviorInterface::FaceTarget(AActor* Target, float DeltaTime)
+{
+    AXBSoldierCharacter* Soldier = GetOwnerSoldier();
+    if (!Soldier || !Target)
+    {
+        return;
+    }
+
+    FVector Direction = (Target->GetActorLocation() - Soldier->GetActorLocation()).GetSafeNormal2D();
+    if (!Direction.IsNearlyZero())
+    {
+        FRotator TargetRotation = Direction.Rotation();
+        FRotator CurrentRotation = Soldier->GetActorRotation();
+
+        float RotationSpeed = Soldier->GetRotationSpeed();
+        FRotator NewRotation = FMath::RInterpTo(CurrentRotation, TargetRotation, DeltaTime, RotationSpeed / 90.0f);
+        Soldier->SetActorRotation(FRotator(0.0f, NewRotation.Yaw, 0.0f));
+    }
+}

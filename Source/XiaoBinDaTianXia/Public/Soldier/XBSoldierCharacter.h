@@ -236,12 +236,9 @@ public:
     float GetCurrentHealth() const { return CurrentHealth; }
 
     UFUNCTION(BlueprintPure, Category = "XB|Soldier", meta = (DisplayName = "是否可以攻击"))
-    bool CanAttack() const { return AttackCooldownTimer <= 0.0f && CurrentState != EXBSoldierState::Dead; }
+    bool CanAttack() const;
 
     // ==================== AI系统 ====================
-
-    UFUNCTION(BlueprintCallable, Category = "XB|Soldier|AI", meta = (DisplayName = "寻找最近敌人"))
-    AActor* FindNearestEnemy() const;
 
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier|AI", meta = (DisplayName = "范围内有敌人"))
     bool HasEnemiesInRadius(float Radius) const;
@@ -252,20 +249,9 @@ public:
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|AI", meta = (DisplayName = "是否在攻击范围内"))
     bool IsInAttackRange(AActor* Target) const;
 
-    UFUNCTION(BlueprintPure, Category = "XB|Soldier|AI", meta = (DisplayName = "是否应该脱离战斗"))
-    bool ShouldDisengage() const;
-
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier", meta = (DisplayName = "返回队列"))
     void ReturnToFormation();
-
-    UFUNCTION(BlueprintPure, Category = "XB|Soldier|AI", meta = (DisplayName = "是否应该后撤"))
-    bool ShouldRetreat() const;
-
-    UFUNCTION(BlueprintCallable, Category = "XB|Soldier|AI", meta = (DisplayName = "后撤"))
-    void RetreatFromTarget(AActor* Target);
-
-    UFUNCTION(BlueprintCallable, Category = "XB|Soldier|AI", meta = (DisplayName = "移动到目标"))
-    void MoveToTarget(AActor* Target);
+    
 
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier|AI", meta = (DisplayName = "移动到编队位置"))
     void MoveToFormationPosition();
@@ -318,6 +304,15 @@ public:
 
     friend class AXBSoldierAIController;
 
+    // ==================== ✨ 新增：行为接口组件 ====================
+    /**
+     * @brief 获取行为接口组件
+     * @return 行为接口组件
+     * @note 所有 AI 行为执行通过此组件
+     */
+    UFUNCTION(BlueprintPure, Category = "XB|Soldier|Behavior", meta = (DisplayName = "获取行为接口"))
+    UXBSoldierBehaviorInterface* GetBehaviorInterface() const { return BehaviorInterface; }
+
 protected:
     // ==================== ✨ 新增：数据访问器组件 ====================
 
@@ -328,6 +323,13 @@ protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "数据访问器"))
     TObjectPtr<UXBSoldierDataAccessor> DataAccessor;
 
+    
+    /**
+     * @brief 行为接口组件
+     * @note 封装所有 AI 行为执行逻辑
+     */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "行为接口"))
+    TObjectPtr<UXBSoldierBehaviorInterface> BehaviorInterface;
 
     // ==================== 保留：运行时状态（非配置数据） ====================
 
@@ -383,9 +385,9 @@ protected:
 
     // ==================== 内部方法 ====================
 
-    void UpdateCombat(float DeltaTime);
-    void UpdateFollowing(float DeltaTime);
-    void UpdateReturning(float DeltaTime);
+
+
+
     void HandleDeath();
     bool PlayAttackMontage();
     void ApplyVisualConfig();

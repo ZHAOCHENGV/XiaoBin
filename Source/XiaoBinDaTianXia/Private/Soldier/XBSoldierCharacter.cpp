@@ -30,6 +30,7 @@
 #include "Animation/AnimInstance.h"
 #include "TimerManager.h"
 #include "XBCollisionChannels.h"
+#include "Soldier/Component/XBSoldierBehaviorInterface.h"  // ✨ 新增
 
 AXBSoldierCharacter::AXBSoldierCharacter()
 {
@@ -65,7 +66,8 @@ AXBSoldierCharacter::AXBSoldierCharacter()
     // ==================== 创建其他组件 ====================
     FollowComponent = CreateDefaultSubobject<UXBSoldierFollowComponent>(TEXT("FollowComponent"));
     DebugComponent = CreateDefaultSubobject<UXBSoldierDebugComponent>(TEXT("DebugComponent"));
-
+    // ✨ 新增 - 创建行为接口组件
+    BehaviorInterface = CreateDefaultSubobject<UXBSoldierBehaviorInterface>(TEXT("BehaviorInterface"));
     // ==================== 移动组件配置 ====================
     if (UCharacterMovementComponent* MovementComp = GetCharacterMovement())
     {
@@ -167,40 +169,16 @@ void AXBSoldierCharacter::EnableMovementAndTick()
     UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 移动组件和Tick已启用"), *GetName());
 }
 
+
+/**
+ * @brief Tick 函数
+ * @note 🔧 核心重构 - 移除所有 AI 决策逻辑
+ *       AI 逻辑现在由行为树和 BehaviorInterface 组件处理
+ */
 void AXBSoldierCharacter::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
-
-    // 攻击冷却计时
-    if (AttackCooldownTimer > 0.0f)
-    {
-        AttackCooldownTimer -= DeltaTime;
-    }
-
-    if (!bIsRecruited)
-    {
-        return;
-    }
-
-    // 如果没有行为树，使用简单状态机
-    AAIController* AICtrl = Cast<AAIController>(GetController());
-    if (!BehaviorTreeAsset || !AICtrl)
-    {
-        switch (CurrentState)
-        {
-        case EXBSoldierState::Following:
-            UpdateFollowing(DeltaTime);
-            break;
-        case EXBSoldierState::Combat:
-            UpdateCombat(DeltaTime);
-            break;
-        case EXBSoldierState::Returning:
-            UpdateReturning(DeltaTime);
-            break;
-        default:
-            break;
-        }
-    }
+    
 }
 
 // ==================== ✨ 新增：数据访问器有效性检查 ====================
@@ -732,7 +710,16 @@ void AXBSoldierCharacter::EnterCombat()
     }
 
     SetSoldierState(EXBSoldierState::Combat);
-    CurrentAttackTarget = FindNearestEnemy();
+    
+    // 🔧 修改 - 通过 BehaviorInterface 查找敌人
+    if (BehaviorInterface)
+    {
+        AActor* FoundEnemy = nullptr;
+        if (BehaviorInterface->SearchForEnemy(FoundEnemy))
+        {
+            CurrentAttackTarget = FoundEnemy;
+        }
+    }
 
     UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 进入战斗, 目标: %s"), 
         *GetName(), CurrentAttackTarget.IsValid() ? *CurrentAttackTarget->GetName() : TEXT("无"));
@@ -785,29 +772,13 @@ float AXBSoldierCharacter::TakeSoldierDamage(float DamageAmount, AActor* DamageS
 
 bool AXBSoldierCharacter::PerformAttack(AActor* Target)
 {
-    if (!Target || !IsValid(Target) || !CanAttack())
+    // 🔧 修改 - 委托给 BehaviorInterface
+    if (BehaviorInterface)
     {
-        return false;
+        EXBBehaviorResult Result = BehaviorInterface->ExecuteAttack(Target);
+        return Result == EXBBehaviorResult::Success;
     }
-
-    // 🔧 从 DataAccessor 获取攻击间隔
-    float AttackInterval = GetAttackInterval();
-    AttackCooldownTimer = AttackInterval;
-
-    PlayAttackMontage();
-
-    // 🔧 从 DataAccessor 获取基础伤害
-    float Damage = GetBaseDamage();
-
-    if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(Target))
-    {
-        TargetSoldier->TakeSoldierDamage(Damage, this);
-    }
-
-    UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 攻击 %s，伤害: %.1f"), 
-        *GetName(), *Target->GetName(), Damage);
-
-    return true;
+    return false;
 }
 
 bool AXBSoldierCharacter::PlayAttackMontage()
@@ -834,23 +805,16 @@ bool AXBSoldierCharacter::PlayAttackMontage()
 
 // ==================== AI系统实现 ====================
 
-AActor* AXBSoldierCharacter::FindNearestEnemy() const
+
+bool AXBSoldierCharacter::CanAttack() const
 {
-    if (!bIsRecruited)
+    // 🔧 修改 - 委托给 BehaviorInterface
+    if (BehaviorInterface)
     {
-        return nullptr;
+        return BehaviorInterface->GetAttackCooldownRemaining() <= 0.0f && 
+               CurrentState != EXBSoldierState::Dead;
     }
-
-    // 🔧 从 DataAccessor 获取视野范围
-    float VisionRange = GetVisionRange();
-
-    return UXBBlueprintFunctionLibrary::FindNearestEnemy(
-        this,
-        GetActorLocation(),
-        VisionRange,
-        Faction,
-        true
-    );
+    return false;
 }
 
 bool AXBSoldierCharacter::HasEnemiesInRadius(float Radius) const
@@ -887,42 +851,7 @@ bool AXBSoldierCharacter::IsInAttackRange(AActor* Target) const
     return GetDistanceToTarget(Target) <= AttackRange;
 }
 
-bool AXBSoldierCharacter::ShouldDisengage() const
-{
-    // 🔧 从 DataAccessor 获取脱离距离
-    float DisengageDistance = GetDisengageDistance();
 
-    if (FollowTarget.IsValid())
-    {
-        AActor* Leader = FollowTarget.Get();
-        if (Leader && IsValid(Leader))
-        {
-            float DistToLeader = FVector::Dist(GetActorLocation(), Leader->GetActorLocation());
-            if (DistToLeader > DisengageDistance)
-            {
-                UE_LOG(LogXBSoldier, Verbose, TEXT("士兵 %s 距离将领过远: %.0f > %.0f"), 
-                    *GetName(), DistToLeader, DisengageDistance);
-                return true;
-            }
-        }
-    }
-
-    // 🔧 从 DataAccessor 获取视野范围和返回延迟
-    float VisionRange = GetVisionRange();
-    float ReturnDelay = GetReturnDelay();
-
-    if (!HasEnemiesInRadius(VisionRange))
-    {
-        float TimeSinceLastEnemy = GetWorld()->GetTimeSeconds() - LastEnemySeenTime;
-        if (TimeSinceLastEnemy > ReturnDelay)
-        {
-            UE_LOG(LogXBSoldier, Verbose, TEXT("士兵 %s 周边无敌人，返回队列"), *GetName());
-            return true;
-        }
-    }
-
-    return false;
-}
 
 void AXBSoldierCharacter::ReturnToFormation()
 {
@@ -943,50 +872,7 @@ void AXBSoldierCharacter::ReturnToFormation()
     UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 传送回队列"), *GetName());
 }
 
-bool AXBSoldierCharacter::ShouldRetreat() const
-{
-    if (SoldierType != EXBSoldierType::Archer)
-    {
-        return false;
-    }
 
-    if (!CurrentAttackTarget.IsValid())
-    {
-        return false;
-    }
-
-    if (!IsDataAccessorValid())
-    {
-        return false;
-    }
-
-    // 🔧 从 DataAccessor 获取弓手配置
-    const FXBArcherConfig& ArcherConfig = DataAccessor->GetRawData().ArcherConfig;
-    float DistToTarget = GetDistanceToTarget(CurrentAttackTarget.Get());
-    return DistToTarget < ArcherConfig.MinAttackDistance;
-}
-
-void AXBSoldierCharacter::RetreatFromTarget(AActor* Target)
-{
-    if (!Target || !IsValid(Target) || !IsDataAccessorValid())
-    {
-        return;
-    }
-
-    // 🔧 从 DataAccessor 获取弓手配置
-    const FXBArcherConfig& ArcherConfig = DataAccessor->GetRawData().ArcherConfig;
-
-    FVector RetreatDirection = (GetActorLocation() - Target->GetActorLocation()).GetSafeNormal2D();
-    FVector RetreatTarget = GetActorLocation() + RetreatDirection * ArcherConfig.RetreatDistance;
-
-    if (AAIController* AICtrl = Cast<AAIController>(GetController()))
-    {
-        AICtrl->MoveToLocation(RetreatTarget, 10.0f, true, true, true, true);
-    }
-
-    UE_LOG(LogXBSoldier, Verbose, TEXT("弓手 %s 后撤，目标距离: %.0f"), 
-        *GetName(), GetDistanceToTarget(Target));
-}
 
 FVector AXBSoldierCharacter::CalculateAvoidanceDirection(const FVector& DesiredDirection)
 {
@@ -1044,36 +930,7 @@ FVector AXBSoldierCharacter::CalculateAvoidanceDirection(const FVector& DesiredD
     return BlendedDirection.GetSafeNormal();
 }
 
-void AXBSoldierCharacter::MoveToTarget(AActor* Target)
-{
-    if (!Target || !IsValid(Target))
-    {
-        return;
-    }
 
-    AAIController* AICtrl = Cast<AAIController>(GetController());
-    if (!AICtrl)
-    {
-        return;
-    }
-
-    // 🔧 从 DataAccessor 获取攻击范围
-    float AttackRange = GetAttackRange();
-    float AcceptanceRadius = AttackRange * 0.9f;
-
-    AICtrl->MoveToActor(
-        Target,
-        AcceptanceRadius,
-        true,
-        true,
-        true,
-        nullptr,
-        true
-    );
-
-    UE_LOG(LogXBSoldier, VeryVerbose, TEXT("士兵 %s 追踪目标 %s，距离: %.0f"), 
-        *GetName(), *Target->GetName(), GetDistanceToTarget(Target));
-}
 
 void AXBSoldierCharacter::MoveToFormationPosition()
 {
@@ -1240,121 +1097,7 @@ void AXBSoldierCharacter::HandleDeath()
     UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 死亡"), *GetName());
 }
 
-// ==================== 状态更新逻辑 ====================
 
-void AXBSoldierCharacter::UpdateCombat(float DeltaTime)
-{
-    if (ShouldDisengage())
-    {
-        UE_LOG(LogXBCombat, Verbose, TEXT("士兵 %s 脱离战斗条件满足，返回队列"), *GetName());
-        ReturnToFormation();
-        return;
-    }
-
-    // 🔧 从 DataAccessor 获取寻敌间隔
-    float SearchInterval = IsDataAccessorValid() ? 
-        DataAccessor->GetRawData().AIConfig.TargetSearchInterval : 0.5f;
-
-    TargetSearchTimer += DeltaTime;
-    if (TargetSearchTimer >= SearchInterval || !CurrentAttackTarget.IsValid())
-    {
-        TargetSearchTimer = 0.0f;
-        AActor* NewTarget = FindNearestEnemy();
-
-        if (NewTarget)
-        {
-            CurrentAttackTarget = NewTarget;
-            LastEnemySeenTime = GetWorld()->GetTimeSeconds();
-        }
-    }
-
-    if (!CurrentAttackTarget.IsValid())
-    {
-        // 🔧 从 DataAccessor 获取返回延迟
-        float ReturnDelayTime = GetReturnDelay();
-        float TimeSinceLastEnemy = GetWorld()->GetTimeSeconds() - LastEnemySeenTime;
-        if (TimeSinceLastEnemy > ReturnDelayTime)
-        {
-            UE_LOG(LogXBCombat, Verbose, TEXT("士兵 %s 长时间无目标，返回队列"), *GetName());
-            ReturnToFormation();
-        }
-        return;
-    }
-
-    AActor* Target = CurrentAttackTarget.Get();
-    
-    if (!Target || !IsValid(Target))
-    {
-        CurrentAttackTarget = nullptr;
-        return;
-    }
-
-    float DistanceToEnemy = GetDistanceToTarget(Target);
-    // 🔧 从 DataAccessor 获取攻击范围
-    float AttackRange = GetAttackRange();
-
-    // 弓手特殊逻辑
-    if (SoldierType == EXBSoldierType::Archer && IsDataAccessorValid())
-    {
-        const FXBArcherConfig& ArcherConfig = DataAccessor->GetRawData().ArcherConfig;
-        
-        if (ArcherConfig.bStationaryAttack && DistanceToEnemy <= AttackRange)
-        {
-            if (AAIController* AICtrl = Cast<AAIController>(GetController()))
-            {
-                AICtrl->StopMovement();
-            }
-
-            FaceTarget(Target, DeltaTime);
-
-            if (CanAttack())
-            {
-                PerformAttack(Target);
-            }
-
-            UE_LOG(LogXBCombat, VeryVerbose, TEXT("弓手 %s 原地攻击 %s"), *GetName(), *Target->GetName());
-            return;
-        }
-
-        if (ShouldRetreat())
-        {
-            RetreatFromTarget(Target);
-            return;
-        }
-    }
-
-    if (DistanceToEnemy > AttackRange)
-    {
-        MoveToTarget(Target);
-    }
-    else
-    {
-        if (AAIController* AICtrl = Cast<AAIController>(GetController()))
-        {
-            AICtrl->StopMovement();
-        }
-
-        FaceTarget(Target, DeltaTime);
-
-        if (CanAttack())
-        {
-            PerformAttack(Target);
-        }
-    }
-}
-
-void AXBSoldierCharacter::UpdateFollowing(float DeltaTime)
-{
-    // 跟随组件自动处理
-}
-
-void AXBSoldierCharacter::UpdateReturning(float DeltaTime)
-{
-    if (FollowComponent && FollowComponent->IsAtFormationPosition())
-    {
-        SetSoldierState(EXBSoldierState::Following);
-    }
-}
 
 void AXBSoldierCharacter::FaceTarget(AActor* Target, float DeltaTime)
 {
