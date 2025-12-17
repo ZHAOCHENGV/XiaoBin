@@ -444,18 +444,25 @@ void AXBCharacterBase::AddSoldier(AXBSoldierCharacter* Soldier)
         return;
     }
 
+    // 🔧 修改 - 槽位索引等于士兵在数组中的位置（从0开始）
     int32 SlotIndex = Soldiers.Num() - 1;
     Soldier->SetFormationSlotIndex(SlotIndex);
     Soldier->SetFollowTarget(this, SlotIndex);
-
 
     ApplyGrowthOnSoldiersAdded(1);
 
     UpdateSoldierCount(OldCount);
 
+    // 🔧 修改 - 更新编队组件
     if (FormationComponent)
     {
         FormationComponent->RegenerateFormation(Soldiers.Num());
+        
+        // 标记槽位为已占用
+        if (FormationComponent->GetFormationSlots().IsValidIndex(SlotIndex))
+        {
+            FormationComponent->OccupySlot(SlotIndex, Soldier->GetUniqueID());
+        }
     }
 
     UE_LOG(LogXBSoldier, Log, TEXT("%s: 添加士兵 %s，槽位: %d，当前数量: %d"),
@@ -475,33 +482,45 @@ void AXBCharacterBase::RemoveSoldier(AXBSoldierCharacter* Soldier)
     }
 
     int32 OldCount = Soldiers.Num();
+    int32 RemovedSlotIndex = Soldier->GetFormationSlotIndex();
 
     // 从数组移除
     if (!Internal_RemoveSoldierFromArray(Soldier))
     {
-        return; // 不存在，跳过
+        return;
     }
 
     // 更新计数并广播
     UpdateSoldierCount(OldCount);
 
-    // 更新编队
+    // 🔧 修改 - 调用槽位压缩，确保后续士兵递补
     if (FormationComponent)
     {
-        FormationComponent->RegenerateFormation(Soldiers.Num());
+        FormationComponent->CompactSlots(Soldiers);
     }
 
-    UE_LOG(LogXBSoldier, Log, TEXT("%s: 移除士兵 %s，剩余数量: %d"),
-        *GetName(), *Soldier->GetName(), Soldiers.Num());
+    UE_LOG(LogXBSoldier, Log, TEXT("%s: 移除士兵 %s (原槽位: %d)，剩余数量: %d，槽位已压缩"),
+        *GetName(), *Soldier->GetName(), RemovedSlotIndex, Soldiers.Num());
 }
-
+/**
+ * @brief 重新分配士兵槽位
+ * @param StartIndex 起始索引
+ * @note 🔧 修改 - 简化实现，直接更新槽位索引
+ */
 void AXBCharacterBase::ReassignSoldierSlots(int32 StartIndex)
 {
+    // 🔧 修改 - 从 StartIndex 开始，更新所有后续士兵的槽位
     for (int32 i = StartIndex; i < Soldiers.Num(); ++i)
     {
         if (Soldiers[i])
         {
-            Soldiers[i]->SetFormationSlotIndex(i);
+            int32 OldSlot = Soldiers[i]->GetFormationSlotIndex();
+            if (OldSlot != i)
+            {
+                Soldiers[i]->SetFormationSlotIndex(i);
+                UE_LOG(LogXBSoldier, Verbose, TEXT("士兵 %s 槽位更新: %d -> %d"), 
+                    *Soldiers[i]->GetName(), OldSlot, i);
+            }
         }
     }
 }

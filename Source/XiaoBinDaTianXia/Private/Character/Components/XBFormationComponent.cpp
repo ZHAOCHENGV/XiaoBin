@@ -3,12 +3,12 @@
 
 /**
  * @file XBFormationComponent.cpp
- * @brief 编队组件实现（支持手动槽位数量控制）
+ * @brief 编队组件实现
  * 
  * @note 🔧 修改记录:
- *       1. 新增 SetFormationSlotCount 方法
- *       2. 修复 DrawDebugCircle 法向量（确保圆圈朝上）
- *       3. BeginPlay 时根据 ManualSlotCount 自动生成槽位
+ *       1. 新增 CompactSlots() 实现槽位压缩
+ *       2. 新增 GetNextSlotIndex() 和 GetOccupiedSlotCount()
+ *       3. 优化槽位分配逻辑确保顺序性
  */
 
 #include "Character/Components/XBFormationComponent.h"
@@ -26,7 +26,6 @@ void UXBFormationComponent::BeginPlay()
 {
     Super::BeginPlay();
 
-    // ✨ 新增 - 如果设置了手动槽位数量，自动生成
     if (ManualSlotCount > 0)
     {
         UE_LOG(LogTemp, Warning, TEXT("=== 使用手动槽位数量: %d ==="), ManualSlotCount);
@@ -49,11 +48,6 @@ void UXBFormationComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
     }
 }
 
-/**
- * @brief 手动设置槽位数量
- * @param Count 槽位数量
- * @note ✨ 新增方法 - 用于运行时调试
- */
 void UXBFormationComponent::SetFormationSlotCount(int32 Count)
 {
     if (Count < 0)
@@ -66,6 +60,94 @@ void UXBFormationComponent::SetFormationSlotCount(int32 Count)
     RegenerateFormation(Count);
 
     UE_LOG(LogTemp, Warning, TEXT("★★★ 手动设置槽位数量: %d ★★★"), Count);
+}
+
+// ==================== ✨ 新增：槽位管理方法 ====================
+
+/**
+ * @brief 获取下一个应分配的槽位索引
+ * @param CurrentSoldierCount 当前士兵数量
+ * @return 应分配的槽位索引
+ * @note 新士兵总是分配到队尾，索引等于当前数量（从0开始）
+ */
+int32 UXBFormationComponent::GetNextSlotIndex(int32 CurrentSoldierCount) const
+{
+    // 新士兵的槽位索引 = 当前士兵数量（因为索引从0开始）
+    // 例如：当前有0个士兵，新士兵获得槽位0
+    //       当前有1个士兵，新士兵获得槽位1
+    return CurrentSoldierCount;
+}
+
+/**
+ * @brief 获取已占用的槽位数量
+ * @return 已占用槽位数
+ */
+int32 UXBFormationComponent::GetOccupiedSlotCount() const
+{
+    int32 Count = 0;
+    for (const FXBFormationSlot& Slot : FormationSlots)
+    {
+        if (Slot.bOccupied)
+        {
+            Count++;
+        }
+    }
+    return Count;
+}
+
+/**
+ * @brief 压缩槽位数组，移除中间的空槽
+ * @param Soldiers 当前士兵数组引用
+ * @note ✨ 核心逻辑：
+ *       1. 遍历士兵数组，按数组顺序重新分配槽位索引
+ *       2. 数组中的第i个士兵获得槽位i
+ *       3. 通知每个被移动的士兵更新其槽位索引
+ *       4. 重新生成编队槽位
+ */
+void UXBFormationComponent::CompactSlots(const TArray<AXBSoldierCharacter*>& Soldiers)
+{
+    UE_LOG(LogTemp, Log, TEXT("开始压缩槽位，当前士兵数: %d"), Soldiers.Num());
+
+    // 重新生成正确数量的槽位
+    RegenerateFormation(Soldiers.Num());
+
+    // 按数组顺序重新分配槽位
+    for (int32 i = 0; i < Soldiers.Num(); ++i)
+    {
+        AXBSoldierCharacter* Soldier = Soldiers[i];
+        if (!Soldier || !IsValid(Soldier))
+        {
+            continue;
+        }
+
+        int32 OldSlotIndex = Soldier->GetFormationSlotIndex();
+        int32 NewSlotIndex = i;
+
+        // 如果槽位发生变化，更新士兵并广播事件
+        if (OldSlotIndex != NewSlotIndex)
+        {
+            UE_LOG(LogTemp, Log, TEXT("士兵 %s 槽位变化: %d -> %d"), 
+                *Soldier->GetName(), OldSlotIndex, NewSlotIndex);
+
+            // 更新士兵的槽位索引
+            Soldier->SetFormationSlotIndex(NewSlotIndex);
+
+            // 广播槽位变化事件
+            OnSlotReassigned.Broadcast(OldSlotIndex, NewSlotIndex);
+        }
+
+        // 标记槽位为已占用
+        if (FormationSlots.IsValidIndex(NewSlotIndex))
+        {
+            FormationSlots[NewSlotIndex].bOccupied = true;
+            FormationSlots[NewSlotIndex].OccupantSoldierId = Soldier->GetUniqueID();
+        }
+    }
+
+    // 广播编队更新事件
+    OnFormationUpdated.Broadcast();
+
+    UE_LOG(LogTemp, Log, TEXT("槽位压缩完成，最终槽位数: %d"), FormationSlots.Num());
 }
 
 void UXBFormationComponent::SetDebugDrawEnabled(bool bEnabled)
@@ -88,11 +170,6 @@ void UXBFormationComponent::SetDebugDrawEnabled(bool bEnabled)
     }
 }
 
-/**
- * @brief 绘制编队调试信息
- * @param Duration 持续时间
- * @note 🔧 修改 - 修复圆圈法向量，确保朝上显示
- */
 void UXBFormationComponent::DrawDebugFormation(float Duration)
 {
     UWorld* World = GetWorld();
@@ -114,7 +191,6 @@ void UXBFormationComponent::DrawDebugFormation(float Duration)
 
     // ==================== 绘制将领标记 ====================
 
-    // 🔧 修改 - 将领脚底位置的圆圈（红色，法向量向上）
     DrawDebugCircle(
         World,
         LeaderLocation,
@@ -125,11 +201,10 @@ void UXBFormationComponent::DrawDebugFormation(float Duration)
         Duration,
         0,
         5.0f,
-        FVector(0, 0, 1), // ✅ 法向量：Z轴向上
-        FVector(1, 0, 0)  // ✅ 参考向量：X轴向前
+        FVector(0, 0, 1),
+        FVector(1, 0, 0)
     );
 
-    // 将领头顶球体
     DrawDebugSphere(
         World,
         LeaderLocation + FVector(0, 0, 100.0f),
@@ -142,7 +217,6 @@ void UXBFormationComponent::DrawDebugFormation(float Duration)
         3.0f
     );
 
-    // 将领文字
     DrawDebugString(
         World,
         LeaderLocation + FVector(0, 0, 150.0f),
@@ -160,30 +234,26 @@ void UXBFormationComponent::DrawDebugFormation(float Duration)
     {
         const FXBFormationSlot& Slot = FormationSlots[i];
 
-        // 计算槽位世界坐标
         FVector LocalOffset3D(Slot.LocalOffset.X, Slot.LocalOffset.Y, 0.0f);
         FVector WorldOffset = LeaderRotation.RotateVector(LocalOffset3D);
         FVector SlotWorldPos = LeaderLocation + WorldOffset;
 
-        // 确定颜色
         FColor SlotColor = Slot.bOccupied ? DebugOccupiedSlotColor : DebugFreeSlotColor;
 
-        // ✅ 核心修复 - 绘制平面圆圈（法向量向上）
         DrawDebugCircle(
             World,
             SlotWorldPos,
             DebugSlotRadius,
-            24, // 段数（更圆滑）
+            24,
             SlotColor,
             false,
             Duration,
             0,
-            4.0f, // 线宽
-            FVector(1, 0, 0), // ✅ 关键：法向量Z轴向上，确保圆圈平行于地面
-            FVector(0, 1, 0)  // ✅ 参考向量X轴向前
+            4.0f,
+            FVector(1, 0, 0),
+            FVector(0, 1, 0)
         );
 
-        // 绘制十字标记（定位槽位中心）
         float CrossSize = DebugSlotRadius * 0.5f;
         DrawDebugLine(
             World,
@@ -207,7 +277,6 @@ void UXBFormationComponent::DrawDebugFormation(float Duration)
             3.0f
         );
 
-        // 绘制序号文字
         FString SlotText = FString::Printf(TEXT("%d"), Slot.SlotIndex);
         DrawDebugString(
             World,
@@ -220,7 +289,6 @@ void UXBFormationComponent::DrawDebugFormation(float Duration)
             1.8f
         );
 
-        // 绘制从将领到槽位的连线
         DrawDebugLine(
             World,
             LeaderLocation + FVector(0, 0, 10),
@@ -232,7 +300,6 @@ void UXBFormationComponent::DrawDebugFormation(float Duration)
             2.0f
         );
 
-        // 如果被占用，绘制占用者信息
         if (Slot.bOccupied && Slot.OccupantSoldierId != INDEX_NONE)
         {
             FString OccupantText = FString::Printf(TEXT("ID:%d"), Slot.OccupantSoldierId);
@@ -317,15 +384,8 @@ FVector2D UXBFormationComponent::CalculateSlotLocalOffset(int32 SlotIndex, int32
     return FVector2D(OffsetX, OffsetY);
 }
 
-/**
- * @brief 重新生成编队
- * @param SoldierCount 士兵数量
- * @note 🔧 修改 - 支持自动扩展槽位数量
- */
 void UXBFormationComponent::RegenerateFormation(int32 SoldierCount)
 {
-    // ✨ 新增 - 如果手动槽位数量为0，使用传入的士兵数量
-    // 如果手动槽位数量大于士兵数量，使用手动槽位数量（允许预留空槽）
     int32 ActualSlotCount = (ManualSlotCount > 0) ? FMath::Max(ManualSlotCount, SoldierCount) : SoldierCount;
 
     FormationSlots.Empty();
@@ -346,15 +406,15 @@ void UXBFormationComponent::RegenerateFormation(int32 SoldierCount)
         FXBFormationSlot Slot;
         Slot.SlotIndex = i;
         Slot.LocalOffset = CalculateSlotLocalOffset(i, ActualSlotCount, Columns, Rows);
-        Slot.bOccupied = (i < SoldierCount); // ✨ 新增 - 前面的槽位标记为已占用
+        Slot.bOccupied = false;  // 🔧 修改 - 初始化时不标记占用，由外部调用时设置
         Slot.OccupantSoldierId = INDEX_NONE;
         FormationSlots.Add(Slot);
     }
 
     OnFormationUpdated.Broadcast();
 
-    UE_LOG(LogTemp, Warning, TEXT("★★★ 编队生成: 槽位数=%d, 士兵数=%d (%dx%d) ★★★"), 
-        ActualSlotCount, SoldierCount, Columns, Rows);
+    UE_LOG(LogTemp, Log, TEXT("编队生成: 槽位数=%d (%dx%d)"), 
+        ActualSlotCount, Columns, Rows);
 }
 
 FVector UXBFormationComponent::GetSlotWorldPosition(int32 SlotIndex) const
@@ -365,7 +425,6 @@ FVector UXBFormationComponent::GetSlotWorldPosition(int32 SlotIndex) const
         return FVector::ZeroVector;
     }
 
-    // 1. 获取基础参考点 (将领位置)
     FVector LeaderLocation = Owner->GetActorLocation();
     
     if (!FormationSlots.IsValidIndex(SlotIndex))
@@ -375,50 +434,36 @@ FVector UXBFormationComponent::GetSlotWorldPosition(int32 SlotIndex) const
 
     const FXBFormationSlot& Slot = FormationSlots[SlotIndex];
 
-    // 2. 计算平面偏移 (XY)
     FVector LocalOffset3D(Slot.LocalOffset.X, Slot.LocalOffset.Y, 0.0f);
     FVector WorldOffset = Owner->GetActorRotation().RotateVector(LocalOffset3D);
     
-    // 3. 初始目标点 (先假设和将领一样高)
     FVector TargetXY = LeaderLocation + WorldOffset;
     
-    // ==================== ✨ 地面检测逻辑开始 ====================
     UWorld* World = GetWorld();
     if (World)
     {
         FHitResult HitResult;
         
-        // 从将领高度上方 500 开始，向下探测 1000 单位
-        // 这样即使地形有较大起伏也能检测到
         FVector TraceStart = FVector(TargetXY.X, TargetXY.Y, LeaderLocation.Z + 500.0f);
         FVector TraceEnd = FVector(TargetXY.X, TargetXY.Y, LeaderLocation.Z - 1000.0f);
 
         FCollisionQueryParams QueryParams;
-        QueryParams.AddIgnoredActor(Owner); // 忽略将领自身
+        QueryParams.AddIgnoredActor(Owner);
 
-        // 使用 Visibility 或 WorldStatic 通道检测地面
         bool bHit = World->LineTraceSingleByChannel(
             HitResult,
             TraceStart,
             TraceEnd,
-            ECC_WorldStatic, // 通常地面是 WorldStatic
+            ECC_WorldStatic,
             QueryParams
         );
 
         if (bHit)
         {
-            // 如果检测到地面，使用击中点的高度
-            // 🔧 士兵半高修正：假设士兵胶囊体半高约 88，原点在中心
-            // 但如果士兵原点在脚底 (Mesh offset -88)，则直接使用 HitResult.Location
-            // 您的士兵 Mesh 设置为 -88，说明 Actor Location 是中心点，需要抬高 CapsuleHalfHeight
-            // 通常由 Navigation 系统处理，但如果手动插值，需要目标点在地面之上
-            
             return HitResult.Location; 
         }
     }
-    // ==================== 地面检测逻辑结束 ====================
 
-    // 如果未检测到地面 (例如在空中)，回退到将领的高度
     return FVector(TargetXY.X, TargetXY.Y, LeaderLocation.Z);
 }
 
@@ -474,6 +519,12 @@ void UXBFormationComponent::ReleaseAllSlots()
     }
 }
 
+/**
+ * @brief 为士兵分配槽位
+ * @param Soldier 士兵
+ * @return 分配的槽位索引
+ * @note 🔧 修改 - 优化分配逻辑，确保顺序分配
+ */
 int32 UXBFormationComponent::AssignSlotToSoldier(AXBSoldierCharacter* Soldier)
 {
     if (!Soldier)
@@ -481,10 +532,12 @@ int32 UXBFormationComponent::AssignSlotToSoldier(AXBSoldierCharacter* Soldier)
         return INDEX_NONE;
     }
 
+    // 🔧 修改 - 优先使用 GetFirstAvailableSlot 确保从头开始分配
     int32 SlotIndex = GetFirstAvailableSlot();
+    
     if (SlotIndex == INDEX_NONE)
     {
-        // ✨ 新增 - 自动扩展槽位
+        // 没有可用槽位，扩展
         int32 NewSlotCount = FormationSlots.Num() + 1;
         RegenerateFormation(NewSlotCount);
         SlotIndex = FormationSlots.Num() - 1;
@@ -493,6 +546,8 @@ int32 UXBFormationComponent::AssignSlotToSoldier(AXBSoldierCharacter* Soldier)
     if (OccupySlot(SlotIndex, Soldier->GetUniqueID()))
     {
         Soldier->SetFormationSlotIndex(SlotIndex);
+        
+        UE_LOG(LogTemp, Log, TEXT("士兵 %s 分配到槽位 %d"), *Soldier->GetName(), SlotIndex);
         return SlotIndex;
     }
 
@@ -513,19 +568,15 @@ void UXBFormationComponent::RemoveSoldierFromSlot(AXBSoldierCharacter* Soldier)
     }
 }
 
+/**
+ * @brief 重新分配所有槽位
+ * @param Soldiers 士兵数组
+ * @note 🔧 修改 - 调用 CompactSlots 确保槽位连续
+ */
 void UXBFormationComponent::ReassignAllSlots(const TArray<AXBSoldierCharacter*>& Soldiers)
 {
     ReleaseAllSlots();
-    RegenerateFormation(Soldiers.Num());
-
-    for (int32 i = 0; i < Soldiers.Num(); ++i)
-    {
-        if (Soldiers[i])
-        {
-            OccupySlot(i, Soldiers[i]->GetUniqueID());
-            Soldiers[i]->SetFormationSlotIndex(i);
-        }
-    }
+    CompactSlots(Soldiers);
 
     UE_LOG(LogTemp, Warning, TEXT("★★★ 编队重新分配: %d个士兵 ★★★"), Soldiers.Num());
 }

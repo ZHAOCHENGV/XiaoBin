@@ -3,12 +3,12 @@
 
 /**
  * @file XBFormationComponent.h
- * @brief 编队组件 - 管理士兵队列位置（整合调试功能）
+ * @brief 编队组件 - 管理士兵队列位置
  * 
  * @note 🔧 修改记录:
- *       1. 新增手动槽位数量控制（便于调试）
- *       2. 修复圆圈朝向问题
- *       3. 支持运行时动态调整槽位数量
+ *       1. 新增槽位递补逻辑
+ *       2. 新增 CompactSlots() 方法用于压缩槽位
+ *       3. 优化槽位分配算法
  */
 
 #pragma once
@@ -21,6 +21,8 @@
 class AXBSoldierCharacter;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnFormationUpdated);
+// ✨ 新增 - 槽位变化委托
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnSlotReassigned, int32, OldSlotIndex, int32, NewSlotIndex);
 
 /**
  * @brief 编队组件（整合调试功能）
@@ -44,12 +46,6 @@ public:
     UFUNCTION(BlueprintCallable, Category = "XB|Formation")
     void RegenerateFormation(int32 SoldierCount);
 
-    // ✨ 新增 - 手动设置槽位数量（用于调试）
-    /**
-     * @brief 手动设置编队槽位数量
-     * @param Count 槽位数量
-     * @note 用于调试，运行时可动态调整
-     */
     UFUNCTION(BlueprintCallable, Category = "XB|Formation", meta = (DisplayName = "设置槽位数量"))
     void SetFormationSlotCount(int32 Count);
 
@@ -77,6 +73,29 @@ public:
     UFUNCTION(BlueprintCallable, Category = "XB|Formation")
     void ReassignAllSlots(const TArray<AXBSoldierCharacter*>& Soldiers);
 
+    // ✨ 新增 - 压缩槽位（移除空洞，确保连续）
+    /**
+     * @brief 压缩槽位数组，移除中间的空槽
+     * @param Soldiers 当前士兵数组引用
+     * @note 当士兵死亡后调用，确保槽位连续无空洞
+     *       会触发 OnSlotReassigned 委托通知每个被移动的士兵
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Formation", meta = (DisplayName = "压缩槽位"))
+    void CompactSlots(const TArray<AXBSoldierCharacter*>& Soldiers);
+
+    // ✨ 新增 - 获取下一个可用槽位索引（总是返回当前士兵数量，即队尾）
+    /**
+     * @brief 获取下一个应分配的槽位索引
+     * @param CurrentSoldierCount 当前士兵数量
+     * @return 应分配的槽位索引（等于当前数量，从0开始）
+     */
+    UFUNCTION(BlueprintPure, Category = "XB|Formation", meta = (DisplayName = "获取下一槽位索引"))
+    int32 GetNextSlotIndex(int32 CurrentSoldierCount) const;
+
+    // ✨ 新增 - 获取已占用槽位数量
+    UFUNCTION(BlueprintPure, Category = "XB|Formation", meta = (DisplayName = "获取已占用槽位数"))
+    int32 GetOccupiedSlotCount() const;
+
     // ============ 配置接口 ============
 
     UFUNCTION(BlueprintCallable, Category = "XB|Formation")
@@ -101,6 +120,10 @@ public:
     UPROPERTY(BlueprintAssignable, Category = "XB|Formation")
     FOnFormationUpdated OnFormationUpdated;
 
+    // ✨ 新增 - 槽位重新分配委托
+    UPROPERTY(BlueprintAssignable, Category = "XB|Formation", meta = (DisplayName = "槽位重分配事件"))
+    FOnSlotReassigned OnSlotReassigned;
+
 protected:
     // ============ 编队配置 ============
 
@@ -110,8 +133,6 @@ protected:
     UPROPERTY(BlueprintReadOnly, Category = "XB|Formation", meta = (DisplayName = "编队槽位列表"))
     TArray<FXBFormationSlot> FormationSlots;
 
-    // ✨ 新增 - 手动槽位数量控制
-    /** @brief 手动指定的槽位数量（0表示自动根据士兵数量计算） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Formation", meta = (DisplayName = "槽位数量（0=自动）", ClampMin = "0", ClampMax = "999"))
     int32 ManualSlotCount = 0;
 

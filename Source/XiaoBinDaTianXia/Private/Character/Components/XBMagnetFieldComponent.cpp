@@ -3,29 +3,33 @@
 
 /**
  * @file XBMagnetFieldComponent.cpp
- * @brief 磁场组件实现 - 增强村民招募
+ * @brief 磁场组件实现 - 增强调试系统
  * 
  * @note 🔧 修改记录:
- *       1. 新增 TryRecruitVillager 方法
- *       2. 在 OnSphereBeginOverlap 中处理村民检测
+ *       1. ✨ 新增 TickComponent 用于持续调试绘制
+ *       2. ✨ 新增 DrawDebugField() 完整调试可视化
+ *       3. ✨ 新增 统计数据追踪
+ *       4. ✨ 新增 范围内Actor追踪
  */
 
 #include "Character/Components/XBMagnetFieldComponent.h"
 #include "GameplayEffectTypes.h"
 #include "Character/XBCharacterBase.h"
 #include "Soldier/XBSoldierCharacter.h"
-#include "Soldier/XBVillagerActor.h" // ✨ 新增
+#include "Soldier/XBVillagerActor.h"
 #include "GAS/XBAbilitySystemComponent.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "XBCollisionChannels.h"
 #include "Data/XBSoldierDataTable.h"
 #include "Engine/DataTable.h"
+#include "DrawDebugHelpers.h"
 
 UXBMagnetFieldComponent::UXBMagnetFieldComponent()
 {
-    PrimaryComponentTick.bCanEverTick = false;
+    // 🔧 修改 - 启用Tick以支持持续调试绘制
+    PrimaryComponentTick.bCanEverTick = true;
+    PrimaryComponentTick.bStartWithTickEnabled = false; // 默认禁用，调试时启用
     bWantsInitializeComponent = true;
-
 
     SetGenerateOverlapEvents(false);
     InitSphereRadius(300.0f);
@@ -36,29 +40,15 @@ void UXBMagnetFieldComponent::InitializeComponent()
 {
     Super::InitializeComponent();
 
-    // 启用碰撞查询
     SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-    
-    // 设置自身为 WorldDynamic 类型
     SetCollisionObjectType(ECC_WorldDynamic);
-    
-    // 🔧 修改 - 配置碰撞响应
-    // 先忽略所有通道
     SetCollisionResponseToAllChannels(ECR_Ignore);
-    
-    // 检测默认 Pawn 通道（村民使用默认 Pawn）
     SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
-    
-    // ✨ 新增 - 检测自定义 Soldier 通道（士兵使用此通道）
     SetCollisionResponseToChannel(XBCollision::Soldier, ECR_Overlap);
-    
-    // ✨ 新增 - 检测自定义 Leader 通道（其他将领，如果需要）
     SetCollisionResponseToChannel(XBCollision::Leader, ECR_Overlap);
-    
-    // ✨ 新增 - 检测 WorldDynamic（村民可能使用此通道）
     SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
     
-    UE_LOG(LogTemp, Log, TEXT("磁场组件 %s: 碰撞配置完成 - 检测 Pawn/Soldier/Leader/WorldDynamic"), 
+    UE_LOG(LogTemp, Log, TEXT("磁场组件 %s: 碰撞配置完成"), 
         *GetOwner()->GetName());
 }
 
@@ -74,12 +64,345 @@ void UXBMagnetFieldComponent::BeginPlay()
     }
 
     SetGenerateOverlapEvents(bIsFieldEnabled);
-    // ✨ 新增 - 输出调试信息确认配置
-    UE_LOG(LogTemp, Warning, TEXT("磁场组件 %s BeginPlay - 半径: %.1f, 启用: %s"), 
+
+    // ✨ 新增 - 如果启用调试，开启Tick
+    if (bDrawDebug)
+    {
+        SetComponentTickEnabled(true);
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("磁场组件 %s BeginPlay - 半径: %.1f, 启用: %s, 调试: %s"), 
         *GetOwner()->GetName(), 
         GetScaledSphereRadius(),
-        bIsFieldEnabled ? TEXT("是") : TEXT("否"));
+        bIsFieldEnabled ? TEXT("是") : TEXT("否"),
+        bDrawDebug ? TEXT("是") : TEXT("否"));
 }
+
+/**
+ * @brief Tick函数 - 用于持续调试绘制
+ * @note ✨ 新增
+ */
+void UXBMagnetFieldComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
+    FActorComponentTickFunction* ThisTickFunction)
+{
+    Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+
+    if (bDrawDebug)
+    {
+        // 更新范围内Actor列表
+        UpdateActorsInField();
+        
+        // 绘制调试信息
+        DrawDebugField(0.0f);
+    }
+}
+
+// ==================== ✨ 新增：调试系统实现 ====================
+
+/**
+ * @brief 启用/禁用调试绘制
+ * @param bEnabled 是否启用
+ */
+void UXBMagnetFieldComponent::SetDebugDrawEnabled(bool bEnabled)
+{
+    bDrawDebug = bEnabled;
+    
+    // 启用/禁用Tick
+    SetComponentTickEnabled(bEnabled);
+    
+    if (bEnabled)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("============================================="));
+        UE_LOG(LogTemp, Warning, TEXT("磁场调试绘制已启用: %s"), *GetOwner()->GetName());
+        UE_LOG(LogTemp, Warning, TEXT("磁场半径: %.1f"), GetScaledSphereRadius());
+        UE_LOG(LogTemp, Warning, TEXT("磁场状态: %s"), bIsFieldEnabled ? TEXT("启用") : TEXT("禁用"));
+        UE_LOG(LogTemp, Warning, TEXT("============================================="));
+        
+        // 立即绘制一次
+        DrawDebugField(5.0f);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("磁场调试绘制已禁用: %s"), *GetOwner()->GetName());
+    }
+}
+
+/**
+ * @brief 更新范围内Actor列表
+ * @note ✨ 新增 - 清理无效引用并更新统计
+ */
+void UXBMagnetFieldComponent::UpdateActorsInField()
+{
+    // 清理无效引用
+    ActorsInField.RemoveAll([](const TWeakObjectPtr<AActor>& WeakActor)
+    {
+        return !WeakActor.IsValid();
+    });
+    
+    // 更新统计
+    FieldStats.ActorsInRange = ActorsInField.Num();
+}
+
+/**
+ * @brief 检查Actor是否可招募
+ * @param Actor 目标Actor
+ * @return 是否可招募
+ * @note ✨ 新增
+ */
+bool UXBMagnetFieldComponent::IsActorRecruitable(AActor* Actor) const
+{
+    if (!Actor || !IsValid(Actor))
+    {
+        return false;
+    }
+    
+    // 检查村民
+    if (AXBVillagerActor* Villager = Cast<AXBVillagerActor>(Actor))
+    {
+        return Villager->CanBeRecruited();
+    }
+    
+    // 检查士兵
+    if (AXBSoldierCharacter* Soldier = Cast<AXBSoldierCharacter>(Actor))
+    {
+        return Soldier->CanBeRecruited();
+    }
+    
+    return false;
+}
+
+/**
+ * @brief 绘制完整的调试信息
+ * @param Duration 持续时间
+ * @note ✨ 核心调试可视化方法
+ */
+void UXBMagnetFieldComponent::DrawDebugField(float Duration)
+{
+    UWorld* World = GetWorld();
+    AActor* Owner = GetOwner();
+    
+    if (!World || !Owner)
+    {
+        return;
+    }
+    
+    FVector FieldCenter = GetComponentLocation();
+    float FieldRadius = GetScaledSphereRadius();
+    
+    // ==================== 1. 绘制磁场圆圈 ====================
+    
+    FColor CircleColor = bIsFieldEnabled ? DebugEnabledColor : DebugDisabledColor;
+    
+    // 绘制水平圆圈（地面）
+    DrawDebugCircle(
+        World,
+        FieldCenter,
+        FieldRadius,
+        DebugCircleSegments,
+        CircleColor,
+        false,
+        Duration,
+        0,
+        5.0f,
+        FVector(1, 0, 0),
+        FVector(0, 1, 0),
+        false
+    );
+    
+    // 绘制第二个稍高的圆圈（增强可见性）
+    DrawDebugCircle(
+        World,
+        FieldCenter + FVector(0, 0, 50.0f),
+        FieldRadius,
+        DebugCircleSegments,
+        CircleColor,
+        false,
+        Duration,
+        0,
+        3.0f,
+        FVector(1, 0, 0),
+        FVector(0, 1, 0),
+        false
+    );
+    
+    // 绘制垂直方向的标记线
+    for (int32 i = 0; i < 4; ++i)
+    {
+        float Angle = (PI * 2.0f * i) / 4.0f;
+        FVector EdgePoint = FieldCenter + FVector(FMath::Cos(Angle) * FieldRadius, FMath::Sin(Angle) * FieldRadius, 0.0f);
+        
+        DrawDebugLine(
+            World,
+            EdgePoint,
+            EdgePoint + FVector(0, 0, 100.0f),
+            CircleColor,
+            false,
+            Duration,
+            0,
+            2.0f
+        );
+    }
+    
+    // ==================== 2. 绘制中心标记 ====================
+    
+    DrawDebugSphere(
+        World,
+        FieldCenter + FVector(0, 0, 20.0f),
+        20.0f,
+        12,
+        CircleColor,
+        false,
+        Duration,
+        0,
+        2.0f
+    );
+    
+    // ==================== 3. 绘制磁场信息文字 ====================
+    
+    FString FieldInfo = FString::Printf(
+        TEXT("磁场: %s\n半径: %.0f\n状态: %s"),
+        *Owner->GetName(),
+        FieldRadius,
+        bIsFieldEnabled ? TEXT("启用") : TEXT("禁用")
+    );
+    
+    DrawDebugString(
+        World,
+        FieldCenter + FVector(0, 0, DebugTextHeightOffset),
+        FieldInfo,
+        nullptr,
+        FColor::White,
+        Duration,
+        true,
+        1.5f
+    );
+    
+    // ==================== 4. 绘制统计数据 ====================
+    
+    if (bShowStats)
+    {
+        FString StatsInfo = FString::Printf(
+            TEXT("招募士兵: %d\n招募村民: %d\n范围内: %d"),
+            FieldStats.TotalSoldiersRecruited,
+            FieldStats.TotalVillagersRecruited,
+            FieldStats.ActorsInRange
+        );
+        
+        DrawDebugString(
+            World,
+            FieldCenter + FVector(0, 0, DebugTextHeightOffset + 80.0f),
+            StatsInfo,
+            nullptr,
+            FColor::Cyan,
+            Duration,
+            true,
+            1.2f
+        );
+    }
+    
+    // ==================== 5. 绘制范围内Actor信息 ====================
+    
+    if (bShowActorInfo)
+    {
+        for (const auto& WeakActor : ActorsInField)
+        {
+            AActor* Actor = WeakActor.Get();
+            if (Actor && IsValid(Actor))
+            {
+                DrawDebugActorInfo(Actor, Duration);
+            }
+        }
+    }
+}
+
+/**
+ * @brief 绘制单个Actor的调试信息
+ * @param Actor 目标Actor
+ * @param Duration 持续时间
+ * @note ✨ 新增
+ */
+void UXBMagnetFieldComponent::DrawDebugActorInfo(AActor* Actor, float Duration)
+{
+    UWorld* World = GetWorld();
+    if (!World || !Actor)
+    {
+        return;
+    }
+    
+    FVector FieldCenter = GetComponentLocation();
+    FVector ActorLocation = Actor->GetActorLocation();
+    
+    bool bRecruitable = IsActorRecruitable(Actor);
+    FColor LineColor = bRecruitable ? DebugRecruitableColor : DebugNonRecruitableColor;
+    
+    // 绘制连线
+    DrawDebugLine(
+        World,
+        FieldCenter + FVector(0, 0, 30.0f),
+        ActorLocation + FVector(0, 0, 30.0f),
+        LineColor,
+        false,
+        Duration,
+        0,
+        2.0f
+    );
+    
+    // 绘制目标标记
+    DrawDebugSphere(
+        World,
+        ActorLocation + FVector(0, 0, 50.0f),
+        15.0f,
+        8,
+        LineColor,
+        false,
+        Duration,
+        0,
+        1.5f
+    );
+    
+    // 获取Actor类型名称
+    FString ActorTypeName = TEXT("未知");
+    if (Cast<AXBVillagerActor>(Actor))
+    {
+        ActorTypeName = TEXT("村民");
+    }
+    else if (AXBSoldierCharacter* Soldier = Cast<AXBSoldierCharacter>(Actor))
+    {
+        ActorTypeName = FString::Printf(TEXT("士兵(%s)"), 
+            Soldier->IsRecruited() ? TEXT("已招") : TEXT("未招"));
+    }
+    
+    // 绘制Actor信息
+    FString ActorInfo = FString::Printf(
+        TEXT("%s\n%s\n%.0f"),
+        *Actor->GetName(),
+        *ActorTypeName,
+        FVector::Dist(FieldCenter, ActorLocation)
+    );
+    
+    DrawDebugString(
+        World,
+        ActorLocation + FVector(0, 0, 80.0f),
+        ActorInfo,
+        nullptr,
+        LineColor,
+        Duration,
+        true,
+        1.0f
+    );
+}
+
+/**
+ * @brief 重置统计数据
+ * @note ✨ 新增
+ */
+void UXBMagnetFieldComponent::ResetStats()
+{
+    FieldStats = FXBMagnetFieldStats();
+    UE_LOG(LogTemp, Log, TEXT("磁场统计已重置: %s"), *GetOwner()->GetName());
+}
+
+// ==================== 原有功能实现（略微修改） ====================
 
 void UXBMagnetFieldComponent::SetFieldRadius(float NewRadius)
 {
@@ -92,10 +415,6 @@ void UXBMagnetFieldComponent::SetFieldEnabled(bool bEnabled)
     SetGenerateOverlapEvents(bEnabled);
 }
 
-/**
- * @brief 碰撞开始回调
- * @note 🔧 修改 - 新增村民检测逻辑
- */
 void UXBMagnetFieldComponent::OnSphereBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
     UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
@@ -108,10 +427,15 @@ void UXBMagnetFieldComponent::OnSphereBeginOverlap(UPrimitiveComponent* Overlapp
     {
         return;
     }
-    // ✨ 新增 - 调试日志
+
+    // ✨ 新增 - 添加到范围内Actor列表
+    ActorsInField.AddUnique(OtherActor);
+    FieldStats.ActorsInRange = ActorsInField.Num();
+
     UE_LOG(LogTemp, Log, TEXT("磁场检测到: %s (类型: %s)"), 
         *OtherActor->GetName(), 
         *OtherActor->GetClass()->GetName());
+
     AXBCharacterBase* Leader = Cast<AXBCharacterBase>(GetOwner());
     if (!Leader || Leader->IsDead())
     {
@@ -119,16 +443,19 @@ void UXBMagnetFieldComponent::OnSphereBeginOverlap(UPrimitiveComponent* Overlapp
         return;
     }
 
-    // ✨ 新增 - 优先检测村民
+    // 优先检测村民
     if (AXBVillagerActor* Villager = Cast<AXBVillagerActor>(OtherActor))
     {
         if (TryRecruitVillager(Villager))
         {
-            return; // 成功招募村民，跳过后续逻辑
+            // ✨ 新增 - 更新统计
+            FieldStats.TotalVillagersRecruited++;
+            FieldStats.LastRecruitTime = GetWorld()->GetTimeSeconds();
+            return;
         }
     }
 
-    // 原有逻辑：招募已存在的士兵
+    // 招募已存在的士兵
     if (AXBSoldierCharacter* Soldier = Cast<AXBSoldierCharacter>(OtherActor))
     {
         if (Soldier->CanBeRecruited())
@@ -140,12 +467,15 @@ void UXBMagnetFieldComponent::OnSphereBeginOverlap(UPrimitiveComponent* Overlapp
             {
                 Soldier->InitializeFromDataTable(SoldierDT, SoldierRowName, Leader->GetFaction());
             }
-           
 
             int32 SlotIndex = Leader->GetSoldierCount();
             Soldier->OnRecruited(Leader, SlotIndex);
             Leader->AddSoldier(Soldier);
             ApplyRecruitEffect(Leader, Soldier);
+
+            // ✨ 新增 - 更新统计
+            FieldStats.TotalSoldiersRecruited++;
+            FieldStats.LastRecruitTime = GetWorld()->GetTimeSeconds();
 
             UE_LOG(LogTemp, Log, TEXT("士兵被招募，将领当前士兵数: %d"), Leader->GetSoldierCount());
         }
@@ -169,6 +499,13 @@ void UXBMagnetFieldComponent::OnSphereEndOverlap(UPrimitiveComponent* Overlapped
     {
         return;
     }
+
+    // ✨ 新增 - 从范围内Actor列表移除
+    ActorsInField.RemoveAll([OtherActor](const TWeakObjectPtr<AActor>& WeakActor)
+    {
+        return !WeakActor.IsValid() || WeakActor.Get() == OtherActor;
+    });
+    FieldStats.ActorsInRange = ActorsInField.Num();
 
     if (IsActorDetectable(OtherActor))
     {
@@ -199,17 +536,6 @@ bool UXBMagnetFieldComponent::IsActorDetectable(AActor* Actor) const
     return false;
 }
 
-/**
- * @brief 尝试招募村民
- * @param Villager 村民Actor
- * @return 是否成功招募
- * @note ✨ 新增方法
- *       功能流程：
- *       1. 检查村民是否可招募
- *       2. 生成对应兵种的士兵Actor
- *       3. 调用村民的 OnRecruited（村民会自毁）
- *       4. 将新士兵加入将领队列
- */
 bool UXBMagnetFieldComponent::TryRecruitVillager(AXBVillagerActor* Villager)
 {
     if (!Villager || !Villager->CanBeRecruited())
@@ -223,7 +549,6 @@ bool UXBMagnetFieldComponent::TryRecruitVillager(AXBVillagerActor* Villager)
         return false;
     }
 
-    // 获取将领的默认兵种配置
     UDataTable* SoldierDT = Leader->GetSoldierDataTable();
     FName SoldierRowName = Leader->GetRecruitSoldierRowName();
 
@@ -233,14 +558,12 @@ bool UXBMagnetFieldComponent::TryRecruitVillager(AXBVillagerActor* Villager)
         return false;
     }
 
-    // 生成士兵Actor
     UWorld* World = GetWorld();
     if (!World)
     {
         return false;
     }
 
-    // 🔧 修改 - 使用公开访问器代替直接访问 protected 成员
     TSubclassOf<AXBSoldierCharacter> SoldierClass = Leader->GetSoldierActorClass();
     if (!SoldierClass)
     {
@@ -248,7 +571,6 @@ bool UXBMagnetFieldComponent::TryRecruitVillager(AXBVillagerActor* Villager)
         return false;
     }
 
-    // 在村民位置生成士兵
     FVector SpawnLocation = Villager->GetActorLocation();
     FRotator SpawnRotation = Villager->GetActorRotation();
 
@@ -268,18 +590,14 @@ bool UXBMagnetFieldComponent::TryRecruitVillager(AXBVillagerActor* Villager)
         return false;
     }
 
-    // 初始化士兵
     NewSoldier->InitializeFromDataTable(SoldierDT, SoldierRowName, Leader->GetFaction());
 
-    // 招募士兵
     int32 SlotIndex = Leader->GetSoldierCount();
     NewSoldier->OnRecruited(Leader, SlotIndex);
     Leader->AddSoldier(NewSoldier);
 
-    // 应用招募效果
     ApplyRecruitEffect(Leader, NewSoldier);
 
-    // 通知村民被招募（村民会自毁）
     Villager->OnRecruited(Leader);
 
     UE_LOG(LogTemp, Log, TEXT("村民 %s 转化为士兵 %s，将领当前士兵数: %d"),
