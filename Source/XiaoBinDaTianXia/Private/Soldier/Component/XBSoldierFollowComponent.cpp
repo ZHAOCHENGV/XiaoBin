@@ -3,14 +3,13 @@
 
 /**
  * @file XBSoldierFollowComponent.cpp
- * @brief 士兵跟随组件实现
+ * @brief 士兵跟随组件实现 - XY程序控制，Z轴物理控制
  * 
  * @note 🔧 修改记录:
- *       1. 新增战斗状态控制（bIsInCombat）
- *       2. 战斗中启用移动组件和RVO避障
- *       3. 非战斗时禁用移动组件，直接设置位置
- *       4. 招募过渡使用插值实时追踪目标位置
- *       5. ✨ 新增 - 地面追踪功能，确保士兵贴地移动
+ *       1. ❌ 删除 所有地面追踪代码
+ *       2. 🔧 修改 MoveTowardsTargetXY() 只控制XY坐标
+ *       3. 🔧 修改 移动组件保持启用以处理Z轴物理
+ *       4. ✨ 新增 SetMovementMode() 控制行走/飞行模式
  */
 
 #include "Soldier/Component/XBSoldierFollowComponent.h"
@@ -21,7 +20,6 @@
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
-#include "Kismet/KismetSystemLibrary.h"
 
 UXBSoldierFollowComponent::UXBSoldierFollowComponent()
 {
@@ -39,10 +37,14 @@ void UXBSoldierFollowComponent::BeginPlay()
     if (AActor* Owner = GetOwner())
     {
         LastFrameLocation = Owner->GetActorLocation();
+        LastPositionForStuckCheck = LastFrameLocation;
     }
     
-    SetMovementComponentEnabled(false);
+    // 🔧 修改 - 保持移动组件启用，让Z轴物理正常工作
+    SetMovementMode(true);
     SetRVOAvoidanceEnabled(false);
+
+    UE_LOG(LogXBSoldier, Log, TEXT("跟随组件初始化 - Z轴由移动组件物理控制"));
 }
 
 void UXBSoldierFollowComponent::TickComponent(float DeltaTime, ELevelTick TickType,
@@ -96,6 +98,7 @@ void UXBSoldierFollowComponent::TickComponent(float DeltaTime, ELevelTick TickTy
         break;
     }
 
+    // 计算实际移动速度（只看XY）
     if (DeltaTime > KINDA_SMALL_NUMBER)
     {
         FVector CurrentLocation = Owner->GetActorLocation();
@@ -202,7 +205,6 @@ void UXBSoldierFollowComponent::SetSoldierCollisionEnabled(bool bEnableCollision
         {
             Capsule->SetCollisionResponseToChannel(ECC_Pawn, OriginalPawnResponse);
             bCollisionModified = false;
-            UE_LOG(LogXBSoldier, Verbose, TEXT("跟随组件: 恢复Pawn碰撞"));
         }
     }
     else
@@ -212,14 +214,20 @@ void UXBSoldierFollowComponent::SetSoldierCollisionEnabled(bool bEnableCollision
             OriginalPawnResponse = Capsule->GetCollisionResponseToChannel(ECC_Pawn);
             Capsule->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
             bCollisionModified = true;
-            UE_LOG(LogXBSoldier, Verbose, TEXT("跟随组件: 禁用Pawn碰撞"));
         }
     }
 }
 
-// ==================== 移动组件控制 ====================
+// ==================== 🔧 修改：移动模式控制 ====================
 
-void UXBSoldierFollowComponent::SetMovementComponentEnabled(bool bEnable)
+/**
+ * @brief 设置移动组件的移动模式
+ * @param bEnableWalking 是否启用行走模式
+ * @note 🔧 核心修改 - 不再禁用移动组件，而是切换模式
+ *       行走模式：启用重力和地面检测，Z轴由物理控制
+ *       这样XY由我们程序控制，Z轴由引擎物理控制
+ */
+void UXBSoldierFollowComponent::SetMovementMode(bool bEnableWalking)
 {
     UCharacterMovementComponent* MoveComp = GetCachedMovementComponent();
     if (!MoveComp)
@@ -227,26 +235,20 @@ void UXBSoldierFollowComponent::SetMovementComponentEnabled(bool bEnable)
         return;
     }
     
-    if (bEnable)
+    // 🔧 关键：始终保持移动组件启用
+    MoveComp->SetComponentTickEnabled(true);
+    
+    if (bEnableWalking)
     {
-        if (bMovementStateModified)
-        {
-            MoveComp->SetComponentTickEnabled(true);
-            MoveComp->SetMovementMode(MOVE_Walking);
-            bMovementStateModified = false;
-            UE_LOG(LogXBSoldier, Verbose, TEXT("跟随组件: 启用移动组件"));
-        }
+        // 行走模式：启用重力，让角色贴地
+        MoveComp->SetMovementMode(MOVE_Walking);
+        MoveComp->GravityScale = 1.0f;
     }
     else
     {
-        if (!bMovementStateModified)
-        {
-            bOriginalMovementEnabled = MoveComp->IsComponentTickEnabled();
-            MoveComp->StopMovementImmediately();
-            MoveComp->SetComponentTickEnabled(false);
-            bMovementStateModified = true;
-            UE_LOG(LogXBSoldier, Verbose, TEXT("跟随组件: 禁用移动组件"));
-        }
+        // 飞行模式：无重力（用于特殊情况）
+        MoveComp->SetMovementMode(MOVE_Flying);
+        MoveComp->GravityScale = 0.0f;
     }
 }
 
@@ -259,8 +261,6 @@ void UXBSoldierFollowComponent::SetRVOAvoidanceEnabled(bool bEnable)
     }
     
     MoveComp->SetAvoidanceEnabled(bEnable);
-    
-    UE_LOG(LogXBSoldier, Verbose, TEXT("跟随组件: RVO避障 %s"), bEnable ? TEXT("启用") : TEXT("禁用"));
 }
 
 // ==================== 战斗状态控制 ====================
@@ -276,19 +276,16 @@ void UXBSoldierFollowComponent::SetCombatState(bool bInCombat)
     
     if (bInCombat)
     {
-        SetMovementComponentEnabled(true);
         SetRVOAvoidanceEnabled(true);
         SetSoldierCollisionEnabled(true);
-        
-        UE_LOG(LogXBSoldier, Log, TEXT("跟随组件: 进入战斗状态，启用移动组件和RVO"));
     }
     else
     {
-        SetMovementComponentEnabled(false);
         SetRVOAvoidanceEnabled(false);
-        
-        UE_LOG(LogXBSoldier, Log, TEXT("跟随组件: 退出战斗状态，禁用移动组件和RVO"));
     }
+    
+    // 🔧 修改 - 始终保持行走模式，让Z轴物理工作
+    SetMovementMode(true);
     
     OnCombatStateChanged.Broadcast(bInCombat);
 }
@@ -317,6 +314,9 @@ void UXBSoldierFollowComponent::SetFollowMode(EXBFollowMode NewMode)
         }
     }
     
+    // 🔧 修改 - 所有模式都保持行走模式，让Z轴物理正常
+    SetMovementMode(true);
+    
     UE_LOG(LogXBSoldier, Log, TEXT("跟随组件: 模式切换 %d -> %d"), 
         static_cast<int32>(OldMode), static_cast<int32>(NewMode));
 }
@@ -325,16 +325,18 @@ void UXBSoldierFollowComponent::EnterCombatMode()
 {
     SetCombatState(true);
     SetFollowMode(EXBFollowMode::Free);
-    UE_LOG(LogXBSoldier, Log, TEXT("跟随组件: 进入战斗模式"));
 }
 
 void UXBSoldierFollowComponent::ExitCombatMode()
 {
     SetCombatState(false);
     SetFollowMode(EXBFollowMode::Interpolating);
-    UE_LOG(LogXBSoldier, Log, TEXT("跟随组件: 退出战斗模式"));
 }
 
+/**
+ * @brief 传送到编队位置
+ * @note 🔧 修改 - 只设置XY，Z使用当前位置让物理自然处理
+ */
 void UXBSoldierFollowComponent::TeleportToFormationPosition()
 {
     AActor* Owner = GetOwner();
@@ -345,39 +347,53 @@ void UXBSoldierFollowComponent::TeleportToFormationPosition()
     
     FVector TargetPos = CalculateFormationWorldPosition();
     FRotator TargetRot = CalculateFormationWorldRotation();
+    FVector CurrentPos = Owner->GetActorLocation();
     
-    // ✨ 新增 - 应用地面追踪
-    if (bEnableGroundTracking)
-    {
-        AdjustToGround(TargetPos);
-    }
+    // 🔧 核心修改 - 只改变XY，保持当前Z（让物理系统处理下落/贴地）
+    FVector NewPosition = FVector(TargetPos.X, TargetPos.Y, CurrentPos.Z);
     
-    Owner->SetActorLocation(TargetPos);
+    Owner->SetActorLocation(NewPosition);
     
     if (bFollowRotation)
     {
         Owner->SetActorRotation(TargetRot);
     }
     
-    UE_LOG(LogXBSoldier, Verbose, TEXT("跟随组件: 传送到编队位置 %s"), *TargetPos.ToString());
+    LastPositionForStuckCheck = NewPosition;
+    AccumulatedStuckTime = 0.0f;
+    
+    UE_LOG(LogXBSoldier, Log, TEXT("跟随组件: 传送到编队位置 XY(%0.f, %.0f), Z保持%.0f"), 
+        NewPosition.X, NewPosition.Y, NewPosition.Z);
 }
 
 void UXBSoldierFollowComponent::StartInterpolateToFormation()
 {
     SetFollowMode(EXBFollowMode::Interpolating);
-    UE_LOG(LogXBSoldier, Verbose, TEXT("跟随组件: 开始插值回编队位置"));
 }
 
 void UXBSoldierFollowComponent::StartRecruitTransition()
 {
     SetCombatState(false);
     SetFollowMode(EXBFollowMode::RecruitTransition);
-    UE_LOG(LogXBSoldier, Log, TEXT("跟随组件: 开始招募过渡，插值速度: %.1f"), RecruitTransitionSpeed);
+    
+    if (UWorld* World = GetWorld())
+    {
+        RecruitTransitionStartTime = World->GetTimeSeconds();
+        LastValidMoveTime = RecruitTransitionStartTime;
+    }
+    
+    if (AActor* Owner = GetOwner())
+    {
+        LastPositionForStuckCheck = Owner->GetActorLocation();
+    }
+    AccumulatedStuckTime = 0.0f;
+    
+    UE_LOG(LogXBSoldier, Log, TEXT("跟随组件: 开始招募过渡（Z轴由物理控制）"));
 }
 
 void UXBSoldierFollowComponent::SetRecruitTransitionSpeed(float NewSpeed)
 {
-    RecruitTransitionSpeed = FMath::Clamp(NewSpeed, 1.0f, 50.0f);
+    RecruitTransitionSpeed = FMath::Max(100.0f, NewSpeed);
 }
 
 // ==================== 状态查询实现 ====================
@@ -401,80 +417,80 @@ float UXBSoldierFollowComponent::GetDistanceToFormation() const
     }
     
     FVector TargetPos = CalculateFormationWorldPosition();
+    // 只比较XY距离
     return FVector::Dist2D(Owner->GetActorLocation(), TargetPos);
 }
 
-// ==================== ✨ 新增：地面追踪实现 ====================
+// ==================== 追赶速度计算 ====================
 
-/**
- * @brief 获取指定位置的地面高度
- * @param InLocation 输入位置
- * @param OutGroundZ 输出的地面Z坐标
- * @return 是否成功找到地面
- * @note 使用射线检测从上往下查找地面
- */
-bool UXBSoldierFollowComponent::GetGroundHeight(const FVector& InLocation, float& OutGroundZ) const
+float UXBSoldierFollowComponent::CalculateCatchUpSpeed(float Distance, float LeaderSpeed) const
 {
+    float BaseSpeed = FMath::Max(RecruitTransitionSpeed, LeaderSpeed + CatchUpExtraSpeed);
+    
+    if (Distance <= CatchUpAccelerationDistance)
+    {
+        return BaseSpeed;
+    }
+    
+    float DistanceRatio = (Distance - CatchUpAccelerationDistance) / CatchUpAccelerationDistance;
+    float SpeedMultiplier = 1.0f + FMath::Clamp(DistanceRatio, 0.0f, MaxCatchUpSpeedMultiplier - 1.0f);
+    
+    float FinalSpeed = BaseSpeed * SpeedMultiplier;
+    float MaxSpeed = RecruitTransitionSpeed * MaxCatchUpSpeedMultiplier;
+    
+    return FMath::Min(FinalSpeed, MaxSpeed);
+}
+
+// ==================== 传送检测 ====================
+
+bool UXBSoldierFollowComponent::ShouldForceTeleport() const
+{
+    AActor* Owner = GetOwner();
     UWorld* World = GetWorld();
-    if (!World)
+    
+    if (!Owner || !World)
     {
         return false;
     }
-
-    // 射线起点：从位置上方开始
-    FVector TraceStart = InLocation + FVector(0.0f, 0.0f, GroundTraceStartOffset);
-    // 射线终点：向下检测
-    FVector TraceEnd = InLocation - FVector(0.0f, 0.0f, GroundTraceDistance);
-
-    FHitResult HitResult;
-    FCollisionQueryParams QueryParams;
-    QueryParams.AddIgnoredActor(GetOwner());
-    QueryParams.bTraceComplex = false;
-
-    // 使用 Visibility 通道检测地面
-    bool bHit = World->LineTraceSingleByChannel(
-        HitResult,
-        TraceStart,
-        TraceEnd,
-        ECC_Visibility,
-        QueryParams
-    );
-
-    if (bHit)
+    
+    float CurrentTime = World->GetTimeSeconds();
+    
+    float Distance = GetDistanceToFormation();
+    if (Distance > ForceTeleportDistance)
     {
-        OutGroundZ = HitResult.ImpactPoint.Z;
         return true;
     }
-
+    
+    float ElapsedTime = CurrentTime - RecruitTransitionStartTime;
+    if (ElapsedTime > RecruitTransitionTimeout)
+    {
+        return true;
+    }
+    
+    if (AccumulatedStuckTime > StuckDetectionTime)
+    {
+        return true;
+    }
+    
     return false;
 }
 
-/**
- * @brief 将位置调整到地面上
- * @param InOutLocation 输入输出的位置
- * @note 确保角色始终贴地，考虑胶囊体半高偏移
- */
-void UXBSoldierFollowComponent::AdjustToGround(FVector& InOutLocation) const
+void UXBSoldierFollowComponent::PerformForceTeleport()
 {
-    float GroundZ = 0.0f;
-    if (GetGroundHeight(InOutLocation, GroundZ))
+    UE_LOG(LogXBSoldier, Warning, TEXT("跟随组件: 执行强制传送"));
+    
+    TeleportToFormationPosition();
+    
+    if (bLockAfterRecruitTransition)
     {
-        float CapsuleHalfHeight = 88.0f; // 默认值
-        
-        // 直接获取，不使用缓存
-        if (AActor* Owner = GetOwner())
-        {
-            if (ACharacter* CharOwner = Cast<ACharacter>(Owner))
-            {
-                if (UCapsuleComponent* Capsule = CharOwner->GetCapsuleComponent())
-                {
-                    CapsuleHalfHeight = Capsule->GetScaledCapsuleHalfHeight();
-                }
-            }
-        }
-
-        InOutLocation.Z = GroundZ + CapsuleHalfHeight;
+        SetFollowMode(EXBFollowMode::Locked);
     }
+    else
+    {
+        SetFollowMode(EXBFollowMode::Interpolating);
+    }
+    
+    OnRecruitTransitionCompleted.Broadcast();
 }
 
 // ==================== 辅助方法 ====================
@@ -505,15 +521,20 @@ float UXBSoldierFollowComponent::GetLeaderMoveSpeed() const
     return 0.0f;
 }
 
+// ==================== 🔧 核心修改：只控制XY的移动 ====================
+
 /**
- * @brief 直接设置位置移动到目标（非战斗时使用）
+ * @brief 移动到目标位置（只控制XY）
  * @param TargetPosition 目标位置
  * @param DeltaTime 帧时间
  * @param MoveSpeed 移动速度
- * @return 是否已到达
- * @note 🔧 修改 - 增加地面追踪
+ * @return 是否已到达（XY距离小于阈值）
+ * @note 🔧 核心设计：
+ *       - 只修改 Actor 的 XY 坐标
+ *       - Z 坐标完全由 CharacterMovementComponent 处理
+ *       - 这样角色会自然地受重力影响并贴合地面
  */
-bool UXBSoldierFollowComponent::MoveTowardsTargetDirect(const FVector& TargetPosition, float DeltaTime, float MoveSpeed)
+bool UXBSoldierFollowComponent::MoveTowardsTargetXY(const FVector& TargetPosition, float DeltaTime, float MoveSpeed)
 {
     AActor* Owner = GetOwner();
     if (!Owner || DeltaTime <= KINDA_SMALL_NUMBER)
@@ -522,94 +543,46 @@ bool UXBSoldierFollowComponent::MoveTowardsTargetDirect(const FVector& TargetPos
     }
     
     FVector CurrentPosition = Owner->GetActorLocation();
-    FVector Direction = TargetPosition - CurrentPosition;
     
-    Direction.Z = 0.0f;
+    // 只在XY平面计算方向和距离
+    FVector2D CurrentXY(CurrentPosition.X, CurrentPosition.Y);
+    FVector2D TargetXY(TargetPosition.X, TargetPosition.Y);
+    
+    FVector2D Direction = TargetXY - CurrentXY;
     float Distance = Direction.Size();
     
+    // 已到达
     if (Distance <= ArrivalThreshold)
     {
         return true;
     }
     
+    // 计算移动
     Direction.Normalize();
     float MoveDistance = MoveSpeed * DeltaTime;
     
-    FVector NewPosition;
+    FVector2D NewXY;
     if (MoveDistance >= Distance)
     {
-        NewPosition = TargetPosition;
+        NewXY = TargetXY;
     }
     else
     {
-        NewPosition = CurrentPosition + Direction * MoveDistance;
+        NewXY = CurrentXY + Direction * MoveDistance;
     }
     
-    // ✨ 新增 - 应用地面追踪
-    if (bEnableGroundTracking)
-    {
-        AdjustToGround(NewPosition);
-    }
-    else
-    {
-        // 保持原来的Z坐标
-        NewPosition.Z = CurrentPosition.Z;
-    }
-    
+    // 🔧 关键：只设置XY，Z保持不变（由移动组件物理控制）
+    FVector NewPosition = FVector(NewXY.X, NewXY.Y, CurrentPosition.Z);
     Owner->SetActorLocation(NewPosition);
     
     return MoveDistance >= Distance;
-}
-
-/**
- * @brief 使用插值移动到目标位置
- * @param TargetPosition 目标位置
- * @param DeltaTime 帧时间
- * @param InterpSpeed 插值速度
- * @return 是否已到达
- * @note 🔧 修改 - 增加地面追踪
- */
-bool UXBSoldierFollowComponent::MoveTowardsTargetInterp(const FVector& TargetPosition, float DeltaTime, float InterpSpeed)
-{
-    AActor* Owner = GetOwner();
-    if (!Owner || DeltaTime <= KINDA_SMALL_NUMBER)
-    {
-        return false;
-    }
-    
-    FVector CurrentPosition = Owner->GetActorLocation();
-    
-    FVector CurrentXY = FVector(CurrentPosition.X, CurrentPosition.Y, 0.0f);
-    FVector TargetXY = FVector(TargetPosition.X, TargetPosition.Y, 0.0f);
-    
-    float Distance = FVector::Dist(CurrentXY, TargetXY);
-    
-    if (Distance <= ArrivalThreshold)
-    {
-        return true;
-    }
-    
-    FVector NewXY = FMath::VInterpTo(CurrentXY, TargetXY, DeltaTime, InterpSpeed);
-    
-    FVector NewPosition = FVector(NewXY.X, NewXY.Y, CurrentPosition.Z);
-    
-    // ✨ 新增 - 应用地面追踪
-    if (bEnableGroundTracking)
-    {
-        AdjustToGround(NewPosition);
-    }
-    
-    Owner->SetActorLocation(NewPosition);
-    
-    return false;
 }
 
 // ==================== 更新逻辑实现 ====================
 
 /**
  * @brief 更新锁定模式
- * @param DeltaTime 帧时间
- * @note 🔧 修改 - 增加地面追踪
+ * @note 🔧 修改 - 只控制XY坐标
  */
 void UXBSoldierFollowComponent::UpdateLockedMode(float DeltaTime)
 {
@@ -623,31 +596,23 @@ void UXBSoldierFollowComponent::UpdateLockedMode(float DeltaTime)
     
     FVector TargetPosition = CalculateFormationWorldPosition();
     FRotator TargetRotation = CalculateFormationWorldRotation();
+    FVector CurrentPosition = Owner->GetActorLocation();
     
-    // ✨ 新增 - 应用地面追踪
-    if (bEnableGroundTracking)
-    {
-        AdjustToGround(TargetPosition);
-    }
-    else
-    {
-        FVector CurrentPosition = Owner->GetActorLocation();
-        TargetPosition.Z = CurrentPosition.Z;
-    }
-    
-    Owner->SetActorLocation(TargetPosition);
+    // 🔧 核心修改 - 只设置XY，Z保持当前值
+    FVector NewPosition = FVector(TargetPosition.X, TargetPosition.Y, CurrentPosition.Z);
+    Owner->SetActorLocation(NewPosition);
     
     if (bFollowRotation)
     {
         Owner->SetActorRotation(FRotator(0.0f, TargetRotation.Yaw, 0.0f));
     }
     
+    // 检测是否被阻挡
     FVector ActualPosition = Owner->GetActorLocation();
     float ActualDistance = FVector::Dist2D(ActualPosition, TargetPosition);
     
     if (ActualDistance > BlockedThreshold)
     {
-        UE_LOG(LogXBSoldier, Warning, TEXT("跟随组件: 锁定模式检测到阻挡，距离: %.1f"), ActualDistance);
         SetFollowMode(EXBFollowMode::Interpolating);
     }
 }
@@ -665,7 +630,7 @@ void UXBSoldierFollowComponent::UpdateInterpolatingMode(float DeltaTime)
     FVector TargetPosition = CalculateFormationWorldPosition();
     FRotator TargetRotation = CalculateFormationWorldRotation();
     
-    bool bArrived = MoveTowardsTargetDirect(TargetPosition, DeltaTime, MovementSpeed);
+    bool bArrived = MoveTowardsTargetXY(TargetPosition, DeltaTime, MovementSpeed);
     
     if (bFollowRotation)
     {
@@ -676,7 +641,6 @@ void UXBSoldierFollowComponent::UpdateInterpolatingMode(float DeltaTime)
     
     if (bArrived)
     {
-        UE_LOG(LogXBSoldier, Log, TEXT("跟随组件: 插值完成，切换到锁定模式"));
         SetFollowMode(EXBFollowMode::Locked);
     }
 }
@@ -691,10 +655,23 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
         return;
     }
     
+    if (ShouldForceTeleport())
+    {
+        PerformForceTeleport();
+        return;
+    }
+    
     FVector TargetPosition = CalculateFormationWorldPosition();
     FRotator TargetRotation = CalculateFormationWorldRotation();
+    FVector CurrentPosition = Owner->GetActorLocation();
     
-    bool bArrived = MoveTowardsTargetInterp(TargetPosition, DeltaTime, RecruitTransitionSpeed);
+    float Distance = FVector::Dist2D(CurrentPosition, TargetPosition);
+    float LeaderSpeed = GetLeaderMoveSpeed();
+    
+    float CatchUpSpeed = CalculateCatchUpSpeed(Distance, LeaderSpeed);
+    
+    // 🔧 使用只控制XY的移动方法
+    bool bArrived = MoveTowardsTargetXY(TargetPosition, DeltaTime, CatchUpSpeed);
     
     if (bFollowRotation)
     {
@@ -702,6 +679,21 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
         float FastRotationSpeed = RotationInterpolateSpeed * 1.5f;
         FRotator NewRotation = FMath::RInterpTo(CurrentRotation, TargetRotation, DeltaTime, FastRotationSpeed);
         Owner->SetActorRotation(FRotator(0.0f, NewRotation.Yaw, 0.0f));
+    }
+    
+    // 卡住检测
+    FVector NewPosition = Owner->GetActorLocation();
+    float MovedDistance = FVector::Dist2D(NewPosition, LastPositionForStuckCheck);
+    float CurrentSpeed = (DeltaTime > KINDA_SMALL_NUMBER) ? (MovedDistance / DeltaTime) : 0.0f;
+    
+    if (CurrentSpeed < StuckSpeedThreshold && Distance > ArrivalThreshold * 2.0f)
+    {
+        AccumulatedStuckTime += DeltaTime;
+    }
+    else
+    {
+        AccumulatedStuckTime = 0.0f;
+        LastPositionForStuckCheck = NewPosition;
     }
     
     if (bArrived)
@@ -716,11 +708,17 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
         {
             SetFollowMode(EXBFollowMode::Interpolating);
         }
+        
+        OnRecruitTransitionCompleted.Broadcast();
     }
 }
 
 // ==================== 计算方法实现 ====================
 
+/**
+ * @brief 计算编队世界位置
+ * @return 编队位置（XY有效，Z仅供参考）
+ */
 FVector UXBSoldierFollowComponent::CalculateFormationWorldPosition() const
 {
     AActor* Leader = FollowTargetRef.Get();
@@ -737,9 +735,8 @@ FVector UXBSoldierFollowComponent::CalculateFormationWorldPosition() const
     FVector LocalOffset3D(SlotOffset.X, SlotOffset.Y, 0.0f);
     FVector WorldOffset = LeaderRotation.RotateVector(LocalOffset3D);
     
-    FVector FinalPosition = LeaderLocation + WorldOffset;
-    
-    return FinalPosition;
+    // 返回完整位置，但调用者只使用XY
+    return LeaderLocation + WorldOffset;
 }
 
 FRotator UXBSoldierFollowComponent::CalculateFormationWorldRotation() const

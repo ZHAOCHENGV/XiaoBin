@@ -252,7 +252,7 @@ void AXBSoldierCharacter::InitializeFromDataTable(UDataTable* DataTable, FName R
     if (FollowComponent)
     {
         FollowComponent->SetFollowSpeed(DataAccessor->GetMoveSpeed());
-        FollowComponent->SetFollowInterpSpeed(DataAccessor->GetFollowInterpSpeed());
+        /*FollowComponent->SetFollowInterpSpeed(DataAccessor->GetFollowInterpSpeed());*/
     }
 
     // ==================== 🔧 加载行为树 ====================

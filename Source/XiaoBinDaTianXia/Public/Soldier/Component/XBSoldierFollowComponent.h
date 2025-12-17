@@ -3,14 +3,12 @@
 
 /**
  * @file XBSoldierFollowComponent.h
- * @brief 士兵跟随组件 - 紧密编队跟随模式
+ * @brief 士兵跟随组件 - XY程序控制，Z轴物理控制
  * 
  * @note 🔧 修改记录:
- *       1. 新增 bIsInCombat 战斗状态变量
- *       2. 战斗中启用移动组件和RVO避障
- *       3. 非战斗时禁用移动组件，直接设置位置
- *       4. 招募过渡使用插值实时追踪目标位置
- *       5. ✨ 新增 - 地面追踪功能，确保士兵贴地移动
+ *       1. ❌ 删除 地面追踪相关代码
+ *       2. 🔧 修改 移动逻辑只控制XY，Z轴由移动组件处理
+ *       3. 🔧 修改 招募过渡时启用移动组件让物理生效
  */
 
 #pragma once
@@ -37,9 +35,13 @@ enum class EXBFollowMode : uint8
 };
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCombatStateChangedDelegate, bool, bInCombat);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnRecruitTransitionCompleted);
 
 /**
  * @brief 士兵跟随组件
+ * @note 核心设计：
+ *       - XY轴：由本组件程序控制
+ *       - Z轴：由CharacterMovementComponent物理控制
  */
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent, DisplayName = "XB Soldier Follow"))
 class XIAOBINDATIANXIA_API UXBSoldierFollowComponent : public UActorComponent
@@ -128,16 +130,13 @@ public:
     UFUNCTION(BlueprintCallable, Category = "XB|Follow")
     void SetFollowSpeed(float NewSpeed) { MovementSpeed = NewSpeed; }
 
-    UFUNCTION(BlueprintCallable, Category = "XB|Follow")
-    void SetFollowInterpSpeed(float NewSpeed) { MovementSpeed = NewSpeed; }
-
-    UFUNCTION(BlueprintCallable, Category = "XB|Follow")
-    void SetInterpSpeed(float NewSpeed) { MovementSpeed = NewSpeed; }
-
     // ==================== 委托事件 ====================
 
     UPROPERTY(BlueprintAssignable, Category = "XB|Follow|Combat", meta = (DisplayName = "战斗状态变化"))
     FOnCombatStateChangedDelegate OnCombatStateChanged;
+
+    UPROPERTY(BlueprintAssignable, Category = "XB|Follow", meta = (DisplayName = "招募过渡完成"))
+    FOnRecruitTransitionCompleted OnRecruitTransitionCompleted;
 
 protected:
     // ==================== 内部方法 ====================
@@ -150,8 +149,15 @@ protected:
     FRotator CalculateFormationWorldRotation() const;
     FVector2D GetSlotLocalOffset() const;
 
-    bool MoveTowardsTargetDirect(const FVector& TargetPosition, float DeltaTime, float MoveSpeed);
-    bool MoveTowardsTargetInterp(const FVector& TargetPosition, float DeltaTime, float InterpSpeed);
+    /**
+     * @brief 移动到目标位置（只控制XY）
+     * @param TargetPosition 目标位置（只使用XY）
+     * @param DeltaTime 帧时间
+     * @param MoveSpeed 移动速度
+     * @return 是否已到达
+     * @note 🔧 核心修改 - 只设置XY，Z由移动组件处理
+     */
+    bool MoveTowardsTargetXY(const FVector& TargetPosition, float DeltaTime, float MoveSpeed);
 
     float GetLeaderMoveSpeed() const;
 
@@ -159,25 +165,19 @@ protected:
     UCapsuleComponent* GetCachedCapsuleComponent();
 
     void SetSoldierCollisionEnabled(bool bEnableCollision);
-    void SetMovementComponentEnabled(bool bEnable);
+    
+    /**
+     * @brief 设置移动组件的移动模式
+     * @param bEnableWalking 是否启用行走模式（启用重力和地面检测）
+     * @note 🔧 修改 - 不再完全禁用组件，而是切换模式
+     */
+    void SetMovementMode(bool bEnableWalking);
+    
     void SetRVOAvoidanceEnabled(bool bEnable);
 
-    // ✨ 新增 - 地面追踪
-    /**
-     * @brief 获取指定位置的地面高度
-     * @param InLocation 输入位置
-     * @param OutGroundZ 输出的地面Z坐标
-     * @return 是否成功找到地面
-     * @note 使用射线检测从上往下查找地面
-     */
-    bool GetGroundHeight(const FVector& InLocation, float& OutGroundZ) const;
-
-    /**
-     * @brief 将位置调整到地面上
-     * @param InOutLocation 输入输出的位置
-     * @note 确保角色始终贴地
-     */
-    void AdjustToGround(FVector& InOutLocation) const;
+    float CalculateCatchUpSpeed(float Distance, float LeaderSpeed) const;
+    bool ShouldForceTeleport() const;
+    void PerformForceTeleport();
 
 protected:
     // ==================== 引用 ====================
@@ -217,8 +217,8 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Speed", meta = (DisplayName = "移动速度", ClampMin = "100.0"))
     float MovementSpeed = 600.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "招募过渡速度", ClampMin = "1.0", ClampMax = "50.0"))
-    float RecruitTransitionSpeed = 8.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "招募过渡基础速度", ClampMin = "100.0"))
+    float RecruitTransitionSpeed = 800.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "过渡完成后锁定"))
     bool bLockAfterRecruitTransition = true;
@@ -226,18 +226,28 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "过渡时禁用碰撞"))
     bool bDisableCollisionDuringTransition = true;
 
-    // ✨ 新增 - 地面追踪配置
-    /** @brief 是否启用地面追踪（确保士兵贴地） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Ground", meta = (DisplayName = "启用地面追踪"))
-    bool bEnableGroundTracking = true;
+    // 追赶加速配置
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "追赶加速距离", ClampMin = "100.0"))
+    float CatchUpAccelerationDistance = 200.0f;
 
-    /** @brief 地面检测的起始高度偏移（从角色位置向上） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Ground", meta = (DisplayName = "检测起始高度偏移", ClampMin = "0.0"))
-    float GroundTraceStartOffset = 200.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "最大追赶速度倍率", ClampMin = "1.0", ClampMax = "5.0"))
+    float MaxCatchUpSpeedMultiplier = 3.0f;
 
-    /** @brief 地面检测的距离（从起始点向下） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Ground", meta = (DisplayName = "检测距离", ClampMin = "100.0"))
-    float GroundTraceDistance = 500.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "追赶额外速度", ClampMin = "0.0"))
+    float CatchUpExtraSpeed = 200.0f;
+
+    // 传送保护配置
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "强制传送距离", ClampMin = "500.0"))
+    float ForceTeleportDistance = 1500.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "过渡超时时间", ClampMin = "1.0"))
+    float RecruitTransitionTimeout = 5.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "卡住检测时间", ClampMin = "0.5"))
+    float StuckDetectionTime = 1.5f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "卡住速度阈值", ClampMin = "1.0"))
+    float StuckSpeedThreshold = 30.0f;
 
     // ==================== 战斗状态 ====================
 
@@ -254,6 +264,9 @@ protected:
     ECollisionResponse OriginalPawnResponse = ECR_Block;
     bool bCollisionModified = false;
 
-    bool bOriginalMovementEnabled = true;
-    bool bMovementStateModified = false;
+    // 招募过渡状态追踪
+    float RecruitTransitionStartTime = 0.0f;
+    float LastValidMoveTime = 0.0f;
+    FVector LastPositionForStuckCheck = FVector::ZeroVector;
+    float AccumulatedStuckTime = 0.0f;
 };
