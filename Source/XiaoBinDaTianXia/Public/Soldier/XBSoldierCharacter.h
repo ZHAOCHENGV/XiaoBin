@@ -170,16 +170,7 @@ public:
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|AI", meta = (DisplayName = "获取避让权重"))
     float GetAvoidanceWeight() const;
 
-    // --- 加成配置 ---
 
-    UFUNCTION(BlueprintPure, Category = "XB|Soldier|Bonus", meta = (DisplayName = "获取血量加成"))
-    float GetHealthBonusToLeader() const;
-
-    UFUNCTION(BlueprintPure, Category = "XB|Soldier|Bonus", meta = (DisplayName = "获取伤害加成"))
-    float GetDamageBonusToLeader() const;
-
-    UFUNCTION(BlueprintPure, Category = "XB|Soldier|Bonus", meta = (DisplayName = "获取缩放加成"))
-    float GetScaleBonusToLeader() const;
 
     // ==================== 招募系统 ====================
 

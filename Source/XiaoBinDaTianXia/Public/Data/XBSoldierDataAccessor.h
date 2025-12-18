@@ -124,16 +124,7 @@ public:
     UFUNCTION(BlueprintPure, Category = "XB|Data|AI", meta = (DisplayName = "获取避让权重"))
     float GetAvoidanceWeight() const { return CachedTableRow.AIConfig.AvoidanceWeight; }
 
-    // --- 加成属性访问 ---
 
-    UFUNCTION(BlueprintPure, Category = "XB|Data|Bonus", meta = (DisplayName = "获取血量加成"))
-    float GetHealthBonusToLeader() const { return CachedTableRow.HealthBonusToLeader; }
-
-    UFUNCTION(BlueprintPure, Category = "XB|Data|Bonus", meta = (DisplayName = "获取伤害加成"))
-    float GetDamageBonusToLeader() const { return CachedTableRow.DamageBonusToLeader; }
-
-    UFUNCTION(BlueprintPure, Category = "XB|Data|Bonus", meta = (DisplayName = "获取缩放加成"))
-    float GetScaleBonusToLeader() const { return CachedTableRow.ScaleBonusToLeader; }
 
     // ==================== 资源访问接口 ====================
 

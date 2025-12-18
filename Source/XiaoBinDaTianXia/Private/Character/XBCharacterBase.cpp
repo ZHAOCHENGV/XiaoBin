@@ -227,9 +227,14 @@ void AXBCharacterBase::InitializeFromDataTable(UDataTable* DataTable, FName RowN
 
     CachedLeaderData = *LeaderRow;
 
+    // 🔧 修改 - 加载所有成长配置
     GrowthConfigCache.HealthPerSoldier = LeaderRow->HealthPerSoldier;
     GrowthConfigCache.ScalePerSoldier = LeaderRow->ScalePerSoldier;
     GrowthConfigCache.MaxScale = LeaderRow->MaxScale;
+    
+    // ✨ 新增 - 加载伤害倍率成长配置
+    GrowthConfigCache.DamageMultiplierPerSoldier = LeaderRow->DamageMultiplierPerSoldier;
+    GrowthConfigCache.MaxDamageMultiplier = LeaderRow->MaxDamageMultiplier;
 
     // 初始化战斗组件
     if (CombatComponent)
@@ -565,7 +570,7 @@ void AXBCharacterBase::OnSoldierDied(AXBSoldierCharacter* DeadSoldier)
 /**
  * @brief 应用士兵增加带来的成长效果
  * @param SoldierCount 增加的士兵数量
- * @note ✨ 新增 - 原 OnSoldiersAdded 的核心逻辑
+ * @note 🔧 修改 - 新增伤害倍率增长
  */
 void AXBCharacterBase::ApplyGrowthOnSoldiersAdded(int32 SoldierCount)
 {
@@ -581,26 +586,79 @@ void AXBCharacterBase::ApplyGrowthOnSoldiersAdded(int32 SoldierCount)
     const float HealthBonus = SoldierCount * GrowthConfigCache.HealthPerSoldier;
     AddHealthWithOverflow(HealthBonus);
 
-    // 3. 更新技能特效缩放
+    // ✨ 新增 - 3. 更新伤害倍率
+    UpdateDamageMultiplier();
+
+    // 4. 更新技能特效缩放
     if (GrowthConfigCache.bEnableSkillEffectScaling)
     {
         UpdateSkillEffectScaling();
     }
 
-    // 4. 更新攻击范围缩放
+    // 5. 更新攻击范围缩放
     if (GrowthConfigCache.bEnableAttackRangeScaling)
     {
         UpdateAttackRangeScaling();
     }
 
-    UE_LOG(LogXBCharacter, Log, TEXT("将领 %s 招募 %d 个士兵，当前总数: %d，体型: %.2f"),
-        *GetName(), SoldierCount, Soldiers.Num(), GetCurrentScale());
+    UE_LOG(LogXBCharacter, Log, TEXT("将领 %s 招募 %d 个士兵，当前总数: %d，体型: %.2f，伤害倍率: %.2f"),
+        *GetName(), SoldierCount, Soldiers.Num(), GetCurrentScale(), GetCurrentDamageMultiplier());
 }
+
+
+/**
+ * @brief 更新将领伤害倍率
+ * @note ✨ 新增 - 根据士兵数量计算伤害倍率
+ *       公式：最终倍率 = 基础倍率 + (士兵数 × 每士兵加成)
+ */
+void AXBCharacterBase::UpdateDamageMultiplier()
+{
+    if (!AbilitySystemComponent)
+    {
+        return;
+    }
+
+    // 基础伤害倍率（从数据表加载的初始值）
+    const float BaseDamageMultiplier = CachedLeaderData.DamageMultiplier;
+    
+    // 计算士兵带来的额外倍率
+    const float AdditionalMultiplier = Soldiers.Num() * GrowthConfigCache.DamageMultiplierPerSoldier;
+    
+    // 最终倍率 = 基础 + 额外，但不超过最大值
+    const float NewMultiplier = FMath::Min(
+        BaseDamageMultiplier + AdditionalMultiplier,
+        GrowthConfigCache.MaxDamageMultiplier
+    );
+
+    // 应用到 ASC
+    AbilitySystemComponent->SetNumericAttributeBase(
+        UXBAttributeSet::GetDamageMultiplierAttribute(),
+        NewMultiplier
+    );
+
+    UE_LOG(LogXBCharacter, Verbose, TEXT("伤害倍率更新: 基础=%.2f, 士兵数=%d, 最终=%.2f"),
+        BaseDamageMultiplier, Soldiers.Num(), NewMultiplier);
+}
+
+/**
+ * @brief 获取当前伤害倍率
+ * @return 当前伤害倍率
+ * @note ✨ 新增
+ */
+float AXBCharacterBase::GetCurrentDamageMultiplier() const
+{
+    if (AbilitySystemComponent)
+    {
+        return AbilitySystemComponent->GetNumericAttribute(UXBAttributeSet::GetDamageMultiplierAttribute());
+    }
+    return CachedLeaderData.DamageMultiplier;
+}
+
 
 /**
  * @brief 应用士兵减少带来的缩减效果
  * @param SoldierCount 减少的士兵数量
- * @note ✨ 新增 - 分离出缩减逻辑
+ * @note 🔧 修改 - 新增伤害倍率缩减
  */
 void AXBCharacterBase::ApplyGrowthOnSoldiersRemoved(int32 SoldierCount)
 {
@@ -612,15 +670,18 @@ void AXBCharacterBase::ApplyGrowthOnSoldiersRemoved(int32 SoldierCount)
     // 1. 缩小体型
     UpdateLeaderScale();
 
-    // 2. 不减少血量（按需求）
+    // ✨ 新增 - 2. 更新伤害倍率（减少）
+    UpdateDamageMultiplier();
 
-    // 3. 更新技能特效缩放
+    // 3. 不减少血量（按需求）
+
+    // 4. 更新技能特效缩放
     if (GrowthConfigCache.bEnableSkillEffectScaling)
     {
         UpdateSkillEffectScaling();
     }
 
-    // 4. 更新攻击范围缩放
+    // 5. 更新攻击范围缩放
     if (GrowthConfigCache.bEnableAttackRangeScaling)
     {
         UpdateAttackRangeScaling();

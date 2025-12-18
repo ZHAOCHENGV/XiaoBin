@@ -166,6 +166,15 @@ protected:
      */
     FVector2D GetSlotLocalOffset() const;
 
+    // ✨ 新增 - 获取地面高度
+    /**
+     * @brief 获取指定XY位置的地面Z坐标
+     * @param XYLocation XY位置
+     * @param FallbackZ 检测失败时的回退Z值
+     * @return 地面Z坐标
+     */
+    float GetGroundHeightAtLocation(const FVector2D& XYLocation, float FallbackZ) const;
+
     /**
      * @brief 移动到目标位置（只控制XY）
      */

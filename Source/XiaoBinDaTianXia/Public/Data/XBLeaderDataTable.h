@@ -81,8 +81,7 @@ struct XIAOBINDATIANXIA_API FXBLeaderTableRow : public FTableRowBase
     /** @brief 生命值倍率 - 对应 HealthMultiplier */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "核心属性", meta = (DisplayName = "生命值倍率", ClampMin = "0.1"))
     float HealthMultiplier = 1.0f;
-
-    // ❌ 删除 - BaseDamage（移到 FXBAbilityConfig 中）
+    
 
     /** @brief 伤害倍率 - 对应 DamageMultiplier */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "核心属性", meta = (DisplayName = "伤害倍率", ClampMin = "0.1"))
@@ -109,6 +108,14 @@ struct XIAOBINDATIANXIA_API FXBLeaderTableRow : public FTableRowBase
     /** @brief 最大体型缩放 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长配置", meta = (DisplayName = "最大体型缩放", ClampMin = "1.0"))
     float MaxScale = 2.0f;
+    
+    /** @brief 每个士兵增加的伤害倍率 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长配置", meta = (DisplayName = "每士兵伤害倍率加成"))
+    float DamageMultiplierPerSoldier = 0.01f;
+
+    /** @brief 最大伤害倍率 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长配置", meta = (DisplayName = "最大伤害倍率", ClampMin = "1.0"))
+    float MaxDamageMultiplier = 3.0f;
 
     // ============ 战斗配置 ============
 

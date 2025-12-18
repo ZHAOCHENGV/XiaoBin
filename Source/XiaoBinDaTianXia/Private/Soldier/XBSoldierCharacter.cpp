@@ -346,21 +346,6 @@ float AXBSoldierCharacter::GetAvoidanceWeight() const
     return IsDataAccessorValid() ? DataAccessor->GetAvoidanceWeight() : 0.3f;
 }
 
-float AXBSoldierCharacter::GetHealthBonusToLeader() const
-{
-    return IsDataAccessorValid() ? DataAccessor->GetHealthBonusToLeader() : 20.0f;
-}
-
-float AXBSoldierCharacter::GetDamageBonusToLeader() const
-{
-    return IsDataAccessorValid() ? DataAccessor->GetDamageBonusToLeader() : 2.0f;
-}
-
-float AXBSoldierCharacter::GetScaleBonusToLeader() const
-{
-    return IsDataAccessorValid() ? DataAccessor->GetScaleBonusToLeader() : 0.01f;
-}
-
 // ==================== 招募系统 ====================
 
 bool AXBSoldierCharacter::CanBeRecruited() const
@@ -897,6 +882,13 @@ void AXBSoldierCharacter::HandleDeath()
     
     bIsDead = true;
     
+    // ✨ 新增 - 立即停止跟随组件，确保原地死亡
+    if (FollowComponent)
+    {
+        FollowComponent->SetFollowMode(EXBFollowMode::Free);
+        FollowComponent->SetComponentTickEnabled(false);
+    }
+    
     SetSoldierState(EXBSoldierState::Dead);
 
     OnSoldierDied.Broadcast(this);
@@ -918,6 +910,8 @@ void AXBSoldierCharacter::HandleDeath()
 
     if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
     {
+        MoveComp->StopMovementImmediately();
+        MoveComp->DisableMovement();
         MoveComp->SetComponentTickEnabled(false);
     }
 
@@ -935,7 +929,7 @@ void AXBSoldierCharacter::HandleDeath()
 
     SetLifeSpan(2.0f);
 
-    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 死亡"), *GetName());
+    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 死亡，原地停止"), *GetName());
 }
 
 void AXBSoldierCharacter::FaceTarget(AActor* Target, float DeltaTime)

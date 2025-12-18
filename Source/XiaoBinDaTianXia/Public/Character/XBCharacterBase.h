@@ -54,9 +54,20 @@ struct XIAOBINDATIANXIA_API FXBGrowthConfigCache
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长", meta = (DisplayName = "最大体型缩放"))
     float MaxScale = 2.f;
 
+    
+    // ✨ 新增 - 伤害倍率成长配置
+    /** @brief 每个士兵增加的伤害倍率 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长", meta = (DisplayName = "每士兵伤害倍率加成"))
+    float DamageMultiplierPerSoldier = 0.01f;
+
+    /** @brief 最大伤害倍率 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长", meta = (DisplayName = "最大伤害倍率", ClampMin = "1.0"))
+    float MaxDamageMultiplier = 3.0f;
+
     /** @brief 是否启用技能特效缩放 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长", meta = (DisplayName = "启用技能特效缩放"))
     bool bEnableSkillEffectScaling = true;
+
 
     /** @brief 技能特效缩放倍率（相对于角色缩放） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长", meta = (DisplayName = "技能特效缩放倍率", ClampMin = "0.1"))
@@ -167,6 +178,10 @@ public:
 
     UFUNCTION(BlueprintPure, Category = "成长", meta = (DisplayName = "获取当前攻击范围"))
     float GetScaledAttackRange() const;
+
+    // ✨ 新增 - 获取当前伤害倍率
+    UFUNCTION(BlueprintPure, Category = "成长", meta = (DisplayName = "获取当前伤害倍率"))
+    float GetCurrentDamageMultiplier() const;
 
     // ✨ 新增 - 攻击状态回调
     UFUNCTION()
@@ -327,6 +342,12 @@ protected:
     void UpdateAttackRangeScaling();
     void UpdateLeaderScale();
     void AddHealthWithOverflow(float HealthToAdd);
+    // ✨ 新增 - 更新伤害倍率
+    /**
+     * @brief 更新将领伤害倍率
+     * @note 根据士兵数量计算，公式：基础倍率 + (士兵数 × 每士兵加成)
+     */
+    void UpdateDamageMultiplier();
 
     // ==================== 核心组件 ====================
 

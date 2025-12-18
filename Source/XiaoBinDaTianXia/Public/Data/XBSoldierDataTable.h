@@ -200,20 +200,7 @@ struct XIAOBINDATIANXIA_API FXBSoldierTableRow : public FTableRowBase
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "移动", meta = (DisplayName = "旋转速度", ClampMin = "0.0"))
     float RotationSpeed = 360.0f;
 
-    // ==================== 加成配置 ====================
-
-    /** @brief 给将领的血量加成 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "加成", meta = (DisplayName = "血量加成", ClampMin = "0.0"))
-    float HealthBonusToLeader = 20.0f;
-
-    /** @brief 给将领的伤害加成 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "加成", meta = (DisplayName = "伤害加成", ClampMin = "0.0"))
-    float DamageBonusToLeader = 2.0f;
-
-    /** @brief 给将领的缩放加成 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "加成", meta = (DisplayName = "缩放加成", ClampMin = "0.0"))
-    float ScaleBonusToLeader = 0.01f;
-
+    
     // ==================== AI配置 ====================
 
     /** @brief AI行为配置 */
