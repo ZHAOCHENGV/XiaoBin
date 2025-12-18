@@ -97,7 +97,7 @@ AXBCharacterBase::AXBCharacterBase()
     MagnetFieldComponent->SetupAttachment(RootComponent);
 
     // 创建编队组件
-    FormationComponent = CreateDefaultSubobject<UXBFormationComponent>(TEXT("FormationComponent"));
+    FormationComponent = CreateDefaultSubobject<UXBFormationComponent>(TEXT("SoldierFormationComponent"));
 
     
     // 禁用控制器旋转
