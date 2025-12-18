@@ -9,6 +9,7 @@
  *       1. 🔧 修改 锁定模式完全实时同步位置和旋转
  *       2. ❌ 删除 不必要的速度计算
  *       3. 🔧 简化 只保留必要的配置
+ *       4. ✨ 新增 将领速度感知，招募过渡时同步将领移动速度
  */
 
 #pragma once
@@ -41,7 +42,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnRecruitTransitionCompleted);
  * @note 核心设计：
  *       - 锁定模式：每帧直接设置位置到槽位，完全实时同步
  *       - 自由模式：战斗时脱离编队
- *       - 招募过渡：快速追赶到槽位
+ *       - 招募过渡：快速追赶到槽位，同步将领移动速度
  */
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent, DisplayName = "XB Soldier Follow"))
 class XIAOBINDATIANXIA_API UXBSoldierFollowComponent : public UActorComponent
@@ -88,11 +89,6 @@ public:
     UFUNCTION(BlueprintCallable, Category = "XB|Follow", meta = (DisplayName = "传送到编队位置"))
     void TeleportToFormationPosition();
 
-    // ✨ 新增 - 兼容方法
-    /**
-     * @brief 开始插值到编队位置
-     * @note 🔧 兼容旧接口，现在直接传送并锁定
-     */
     UFUNCTION(BlueprintCallable, Category = "XB|Follow", meta = (DisplayName = "插值到编队位置"))
     void StartInterpolateToFormation();
 
@@ -128,6 +124,16 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "XB|Follow")
     void SetFollowSpeed(float NewSpeed) { RecruitTransitionSpeed = NewSpeed; }
+
+    // ✨ 新增 - 同步将领冲刺状态
+    /**
+     * @brief 通知将领冲刺状态变化
+     * @param bLeaderSprinting 将领是否正在冲刺
+     * @param LeaderCurrentSpeed 将领当前移动速度
+     * @note 招募过渡时，士兵需要同步将领的移动速度才能追上
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Follow", meta = (DisplayName = "同步将领冲刺状态"))
+    void SyncLeaderSprintState(bool bLeaderSprinting, float LeaderCurrentSpeed);
 
     // ==================== 委托事件 ====================
 
@@ -166,7 +172,6 @@ protected:
      */
     FVector2D GetSlotLocalOffset() const;
 
-    // ✨ 新增 - 获取地面高度
     /**
      * @brief 获取指定XY位置的地面Z坐标
      * @param XYLocation XY位置
@@ -189,6 +194,22 @@ protected:
 
     bool ShouldForceTeleport() const;
     void PerformForceTeleport();
+
+    // ✨ 新增 - 计算招募过渡时的实际移动速度
+    /**
+     * @brief 计算招募过渡时的实际移动速度
+     * @param DistanceToTarget 到目标的距离
+     * @return 计算后的移动速度
+     * @note 综合考虑：基础速度 + 将领速度 + 距离加速 + 追赶补偿
+     */
+    float CalculateRecruitTransitionSpeed(float DistanceToTarget) const;
+
+    // ✨ 新增 - 获取将领当前速度
+    /**
+     * @brief 获取将领当前移动速度
+     * @return 将领速度，如果无法获取则返回0
+     */
+    float GetLeaderCurrentSpeed() const;
 
 protected:
     // ==================== 引用 ====================
@@ -224,18 +245,31 @@ protected:
 
     // ==================== 招募过渡配置 ====================
 
-    // 🔧 修改 - 提高默认速度
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "招募过渡速度", ClampMin = "100.0"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "招募过渡基础速度", ClampMin = "100.0"))
     float RecruitTransitionSpeed = 2000.0f;
 
-    // ✨ 新增 - 距离加速倍率
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "距离加速倍率", ClampMin = "1.0", ClampMax = "5.0"))
     float DistanceSpeedMultiplier = 2.0f;
 
-    // ✨ 新增 - 最大过渡速度
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "最大过渡速度", ClampMin = "500.0"))
-    float MaxTransitionSpeed = 5000.0f;
+    float MaxTransitionSpeed = 8000.0f;
 
+    // ✨ 新增 - 追赶补偿配置
+    /**
+     * @brief 追赶速度补偿倍率
+     * @note 当将领移动时，士兵需要额外的速度来追赶
+     *       公式：实际速度 = 基础速度 + 将领速度 × 补偿倍率
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "追赶补偿倍率", ClampMin = "1.0", ClampMax = "3.0"))
+    float CatchUpSpeedMultiplier = 1.5f;
+
+    // ✨ 新增 - 冲刺同步配置
+    /**
+     * @brief 是否同步将领冲刺状态
+     * @note 启用后，招募过渡时会检测将领是否冲刺并同步速度
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "同步将领冲刺"))
+    bool bSyncLeaderSprint = true;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "过渡时禁用碰撞"))
     bool bDisableCollisionDuringTransition = true;
@@ -244,7 +278,7 @@ protected:
     float ForceTeleportDistance = 5000.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "过渡超时时间", ClampMin = "1.0"))
-    float RecruitTransitionTimeout = 3.0f;
+    float RecruitTransitionTimeout = 5.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "卡住检测时间", ClampMin = "0.5"))
     float StuckDetectionTime = 1.0f;
@@ -256,6 +290,16 @@ protected:
 
     UPROPERTY(BlueprintReadOnly, Category = "XB|Follow|Combat", meta = (DisplayName = "是否战斗中"))
     bool bIsInCombat = false;
+
+    // ==================== ✨ 新增：将领状态缓存 ====================
+
+    /** @brief 将领是否正在冲刺 */
+    UPROPERTY(BlueprintReadOnly, Category = "XB|Follow", meta = (DisplayName = "将领正在冲刺"))
+    bool bLeaderIsSprinting = false;
+
+    /** @brief 将领当前速度（缓存值，用于速度计算） */
+    UPROPERTY(BlueprintReadOnly, Category = "XB|Follow", meta = (DisplayName = "将领当前速度"))
+    float CachedLeaderSpeed = 0.0f;
 
     // ==================== 状态 ====================
 

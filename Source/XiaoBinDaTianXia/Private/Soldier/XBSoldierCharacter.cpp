@@ -377,7 +377,12 @@ bool AXBSoldierCharacter::CanBeRecruited() const
     
     return true;
 }
-
+/**
+ * @brief 士兵被招募
+ * @param NewLeader 新将领
+ * @param SlotIndex 槽位索引
+ * @note 🔧 修改 - 招募时同步将领冲刺状态，确保过渡期间速度正确
+ */
 void AXBSoldierCharacter::OnRecruited(AActor* NewLeader, int32 SlotIndex)
 {
     if (!NewLeader)
@@ -414,6 +419,23 @@ void AXBSoldierCharacter::OnRecruited(AActor* NewLeader, int32 SlotIndex)
     {
         FollowComponent->SetFollowTarget(NewLeader);
         FollowComponent->SetFormationSlotIndex(SlotIndex);
+        
+        // ✨ 新增 - 同步将领冲刺状态
+        // 如果将领正在冲刺，士兵需要以更快的速度追赶
+        if (AXBCharacterBase* LeaderChar = Cast<AXBCharacterBase>(NewLeader))
+        {
+            bool bLeaderSprinting = LeaderChar->IsSprinting();
+            float LeaderSpeed = LeaderChar->GetCurrentMoveSpeed();
+            
+            // 通知跟随组件将领的移动状态
+            FollowComponent->SyncLeaderSprintState(bLeaderSprinting, LeaderSpeed);
+            
+            UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 同步将领冲刺状态 - 冲刺: %s, 速度: %.1f"), 
+                *GetName(),
+                bLeaderSprinting ? TEXT("是") : TEXT("否"),
+                LeaderSpeed);
+        }
+        
         FollowComponent->StartRecruitTransition();
     }
     
