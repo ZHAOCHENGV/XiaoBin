@@ -8,10 +8,12 @@
 
 #include "Character/XBPlayerCharacter.h"
 #include "Camera/CameraComponent.h"
+#include "Character/Components/XBFormationComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 
 AXBPlayerCharacter::AXBPlayerCharacter()
 {
+   
     // ========== 弹簧臂配置 ==========
     SpringArmComponent = CreateDefaultSubobject<USpringArmComponent>(TEXT("SpringArmComponent"));
     SpringArmComponent->SetupAttachment(RootComponent);
@@ -36,6 +38,7 @@ AXBPlayerCharacter::AXBPlayerCharacter()
 
     // ========== 默认阵营 ==========
     Faction = EXBFaction::Player;
+
 }
 
 void AXBPlayerCharacter::BeginPlay()

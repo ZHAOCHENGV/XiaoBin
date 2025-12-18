@@ -4,13 +4,6 @@
 /**
  * @file XBSoldierCharacter.cpp
  * @brief 士兵Actor实现 - 重构为数据驱动架构
- * 
- * @note 🔧 重构记录:
- *       1. 所有配置数据访问通过 DataAccessor
- *       2. 移除 FXBSoldierConfig 和 ToSoldierConfig()
- *       3. 简化初始化流程
- *       4. 保持运行时状态管理不变
- *       5. ✨ 新增 bIsDead 死亡状态变量
  */
 
 #include "Soldier/XBSoldierCharacter.h"
@@ -61,13 +54,10 @@ AXBSoldierCharacter::AXBSoldierCharacter()
         MeshComp->SetCollisionResponseToChannel(XBCollision::Leader, ECR_Ignore);
     }
 
-    // ==================== ✨ 新增：创建数据访问器组件 ====================
+    // ==================== 创建组件 ====================
     DataAccessor = CreateDefaultSubobject<UXBSoldierDataAccessor>(TEXT("DataAccessor"));
-
-    // ==================== 创建其他组件 ====================
     FollowComponent = CreateDefaultSubobject<UXBSoldierFollowComponent>(TEXT("FollowComponent"));
     DebugComponent = CreateDefaultSubobject<UXBSoldierDebugComponent>(TEXT("DebugComponent"));
-    // ✨ 新增 - 创建行为接口组件
     BehaviorInterface = CreateDefaultSubobject<UXBSoldierBehaviorInterface>(TEXT("BehaviorInterface"));
     
     // ==================== 移动组件配置 ====================
@@ -122,14 +112,14 @@ void AXBSoldierCharacter::BeginPlay()
 {
     Super::BeginPlay();
 
-    // ==================== 🔧 从 DataAccessor 初始化血量 ====================
+    // 从 DataAccessor 初始化血量
     if (IsDataAccessorValid())
     {
         CurrentHealth = DataAccessor->GetMaxHealth();
     }
     else
     {
-        CurrentHealth = 100.0f; // 默认值
+        CurrentHealth = 100.0f;
     }
     
     // 延迟启用移动和Tick
@@ -171,38 +161,18 @@ void AXBSoldierCharacter::EnableMovementAndTick()
     UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 移动组件和Tick已启用"), *GetName());
 }
 
-
-/**
- * @brief Tick 函数
- * @note 🔧 核心重构 - 移除所有 AI 决策逻辑
- *       AI 逻辑现在由行为树和 BehaviorInterface 组件处理
- */
 void AXBSoldierCharacter::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
-    
 }
 
-// ==================== ✨ 新增：数据访问器有效性检查 ====================
+// ==================== 数据访问器接口 ====================
 
-/**
- * @brief 检查数据访问器是否有效
- * @return 是否有效且已初始化
- */
 bool AXBSoldierCharacter::IsDataAccessorValid() const
 {
     return DataAccessor && DataAccessor->IsInitialized();
 }
 
-// ==================== 🔧 重构：初始化方法 ====================
-
-/**
- * @brief 从数据表初始化
- * @param DataTable 数据表
- * @param RowName 行名
- * @param InFaction 阵营
- * @note 🔧 核心重构 - 简化为直接初始化 DataAccessor
- */
 void AXBSoldierCharacter::InitializeFromDataTable(UDataTable* DataTable, FName RowName, EXBFaction InFaction)
 {
     if (!DataTable)
@@ -223,11 +193,11 @@ void AXBSoldierCharacter::InitializeFromDataTable(UDataTable* DataTable, FName R
         return;
     }
 
-    // ==================== ✨ 核心：使用 DataAccessor 初始化 ====================
+    // 使用 DataAccessor 初始化
     bool bInitSuccess = DataAccessor->Initialize(
         DataTable, 
         RowName, 
-        EXBResourceLoadStrategy::Synchronous  // 同步加载模式
+        EXBResourceLoadStrategy::Synchronous
     );
 
     if (!bInitSuccess)
@@ -236,29 +206,28 @@ void AXBSoldierCharacter::InitializeFromDataTable(UDataTable* DataTable, FName R
         return;
     }
 
-    // ==================== 🔧 从 DataAccessor 读取并缓存基础属性 ====================
+    // 从 DataAccessor 读取并缓存基础属性
     SoldierType = DataAccessor->GetSoldierType();
     Faction = InFaction;
     CurrentHealth = DataAccessor->GetMaxHealth();
 
-    // ==================== 🔧 应用移动组件配置 ====================
+    // 应用移动组件配置
     if (UCharacterMovementComponent* MovementComp = GetCharacterMovement())
     {
         MovementComp->MaxWalkSpeed = DataAccessor->GetMoveSpeed();
         MovementComp->RotationRate = FRotator(0.0f, DataAccessor->GetRotationSpeed(), 0.0f);
     }
 
-    // ==================== 🔧 应用跟随组件配置 ====================
+    // 应用跟随组件配置
     if (FollowComponent)
     {
         FollowComponent->SetFollowSpeed(DataAccessor->GetMoveSpeed());
-        /*FollowComponent->SetFollowInterpSpeed(DataAccessor->GetFollowInterpSpeed());*/
     }
 
-    // ==================== 🔧 加载行为树 ====================
+    // 加载行为树
     BehaviorTreeAsset = DataAccessor->GetBehaviorTree();
 
-    // ==================== 🔧 应用视觉配置 ====================
+    // 应用视觉配置
     ApplyVisualConfig();
 
     UE_LOG(LogXBSoldier, Log, TEXT("士兵初始化成功: %s (类型=%s, 血量=%.1f, 视野=%.0f, 攻击范围=%.0f)"), 
@@ -269,10 +238,6 @@ void AXBSoldierCharacter::InitializeFromDataTable(UDataTable* DataTable, FName R
         DataAccessor->GetAttackRange());
 }
 
-/**
- * @brief 应用视觉配置
- * @note 🔧 从 DataAccessor 获取资源
- */
 void AXBSoldierCharacter::ApplyVisualConfig()
 {
     if (!IsDataAccessorValid())
@@ -280,7 +245,6 @@ void AXBSoldierCharacter::ApplyVisualConfig()
         return;
     }
 
-    // 🔧 修复 - 重命名变量避免与 ACharacter::Mesh 冲突
     USkeletalMesh* SoldierMesh = DataAccessor->GetSkeletalMesh();
     if (SoldierMesh)
     {
@@ -300,8 +264,7 @@ void AXBSoldierCharacter::ApplyVisualConfig()
     }
 }
 
-// ==================== 🔧 重构：配置属性访问方法 ====================
-// 所有配置数据访问都委托给 DataAccessor，带默认值保护
+// ==================== 配置属性访问 ====================
 
 FText AXBSoldierCharacter::GetDisplayName() const
 {
@@ -398,7 +361,7 @@ float AXBSoldierCharacter::GetScaleBonusToLeader() const
     return IsDataAccessorValid() ? DataAccessor->GetScaleBonusToLeader() : 0.01f;
 }
 
-// ==================== 招募系统实现 ====================
+// ==================== 招募系统 ====================
 
 bool AXBSoldierCharacter::CanBeRecruited() const
 {
@@ -485,6 +448,513 @@ void AXBSoldierCharacter::OnRecruited(AActor* NewLeader, int32 SlotIndex)
     );
     
     OnSoldierRecruited.Broadcast(this, NewLeader);
+}
+
+// ==================== 跟随系统 ====================
+
+void AXBSoldierCharacter::SetFollowTarget(AActor* NewLeader, int32 SlotIndex)
+{
+    FollowTarget = NewLeader;
+    FormationSlotIndex = SlotIndex;
+
+    if (FollowComponent)
+    {
+        FollowComponent->SetFollowTarget(NewLeader);
+        FollowComponent->SetFormationSlotIndex(SlotIndex);
+    }
+
+    if (AAIController* AICtrl = Cast<AAIController>(GetController()))
+    {
+        if (UBlackboardComponent* BBComp = AICtrl->GetBlackboardComponent())
+        {
+            BBComp->SetValueAsObject(TEXT("Leader"), NewLeader);
+            BBComp->SetValueAsInt(TEXT("FormationSlot"), SlotIndex);
+        }
+    }
+
+    if (NewLeader)
+    {
+        SetSoldierState(EXBSoldierState::Following);
+    }
+    else
+    {
+        SetSoldierState(EXBSoldierState::Idle);
+    }
+}
+
+AXBCharacterBase* AXBSoldierCharacter::GetLeaderCharacter() const
+{
+    return Cast<AXBCharacterBase>(FollowTarget.Get());
+}
+
+void AXBSoldierCharacter::SetFormationSlotIndex(int32 NewIndex)
+{
+    FormationSlotIndex = NewIndex;
+
+    if (FollowComponent)
+    {
+        FollowComponent->SetFormationSlotIndex(NewIndex);
+    }
+
+    if (AAIController* AICtrl = Cast<AAIController>(GetController()))
+    {
+        if (UBlackboardComponent* BBComp = AICtrl->GetBlackboardComponent())
+        {
+            BBComp->SetValueAsInt(TEXT("FormationSlot"), NewIndex);
+        }
+    }
+}
+
+// ==================== 状态管理 ====================
+
+void AXBSoldierCharacter::SetSoldierState(EXBSoldierState NewState)
+{
+    if (CurrentState == NewState)
+    {
+        return;
+    }
+
+    EXBSoldierState OldState = CurrentState;
+    CurrentState = NewState;
+
+    if (AAIController* AICtrl = Cast<AAIController>(GetController()))
+    {
+        if (UBlackboardComponent* BBComp = AICtrl->GetBlackboardComponent())
+        {
+            BBComp->SetValueAsInt(TEXT("SoldierState"), static_cast<int32>(NewState));
+        }
+    }
+
+    OnSoldierStateChanged.Broadcast(OldState, NewState);
+
+    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 状态变化: %d -> %d"), 
+        *GetName(), static_cast<int32>(OldState), static_cast<int32>(NewState));
+}
+
+// ==================== 战斗系统 ====================
+
+void AXBSoldierCharacter::EnterCombat()
+{
+    if (CurrentState == EXBSoldierState::Dead)
+    {
+        return;
+    }
+
+    if (!bIsRecruited)
+    {
+        return;
+    }
+
+    if (FollowComponent)
+    {
+        FollowComponent->EnterCombatMode();
+    }
+
+    SetSoldierState(EXBSoldierState::Combat);
+    
+    if (BehaviorInterface)
+    {
+        AActor* FoundEnemy = nullptr;
+        if (BehaviorInterface->SearchForEnemy(FoundEnemy))
+        {
+            CurrentAttackTarget = FoundEnemy;
+        }
+    }
+
+    UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 进入战斗, 目标: %s"), 
+        *GetName(), CurrentAttackTarget.IsValid() ? *CurrentAttackTarget->GetName() : TEXT("无"));
+}
+
+void AXBSoldierCharacter::ExitCombat()
+{
+    if (CurrentState == EXBSoldierState::Dead)
+    {
+        return;
+    }
+
+    CurrentAttackTarget = nullptr;
+    
+    if (FollowComponent)
+    {
+        FollowComponent->ExitCombatMode();
+    }
+    
+    if (AAIController* AICtrl = Cast<AAIController>(GetController()))
+    {
+        AICtrl->StopMovement();
+    }
+
+    SetSoldierState(EXBSoldierState::Following);
+
+    UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 退出战斗"), *GetName());
+}
+
+float AXBSoldierCharacter::TakeSoldierDamage(float DamageAmount, AActor* DamageSource)
+{
+    if (bIsDead || CurrentState == EXBSoldierState::Dead)
+    {
+        UE_LOG(LogXBCombat, Verbose, TEXT("士兵 %s 已死亡，忽略伤害"), *GetName());
+        return 0.0f;
+    }
+
+    if (DamageAmount <= 0.0f)
+    {
+        UE_LOG(LogXBCombat, Warning, TEXT("士兵 %s 收到无效伤害值: %.1f"), *GetName(), DamageAmount);
+        return 0.0f;
+    }
+
+    float ActualDamage = FMath::Min(DamageAmount, CurrentHealth);
+    CurrentHealth -= ActualDamage;
+
+    UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 受到 %.1f 伤害, 剩余血量: %.1f"), 
+        *GetName(), ActualDamage, CurrentHealth);
+
+    if (CurrentHealth <= 0.0f)
+    {
+        HandleDeath();
+    }
+
+    return ActualDamage;
+}
+
+bool AXBSoldierCharacter::PerformAttack(AActor* Target)
+{
+    if (BehaviorInterface)
+    {
+        EXBBehaviorResult Result = BehaviorInterface->ExecuteAttack(Target);
+        return Result == EXBBehaviorResult::Success;
+    }
+    return false;
+}
+
+bool AXBSoldierCharacter::PlayAttackMontage()
+{
+    if (!IsDataAccessorValid())
+    {
+        return false;
+    }
+
+    UAnimMontage* AttackMontage = DataAccessor->GetBasicAttackMontage();
+
+    if (!AttackMontage)
+    {
+        return false;
+    }
+
+    if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
+    {
+        return AnimInstance->Montage_Play(AttackMontage) > 0.0f;
+    }
+
+    return false;
+}
+
+bool AXBSoldierCharacter::CanAttack() const
+{
+    if (BehaviorInterface)
+    {
+        return BehaviorInterface->GetAttackCooldownRemaining() <= 0.0f && 
+               CurrentState != EXBSoldierState::Dead &&
+               !bIsDead;
+    }
+    return false;
+}
+
+// ==================== AI系统 ====================
+
+bool AXBSoldierCharacter::HasEnemiesInRadius(float Radius) const
+{
+    FXBDetectionResult Result;
+    return UXBBlueprintFunctionLibrary::DetectEnemiesInRadius(
+        this,
+        GetActorLocation(),
+        Radius,
+        Faction,
+        true,
+        Result
+    );
+}
+
+float AXBSoldierCharacter::GetDistanceToTarget(AActor* Target) const
+{
+    if (!Target || !IsValid(Target))
+    {
+        return MAX_FLT;
+    }
+    return FVector::Dist(GetActorLocation(), Target->GetActorLocation());
+}
+
+bool AXBSoldierCharacter::IsInAttackRange(AActor* Target) const
+{
+    if (!Target || !IsValid(Target))
+    {
+        return false;
+    }
+
+    float AttackRange = GetAttackRange();
+    return GetDistanceToTarget(Target) <= AttackRange;
+}
+
+void AXBSoldierCharacter::ReturnToFormation()
+{
+    CurrentAttackTarget = nullptr;
+    
+    if (FollowComponent)
+    {
+        FollowComponent->ExitCombatMode();
+    }
+    
+    if (AAIController* AICtrl = Cast<AAIController>(GetController()))
+    {
+        AICtrl->StopMovement();
+    }
+    
+    SetSoldierState(EXBSoldierState::Following);
+
+    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 传送回队列"), *GetName());
+}
+
+FVector AXBSoldierCharacter::CalculateAvoidanceDirection(const FVector& DesiredDirection)
+{
+    float AvoidanceRadius = GetAvoidanceRadius();
+    float AvoidanceWeight = GetAvoidanceWeight();
+
+    if (AvoidanceRadius <= 0.0f)
+    {
+        return DesiredDirection;
+    }
+
+    FVector AvoidanceForce = FVector::ZeroVector;
+    FVector MyLocation = GetActorLocation();
+
+    FXBDetectionResult AlliesResult;
+    UXBBlueprintFunctionLibrary::DetectAlliesInRadius(
+        this,
+        MyLocation,
+        AvoidanceRadius,
+        Faction,
+        true,
+        AlliesResult
+    );
+
+    int32 AvoidanceCount = 0;
+
+    for (AActor* OtherActor : AlliesResult.DetectedActors)
+    {
+        if (OtherActor == this)
+        {
+            continue;
+        }
+
+        float Distance = FVector::Dist2D(MyLocation, OtherActor->GetActorLocation());
+        if (Distance > KINDA_SMALL_NUMBER)
+        {
+            FVector AwayDirection = (MyLocation - OtherActor->GetActorLocation()).GetSafeNormal2D();
+            float Strength = 1.0f - (Distance / AvoidanceRadius);
+            AvoidanceForce += AwayDirection * Strength;
+            AvoidanceCount++;
+        }
+    }
+
+    if (AvoidanceCount == 0)
+    {
+        return DesiredDirection;
+    }
+
+    AvoidanceForce.Normalize();
+
+    FVector BlendedDirection = DesiredDirection * (1.0f - AvoidanceWeight) + 
+                               AvoidanceForce * AvoidanceWeight;
+
+    return BlendedDirection.GetSafeNormal();
+}
+
+void AXBSoldierCharacter::MoveToFormationPosition()
+{
+    if (FollowComponent)
+    {
+        FollowComponent->StartInterpolateToFormation();
+    }
+}
+
+FVector AXBSoldierCharacter::GetFormationWorldPosition() const
+{
+    if (!FollowTarget.IsValid())
+    {
+        return GetActorLocation();
+    }
+
+    if (FollowComponent)
+    {
+        return FollowComponent->GetTargetPosition();
+    }
+
+    return FollowTarget->GetActorLocation();
+}
+
+FVector AXBSoldierCharacter::GetFormationWorldPositionSafe() const
+{
+    if (!FollowTarget.IsValid())
+    {
+        return FVector::ZeroVector;
+    }
+    
+    AActor* Target = FollowTarget.Get();
+    if (!Target || !IsValid(Target))
+    {
+        return FVector::ZeroVector;
+    }
+    
+    if (!FollowComponent)
+    {
+        return Target->GetActorLocation();
+    }
+    
+    FVector TargetPos = FollowComponent->GetTargetPosition();
+    if (!TargetPos.IsZero() && !TargetPos.ContainsNaN())
+    {
+        return TargetPos;
+    }
+    
+    return Target->GetActorLocation();
+}
+
+bool AXBSoldierCharacter::IsAtFormationPosition() const
+{
+    if (FollowComponent)
+    {
+        return FollowComponent->IsAtFormationPosition();
+    }
+    
+    FVector TargetPos = GetFormationWorldPosition();
+    float ArrivalThreshold = GetArrivalThreshold();
+    return FVector::Dist2D(GetActorLocation(), TargetPos) <= ArrivalThreshold;
+}
+
+bool AXBSoldierCharacter::IsAtFormationPositionSafe() const
+{
+    if (!FollowTarget.IsValid() || FormationSlotIndex == INDEX_NONE)
+    {
+        return true;
+    }
+    
+    if (FollowComponent)
+    {
+        return FollowComponent->IsAtFormationPosition();
+    }
+    
+    return true;
+}
+
+// ==================== 逃跑系统 ====================
+
+void AXBSoldierCharacter::SetEscaping(bool bEscaping)
+{
+    bIsEscaping = bEscaping;
+
+    if (bEscaping)
+    {
+        if (FollowComponent)
+        {
+            FollowComponent->SetCombatState(false);
+            
+            if (CurrentState == EXBSoldierState::Combat)
+            {
+                CurrentAttackTarget = nullptr;
+                SetSoldierState(EXBSoldierState::Following);
+            }
+            
+            FollowComponent->StartInterpolateToFormation();
+        }
+        
+        if (AAIController* AICtrl = Cast<AAIController>(GetController()))
+        {
+            AICtrl->StopMovement();
+        }
+    }
+
+    float BaseSpeed = GetMoveSpeed();
+    float SprintMultiplier = GetSprintSpeedMultiplier();
+
+    float NewSpeed = bEscaping ? BaseSpeed * SprintMultiplier : BaseSpeed;
+
+    if (UCharacterMovementComponent* MovementComp = GetCharacterMovement())
+    {
+        MovementComp->MaxWalkSpeed = NewSpeed;
+    }
+}
+
+// ==================== 死亡系统 ====================
+
+void AXBSoldierCharacter::HandleDeath()
+{
+    if (bIsDead)
+    {
+        return;
+    }
+
+    GetWorldTimerManager().ClearTimer(DelayedAIStartTimerHandle);
+    
+    bIsDead = true;
+    
+    SetSoldierState(EXBSoldierState::Dead);
+
+    OnSoldierDied.Broadcast(this);
+
+    if (AXBCharacterBase* LeaderCharacter = GetLeaderCharacter())
+    {
+        LeaderCharacter->OnSoldierDied(this);
+    }
+
+    if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+    {
+        Capsule->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    }
+
+    if (AAIController* AICtrl = Cast<AAIController>(GetController()))
+    {
+        AICtrl->StopMovement();
+    }
+
+    if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+    {
+        MoveComp->SetComponentTickEnabled(false);
+    }
+
+    if (IsDataAccessorValid())
+    {
+        UAnimMontage* DeathMontage = DataAccessor->GetDeathMontage();
+        if (DeathMontage)
+        {
+            if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
+            {
+                AnimInstance->Montage_Play(DeathMontage);
+            }
+        }
+    }
+
+    SetLifeSpan(2.0f);
+
+    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 死亡"), *GetName());
+}
+
+void AXBSoldierCharacter::FaceTarget(AActor* Target, float DeltaTime)
+{
+    if (!Target || !IsValid(Target))
+    {
+        return;
+    }
+
+    FVector Direction = (Target->GetActorLocation() - GetActorLocation()).GetSafeNormal2D();
+    if (!Direction.IsNearlyZero())
+    {
+        FRotator TargetRotation = Direction.Rotation();
+        FRotator CurrentRotation = GetActorRotation();
+        
+        float RotationSpeed = GetRotationSpeed();
+        FRotator NewRotation = FMath::RInterpTo(CurrentRotation, TargetRotation, DeltaTime, RotationSpeed / 90.0f);
+        SetActorRotation(FRotator(0.0f, NewRotation.Yaw, 0.0f));
+    }
 }
 
 // ==================== AI控制器初始化 ====================
@@ -595,7 +1065,6 @@ void AXBSoldierCharacter::InitializeAI()
             BBComp->SetValueAsInt(TEXT("SoldierState"), static_cast<int32>(CurrentState));
             BBComp->SetValueAsInt(TEXT("FormationSlot"), FormationSlotIndex);
             
-            // 🔧 从 DataAccessor 获取配置
             BBComp->SetValueAsFloat(TEXT("AttackRange"), GetAttackRange());
             BBComp->SetValueAsFloat(TEXT("VisionRange"), GetVisionRange());
             BBComp->SetValueAsFloat(TEXT("DetectionRange"), GetVisionRange());
@@ -608,552 +1077,5 @@ void AXBSoldierCharacter::InitializeAI()
     else
     {
         UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 无行为树，使用状态机"), *GetName());
-    }
-}
-
-// ==================== 跟随系统实现 ====================
-
-void AXBSoldierCharacter::SetFollowTarget(AActor* NewLeader, int32 SlotIndex)
-{
-    FollowTarget = NewLeader;
-    FormationSlotIndex = SlotIndex;
-
-    if (FollowComponent)
-    {
-        FollowComponent->SetFollowTarget(NewLeader);
-        FollowComponent->SetFormationSlotIndex(SlotIndex);
-    }
-
-    if (AAIController* AICtrl = Cast<AAIController>(GetController()))
-    {
-        if (UBlackboardComponent* BBComp = AICtrl->GetBlackboardComponent())
-        {
-            BBComp->SetValueAsObject(TEXT("Leader"), NewLeader);
-            BBComp->SetValueAsInt(TEXT("FormationSlot"), SlotIndex);
-        }
-    }
-
-    if (NewLeader)
-    {
-        SetSoldierState(EXBSoldierState::Following);
-    }
-    else
-    {
-        SetSoldierState(EXBSoldierState::Idle);
-    }
-}
-
-AXBCharacterBase* AXBSoldierCharacter::GetLeaderCharacter() const
-{
-    return Cast<AXBCharacterBase>(FollowTarget.Get());
-}
-
-void AXBSoldierCharacter::SetFormationSlotIndex(int32 NewIndex)
-{
-    FormationSlotIndex = NewIndex;
-
-    if (FollowComponent)
-    {
-        FollowComponent->SetFormationSlotIndex(NewIndex);
-    }
-
-    if (AAIController* AICtrl = Cast<AAIController>(GetController()))
-    {
-        if (UBlackboardComponent* BBComp = AICtrl->GetBlackboardComponent())
-        {
-            BBComp->SetValueAsInt(TEXT("FormationSlot"), NewIndex);
-        }
-    }
-}
-
-// ==================== 状态管理实现 ====================
-
-void AXBSoldierCharacter::SetSoldierState(EXBSoldierState NewState)
-{
-    if (CurrentState == NewState)
-    {
-        return;
-    }
-
-    EXBSoldierState OldState = CurrentState;
-    CurrentState = NewState;
-
-    if (AAIController* AICtrl = Cast<AAIController>(GetController()))
-    {
-        if (UBlackboardComponent* BBComp = AICtrl->GetBlackboardComponent())
-        {
-            BBComp->SetValueAsInt(TEXT("SoldierState"), static_cast<int32>(NewState));
-        }
-    }
-
-    OnSoldierStateChanged.Broadcast(OldState, NewState);
-
-    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 状态变化: %d -> %d"), 
-        *GetName(), static_cast<int32>(OldState), static_cast<int32>(NewState));
-}
-
-// ==================== 战斗系统实现 ====================
-
-void AXBSoldierCharacter::EnterCombat()
-{
-    if (CurrentState == EXBSoldierState::Dead)
-    {
-        return;
-    }
-
-    if (!bIsRecruited)
-    {
-        return;
-    }
-
-    if (FollowComponent)
-    {
-        FollowComponent->EnterCombatMode();
-    }
-
-    SetSoldierState(EXBSoldierState::Combat);
-    
-    // 🔧 修改 - 通过 BehaviorInterface 查找敌人
-    if (BehaviorInterface)
-    {
-        AActor* FoundEnemy = nullptr;
-        if (BehaviorInterface->SearchForEnemy(FoundEnemy))
-        {
-            CurrentAttackTarget = FoundEnemy;
-        }
-    }
-
-    UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 进入战斗, 目标: %s"), 
-        *GetName(), CurrentAttackTarget.IsValid() ? *CurrentAttackTarget->GetName() : TEXT("无"));
-}
-
-void AXBSoldierCharacter::ExitCombat()
-{
-    if (CurrentState == EXBSoldierState::Dead)
-    {
-        return;
-    }
-
-    CurrentAttackTarget = nullptr;
-    
-    if (FollowComponent)
-    {
-        FollowComponent->ExitCombatMode();
-    }
-    
-    if (AAIController* AICtrl = Cast<AAIController>(GetController()))
-    {
-        AICtrl->StopMovement();
-    }
-
-    SetSoldierState(EXBSoldierState::Following);
-
-    UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 退出战斗"), *GetName());
-}
-
-/**
- * @brief 士兵受到伤害
- * @param DamageAmount 伤害量
- * @param DamageSource 伤害来源
- * @return 实际造成的伤害
- * @note 🔧 修改 - 添加防御性检查和详细日志
- */
-float AXBSoldierCharacter::TakeSoldierDamage(float DamageAmount, AActor* DamageSource)
-{
-    // ✨ 新增 - 检查是否已死亡
-    if (bIsDead || CurrentState == EXBSoldierState::Dead)
-    {
-        UE_LOG(LogXBCombat, Verbose, TEXT("士兵 %s 已死亡，忽略伤害"), *GetName());
-        return 0.0f;
-    }
-
-    // 🔧 修改 - 添加伤害值校验
-    if (DamageAmount <= 0.0f)
-    {
-        UE_LOG(LogXBCombat, Warning, TEXT("士兵 %s 收到无效伤害值: %.1f，来源: %s"), 
-            *GetName(), 
-            DamageAmount, 
-            DamageSource ? *DamageSource->GetName() : TEXT("未知"));
-        return 0.0f;
-    }
-
-    float ActualDamage = FMath::Min(DamageAmount, CurrentHealth);
-    CurrentHealth -= ActualDamage;
-
-    UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 受到 %.1f 伤害 (请求: %.1f), 剩余血量: %.1f, 来源: %s"), 
-        *GetName(), 
-        ActualDamage, 
-        DamageAmount,
-        CurrentHealth,
-        DamageSource ? *DamageSource->GetName() : TEXT("未知"));
-
-    if (CurrentHealth <= 0.0f)
-    {
-        HandleDeath();
-    }
-
-    return ActualDamage;
-}
-
-bool AXBSoldierCharacter::PerformAttack(AActor* Target)
-{
-    // 🔧 修改 - 委托给 BehaviorInterface
-    if (BehaviorInterface)
-    {
-        EXBBehaviorResult Result = BehaviorInterface->ExecuteAttack(Target);
-        return Result == EXBBehaviorResult::Success;
-    }
-    return false;
-}
-
-bool AXBSoldierCharacter::PlayAttackMontage()
-{
-    if (!IsDataAccessorValid())
-    {
-        return false;
-    }
-
-    UAnimMontage* AttackMontage = DataAccessor->GetBasicAttackMontage();
-
-    if (!AttackMontage)
-    {
-        return false;
-    }
-
-    if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
-    {
-        return AnimInstance->Montage_Play(AttackMontage) > 0.0f;
-    }
-
-    return false;
-}
-
-// ==================== AI系统实现 ====================
-
-
-bool AXBSoldierCharacter::CanAttack() const
-{
-    // 🔧 修改 - 委托给 BehaviorInterface
-    if (BehaviorInterface)
-    {
-        return BehaviorInterface->GetAttackCooldownRemaining() <= 0.0f && 
-               CurrentState != EXBSoldierState::Dead &&
-               !bIsDead;  // ✨ 新增 - 检查 bIsDead
-    }
-    return false;
-}
-
-bool AXBSoldierCharacter::HasEnemiesInRadius(float Radius) const
-{
-    FXBDetectionResult Result;
-    return UXBBlueprintFunctionLibrary::DetectEnemiesInRadius(
-        this,
-        GetActorLocation(),
-        Radius,
-        Faction,
-        true,
-        Result
-    );
-}
-
-float AXBSoldierCharacter::GetDistanceToTarget(AActor* Target) const
-{
-    if (!Target || !IsValid(Target))
-    {
-        return MAX_FLT;
-    }
-    return FVector::Dist(GetActorLocation(), Target->GetActorLocation());
-}
-
-bool AXBSoldierCharacter::IsInAttackRange(AActor* Target) const
-{
-    if (!Target || !IsValid(Target))
-    {
-        return false;
-    }
-
-    // 🔧 从 DataAccessor 获取攻击范围
-    float AttackRange = GetAttackRange();
-    return GetDistanceToTarget(Target) <= AttackRange;
-}
-
-
-
-void AXBSoldierCharacter::ReturnToFormation()
-{
-    CurrentAttackTarget = nullptr;
-    
-    if (FollowComponent)
-    {
-        FollowComponent->ExitCombatMode();
-    }
-    
-    if (AAIController* AICtrl = Cast<AAIController>(GetController()))
-    {
-        AICtrl->StopMovement();
-    }
-    
-    SetSoldierState(EXBSoldierState::Following);
-
-    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 传送回队列"), *GetName());
-}
-
-
-
-FVector AXBSoldierCharacter::CalculateAvoidanceDirection(const FVector& DesiredDirection)
-{
-    // 🔧 从 DataAccessor 获取避障配置
-    float AvoidanceRadius = GetAvoidanceRadius();
-    float AvoidanceWeight = GetAvoidanceWeight();
-
-    if (AvoidanceRadius <= 0.0f)
-    {
-        return DesiredDirection;
-    }
-
-    FVector AvoidanceForce = FVector::ZeroVector;
-    FVector MyLocation = GetActorLocation();
-
-    FXBDetectionResult AlliesResult;
-    UXBBlueprintFunctionLibrary::DetectAlliesInRadius(
-        this,
-        MyLocation,
-        AvoidanceRadius,
-        Faction,
-        true,
-        AlliesResult
-    );
-
-    int32 AvoidanceCount = 0;
-
-    for (AActor* OtherActor : AlliesResult.DetectedActors)
-    {
-        if (OtherActor == this)
-        {
-            continue;
-        }
-
-        float Distance = FVector::Dist2D(MyLocation, OtherActor->GetActorLocation());
-        if (Distance > KINDA_SMALL_NUMBER)
-        {
-            FVector AwayDirection = (MyLocation - OtherActor->GetActorLocation()).GetSafeNormal2D();
-            float Strength = 1.0f - (Distance / AvoidanceRadius);
-            AvoidanceForce += AwayDirection * Strength;
-            AvoidanceCount++;
-        }
-    }
-
-    if (AvoidanceCount == 0)
-    {
-        return DesiredDirection;
-    }
-
-    AvoidanceForce.Normalize();
-
-    FVector BlendedDirection = DesiredDirection * (1.0f - AvoidanceWeight) + 
-                               AvoidanceForce * AvoidanceWeight;
-
-    return BlendedDirection.GetSafeNormal();
-}
-
-
-
-void AXBSoldierCharacter::MoveToFormationPosition()
-{
-    if (FollowComponent)
-    {
-        FollowComponent->StartInterpolateToFormation();
-    }
-}
-
-FVector AXBSoldierCharacter::GetFormationWorldPosition() const
-{
-    if (!FollowTarget.IsValid())
-    {
-        return GetActorLocation();
-    }
-
-    if (FollowComponent)
-    {
-        return FollowComponent->GetTargetPosition();
-    }
-
-    return FollowTarget->GetActorLocation();
-}
-
-FVector AXBSoldierCharacter::GetFormationWorldPositionSafe() const
-{
-    if (!FollowTarget.IsValid())
-    {
-        return FVector::ZeroVector;
-    }
-    
-    AActor* Target = FollowTarget.Get();
-    if (!Target || !IsValid(Target))
-    {
-        return FVector::ZeroVector;
-    }
-    
-    if (!FollowComponent)
-    {
-        return Target->GetActorLocation();
-    }
-    
-    FVector TargetPos = FollowComponent->GetTargetPosition();
-    if (!TargetPos.IsZero() && !TargetPos.ContainsNaN())
-    {
-        return TargetPos;
-    }
-    
-    return Target->GetActorLocation();
-}
-
-bool AXBSoldierCharacter::IsAtFormationPosition() const
-{
-    if (FollowComponent)
-    {
-        return FollowComponent->IsAtFormationPosition();
-    }
-    
-    FVector TargetPos = GetFormationWorldPosition();
-    // 🔧 从 DataAccessor 获取到达阈值
-    float ArrivalThreshold = GetArrivalThreshold();
-    return FVector::Dist2D(GetActorLocation(), TargetPos) <= ArrivalThreshold;
-}
-
-bool AXBSoldierCharacter::IsAtFormationPositionSafe() const
-{
-    if (!FollowTarget.IsValid() || FormationSlotIndex == INDEX_NONE)
-    {
-        return true;
-    }
-    
-    if (FollowComponent)
-    {
-        return FollowComponent->IsAtFormationPosition();
-    }
-    
-    return true;
-}
-
-// ==================== 逃跑系统实现 ====================
-
-void AXBSoldierCharacter::SetEscaping(bool bEscaping)
-{
-    bIsEscaping = bEscaping;
-
-    if (bEscaping)
-    {
-        if (FollowComponent)
-        {
-            FollowComponent->SetCombatState(false);
-            
-            if (CurrentState == EXBSoldierState::Combat)
-            {
-                CurrentAttackTarget = nullptr;
-                SetSoldierState(EXBSoldierState::Following);
-            }
-            
-            FollowComponent->StartInterpolateToFormation();
-        }
-        
-        if (AAIController* AICtrl = Cast<AAIController>(GetController()))
-        {
-            AICtrl->StopMovement();
-        }
-    }
-
-    // 🔧 从 DataAccessor 获取移动速度配置
-    float BaseSpeed = GetMoveSpeed();
-    float SprintMultiplier = GetSprintSpeedMultiplier();
-
-    float NewSpeed = bEscaping ? BaseSpeed * SprintMultiplier : BaseSpeed;
-
-    if (UCharacterMovementComponent* MovementComp = GetCharacterMovement())
-    {
-        MovementComp->MaxWalkSpeed = NewSpeed;
-    }
-}
-
-// ==================== 死亡系统实现 ====================
-
-/**
- * @brief 处理士兵死亡
- * @note 🔧 修改 - 设置 bIsDead 变量
- */
-void AXBSoldierCharacter::HandleDeath()
-{
-    // ✨ 新增 - 防止重复调用
-    if (bIsDead)
-    {
-        return;
-    }
-
-    GetWorldTimerManager().ClearTimer(DelayedAIStartTimerHandle);
-    
-    // ✨ 新增 - 设置死亡标记
-    bIsDead = true;
-    
-    SetSoldierState(EXBSoldierState::Dead);
-
-    OnSoldierDied.Broadcast(this);
-
-    if (AXBCharacterBase* LeaderCharacter = GetLeaderCharacter())
-    {
-        LeaderCharacter->OnSoldierDied(this);
-    }
-
-    if (UCapsuleComponent* Capsule = GetCapsuleComponent())
-    {
-        Capsule->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-    }
-
-    if (AAIController* AICtrl = Cast<AAIController>(GetController()))
-    {
-        AICtrl->StopMovement();
-    }
-
-    if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
-    {
-        MoveComp->SetComponentTickEnabled(false);
-    }
-
-    // 🔧 播放死亡蒙太奇（从 DataAccessor 获取）
-    if (IsDataAccessorValid())
-    {
-        UAnimMontage* DeathMontage = DataAccessor->GetDeathMontage();
-        if (DeathMontage)
-        {
-            if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
-            {
-                AnimInstance->Montage_Play(DeathMontage);
-            }
-        }
-    }
-
-    SetLifeSpan(2.0f);
-
-    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 死亡"), *GetName());
-}
-
-
-
-void AXBSoldierCharacter::FaceTarget(AActor* Target, float DeltaTime)
-{
-    if (!Target || !IsValid(Target))
-    {
-        return;
-    }
-
-    FVector Direction = (Target->GetActorLocation() - GetActorLocation()).GetSafeNormal2D();
-    if (!Direction.IsNearlyZero())
-    {
-        FRotator TargetRotation = Direction.Rotation();
-        FRotator CurrentRotation = GetActorRotation();
-        
-        // 🔧 从 DataAccessor 获取旋转速度
-        float RotationSpeed = GetRotationSpeed();
-        FRotator NewRotation = FMath::RInterpTo(CurrentRotation, TargetRotation, DeltaTime, RotationSpeed / 90.0f);
-        SetActorRotation(FRotator(0.0f, NewRotation.Yaw, 0.0f));
     }
 }

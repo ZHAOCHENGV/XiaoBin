@@ -6,9 +6,9 @@
  * @brief 编队组件 - 管理士兵队列位置
  * 
  * @note 🔧 修改记录:
- *       1. 新增槽位递补逻辑
- *       2. 新增 CompactSlots() 方法用于压缩槽位
- *       3. 优化槽位分配算法
+ *       1. 修复编辑器配置不生效问题
+ *       2. 增强 PostEditChangeProperty 检测
+ *       3. 添加详细调试日志
  */
 
 #pragma once
@@ -21,7 +21,6 @@
 class AXBSoldierCharacter;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnFormationUpdated);
-// ✨ 新增 - 槽位变化委托
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnSlotReassigned, int32, OldSlotIndex, int32, NewSlotIndex);
 
 /**
@@ -37,6 +36,12 @@ public:
 
     virtual void BeginPlay() override;
     virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+
+    // ✨ 新增 - 编辑器属性变更回调（增强版）
+#if WITH_EDITOR
+    virtual void PreEditChange(FProperty* PropertyAboutToChange) override;
+    virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+#endif
 
     // ============ 编队管理 ============
 
@@ -73,26 +78,12 @@ public:
     UFUNCTION(BlueprintCallable, Category = "XB|Formation")
     void ReassignAllSlots(const TArray<AXBSoldierCharacter*>& Soldiers);
 
-    // ✨ 新增 - 压缩槽位（移除空洞，确保连续）
-    /**
-     * @brief 压缩槽位数组，移除中间的空槽
-     * @param Soldiers 当前士兵数组引用
-     * @note 当士兵死亡后调用，确保槽位连续无空洞
-     *       会触发 OnSlotReassigned 委托通知每个被移动的士兵
-     */
     UFUNCTION(BlueprintCallable, Category = "XB|Formation", meta = (DisplayName = "压缩槽位"))
     void CompactSlots(const TArray<AXBSoldierCharacter*>& Soldiers);
 
-    // ✨ 新增 - 获取下一个可用槽位索引（总是返回当前士兵数量，即队尾）
-    /**
-     * @brief 获取下一个应分配的槽位索引
-     * @param CurrentSoldierCount 当前士兵数量
-     * @return 应分配的槽位索引（等于当前数量，从0开始）
-     */
     UFUNCTION(BlueprintPure, Category = "XB|Formation", meta = (DisplayName = "获取下一槽位索引"))
     int32 GetNextSlotIndex(int32 CurrentSoldierCount) const;
 
-    // ✨ 新增 - 获取已占用槽位数量
     UFUNCTION(BlueprintPure, Category = "XB|Formation", meta = (DisplayName = "获取已占用槽位数"))
     int32 GetOccupiedSlotCount() const;
 
@@ -120,7 +111,6 @@ public:
     UPROPERTY(BlueprintAssignable, Category = "XB|Formation")
     FOnFormationUpdated OnFormationUpdated;
 
-    // ✨ 新增 - 槽位重新分配委托
     UPROPERTY(BlueprintAssignable, Category = "XB|Formation", meta = (DisplayName = "槽位重分配事件"))
     FOnSlotReassigned OnSlotReassigned;
 
@@ -166,6 +156,11 @@ protected:
     float DebugTextHeightOffset = 50.0f;
 
 private:
+    // ✨ 新增 - 记录旧配置（用于检测变化）
+#if WITH_EDITOR
+    FXBFormationConfig OldFormationConfig;
+#endif
+
     void CalculateFormationDimensions(int32 SoldierCount, int32& OutColumns, int32& OutRows) const;
     FVector2D CalculateSlotLocalOffset(int32 SlotIndex, int32 TotalSoldiers, int32 Columns, int32 Rows) const;
     void DrawDebugSlot(const FXBFormationSlot& Slot, const FVector& LeaderLocation, const FRotator& LeaderRotation, float Duration);

@@ -6,14 +6,16 @@
  * @brief 编队组件实现
  * 
  * @note 🔧 修改记录:
- *       1. 新增 CompactSlots() 实现槽位压缩
- *       2. 新增 GetNextSlotIndex() 和 GetOccupiedSlotCount()
- *       3. 优化槽位分配逻辑确保顺序性
+ *       1. ✅ 修复 PostEditChangeProperty 无法检测结构体内部修改
+ *       2. ✨ 新增 PreEditChange 记录旧配置
+ *       3. ✨ 新增详细调试日志
+ *       4. 🔧 BeginPlay 强制刷新配置
  */
 
 #include "Character/Components/XBFormationComponent.h"
 #include "Soldier/XBSoldierCharacter.h"
 #include "DrawDebugHelpers.h"
+#include "Character/XBCharacterBase.h"
 #include "Engine/World.h"
 
 UXBFormationComponent::UXBFormationComponent()
@@ -26,10 +28,21 @@ void UXBFormationComponent::BeginPlay()
 {
     Super::BeginPlay();
 
+    // 🔧 修改 - 运行时强制应用编辑器配置
     if (ManualSlotCount > 0)
     {
         UE_LOG(LogTemp, Warning, TEXT("=== 使用手动槽位数量: %d ==="), ManualSlotCount);
         RegenerateFormation(ManualSlotCount);
+    }
+    else
+    {
+        // ✨ 新增 - 强制重建一次，确保配置生效
+        int32 CurrentCount = FormationSlots.Num();
+        if (CurrentCount > 0)
+        {
+            RegenerateFormation(CurrentCount);
+            UE_LOG(LogTemp, Warning, TEXT("=== 强制重建编队，槽位数: %d ==="), CurrentCount);
+        }
     }
 
     UE_LOG(LogTemp, Warning, TEXT("=== 编队组件初始化: %s，槽位数: %d，调试: %s ==="), 
@@ -48,6 +61,95 @@ void UXBFormationComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
     }
 }
 
+// ==================== ✅ 修复：增强的编辑器回调 ====================
+
+#if WITH_EDITOR
+void UXBFormationComponent::PreEditChange(FProperty* PropertyAboutToChange)
+{
+    Super::PreEditChange(PropertyAboutToChange);
+    
+    // 记录旧配置
+    OldFormationConfig = FormationConfig;
+}
+
+void UXBFormationComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+{
+    Super::PostEditChangeProperty(PropertyChangedEvent);
+
+    // 🔧 关键修复 - 获取所有相关属性名
+    FName PropertyName = (PropertyChangedEvent.Property != nullptr) ? 
+        PropertyChangedEvent.Property->GetFName() : NAME_None;
+    
+    FName MemberPropertyName = (PropertyChangedEvent.MemberProperty != nullptr) ?
+        PropertyChangedEvent.MemberProperty->GetFName() : NAME_None;
+    
+    // ✨ 新增 - 调试日志
+    UE_LOG(LogTemp, Log, TEXT("PostEditChangeProperty 触发:"));
+    UE_LOG(LogTemp, Log, TEXT("  - PropertyName: %s"), *PropertyName.ToString());
+    UE_LOG(LogTemp, Log, TEXT("  - MemberPropertyName: %s"), *MemberPropertyName.ToString());
+    
+    // 🔧 关键修复 - 检查是否修改了 FormationConfig 相关内容
+    bool bFormationConfigChanged = false;
+    
+    // 情况1：直接修改 FormationConfig 本身
+    if (PropertyName == GET_MEMBER_NAME_CHECKED(UXBFormationComponent, FormationConfig))
+    {
+        bFormationConfigChanged = true;
+        UE_LOG(LogTemp, Log, TEXT("  -> FormationConfig 直接修改"));
+    }
+    // 情况2：修改 FormationConfig 内部字段
+    else if (MemberPropertyName == GET_MEMBER_NAME_CHECKED(UXBFormationComponent, FormationConfig))
+    {
+        bFormationConfigChanged = true;
+        UE_LOG(LogTemp, Log, TEXT("  -> FormationConfig 内部字段修改: %s"), *PropertyName.ToString());
+    }
+    // 情况3：修改 ManualSlotCount
+    else if (PropertyName == GET_MEMBER_NAME_CHECKED(UXBFormationComponent, ManualSlotCount))
+    {
+        bFormationConfigChanged = true;
+        UE_LOG(LogTemp, Log, TEXT("  -> ManualSlotCount 修改"));
+    }
+    // 情况4：批量修改或未知来源
+    else if (PropertyName == NAME_None)
+    {
+        bFormationConfigChanged = true;
+        UE_LOG(LogTemp, Log, TEXT("  -> 批量修改或未知来源"));
+    }
+    
+    if (bFormationConfigChanged)
+    {
+        UE_LOG(LogTemp, Warning, TEXT(""));
+        UE_LOG(LogTemp, Warning, TEXT("============================================="));
+        UE_LOG(LogTemp, Warning, TEXT("✅ 编队配置已修改，开始重建..."));
+        UE_LOG(LogTemp, Warning, TEXT("============================================="));
+        UE_LOG(LogTemp, Log, TEXT("配置详情:"));
+        UE_LOG(LogTemp, Log, TEXT("  - HorizontalSpacing: %.1f"), FormationConfig.HorizontalSpacing);
+        UE_LOG(LogTemp, Log, TEXT("  - VerticalSpacing: %.1f"), FormationConfig.VerticalSpacing);
+        UE_LOG(LogTemp, Log, TEXT("  - MinDistanceToLeader: %.1f"), FormationConfig.MinDistanceToLeader);
+        UE_LOG(LogTemp, Log, TEXT("  - MaxColumns: %d"), FormationConfig.MaxColumns);
+        UE_LOG(LogTemp, Log, TEXT("  - ManualSlotCount: %d"), ManualSlotCount);
+        
+        // 确保使用当前的槽位数量
+        int32 TargetCount = (ManualSlotCount > 0) ? ManualSlotCount : FormationSlots.Num();
+        
+        // 至少生成1个以便调试
+        if (TargetCount <= 0 && bDrawDebug)
+        {
+            TargetCount = 1;
+            UE_LOG(LogTemp, Warning, TEXT("  - 调试模式：生成1个槽位用于测试"));
+        }
+
+        RegenerateFormation(TargetCount);
+        
+        UE_LOG(LogTemp, Warning, TEXT("✅ 编队重建完成，槽位数: %d"), FormationSlots.Num());
+        UE_LOG(LogTemp, Warning, TEXT("============================================="));
+        UE_LOG(LogTemp, Warning, TEXT(""));
+    }
+}
+#endif
+
+// ==================== 槽位管理方法 ====================
+
 void UXBFormationComponent::SetFormationSlotCount(int32 Count)
 {
     if (Count < 0)
@@ -62,26 +164,11 @@ void UXBFormationComponent::SetFormationSlotCount(int32 Count)
     UE_LOG(LogTemp, Warning, TEXT("★★★ 手动设置槽位数量: %d ★★★"), Count);
 }
 
-// ==================== ✨ 新增：槽位管理方法 ====================
-
-/**
- * @brief 获取下一个应分配的槽位索引
- * @param CurrentSoldierCount 当前士兵数量
- * @return 应分配的槽位索引
- * @note 新士兵总是分配到队尾，索引等于当前数量（从0开始）
- */
 int32 UXBFormationComponent::GetNextSlotIndex(int32 CurrentSoldierCount) const
 {
-    // 新士兵的槽位索引 = 当前士兵数量（因为索引从0开始）
-    // 例如：当前有0个士兵，新士兵获得槽位0
-    //       当前有1个士兵，新士兵获得槽位1
     return CurrentSoldierCount;
 }
 
-/**
- * @brief 获取已占用的槽位数量
- * @return 已占用槽位数
- */
 int32 UXBFormationComponent::GetOccupiedSlotCount() const
 {
     int32 Count = 0;
@@ -95,15 +182,6 @@ int32 UXBFormationComponent::GetOccupiedSlotCount() const
     return Count;
 }
 
-/**
- * @brief 压缩槽位数组，移除中间的空槽
- * @param Soldiers 当前士兵数组引用
- * @note ✨ 核心逻辑：
- *       1. 遍历士兵数组，按数组顺序重新分配槽位索引
- *       2. 数组中的第i个士兵获得槽位i
- *       3. 通知每个被移动的士兵更新其槽位索引
- *       4. 重新生成编队槽位
- */
 void UXBFormationComponent::CompactSlots(const TArray<AXBSoldierCharacter*>& Soldiers)
 {
     UE_LOG(LogTemp, Log, TEXT("开始压缩槽位，当前士兵数: %d"), Soldiers.Num());
@@ -160,6 +238,10 @@ void UXBFormationComponent::SetDebugDrawEnabled(bool bEnabled)
         UE_LOG(LogTemp, Error, TEXT("编队调试绘制已启用: %s"), *GetOwner()->GetName());
         UE_LOG(LogTemp, Error, TEXT("当前槽位数量: %d"), FormationSlots.Num());
         UE_LOG(LogTemp, Error, TEXT("手动槽位数量: %d"), ManualSlotCount);
+        UE_LOG(LogTemp, Error, TEXT("配置详情:"));
+        UE_LOG(LogTemp, Error, TEXT("  - HorizontalSpacing: %.1f"), FormationConfig.HorizontalSpacing);
+        UE_LOG(LogTemp, Error, TEXT("  - VerticalSpacing: %.1f"), FormationConfig.VerticalSpacing);
+        UE_LOG(LogTemp, Error, TEXT("  - MinDistanceToLeader: %.1f"), FormationConfig.MinDistanceToLeader);
         UE_LOG(LogTemp, Error, TEXT("============================================="));
 
         DrawDebugFormation(10.0f);
@@ -378,6 +460,7 @@ FVector2D UXBFormationComponent::CalculateSlotLocalOffset(int32 SlotIndex, int32
 
     float HalfWidth = (SoldiersInThisRow - 1) * FormationConfig.HorizontalSpacing * 0.5f;
 
+    // ✨ 使用配置中的间距
     float OffsetX = -(FormationConfig.MinDistanceToLeader + Row * FormationConfig.VerticalSpacing);
     float OffsetY = Column * FormationConfig.HorizontalSpacing - HalfWidth;
 
@@ -386,6 +469,43 @@ FVector2D UXBFormationComponent::CalculateSlotLocalOffset(int32 SlotIndex, int32
 
 void UXBFormationComponent::RegenerateFormation(int32 SoldierCount)
 {
+    // ✨ 新增：诊断日志
+    UE_LOG(LogTemp, Error, TEXT(""));
+    UE_LOG(LogTemp, Error, TEXT("============================================="));
+    UE_LOG(LogTemp, Error, TEXT("RegenerateFormation 诊断"));
+    UE_LOG(LogTemp, Error, TEXT("============================================="));
+    UE_LOG(LogTemp, Error, TEXT("组件实例: %s"), *GetName());
+    UE_LOG(LogTemp, Error, TEXT("组件所有者: %s"), GetOwner() ? *GetOwner()->GetName() : TEXT("NULL"));
+    UE_LOG(LogTemp, Error, TEXT("组件地址: %p"), this);
+    // 检查是否是同一个实例
+    if (GetOwner())
+    {
+        if (AXBCharacterBase* Character = Cast<AXBCharacterBase>(GetOwner()))
+        {
+            UXBFormationComponent* OwnerComp = Character->GetFormationComponent();
+            if (OwnerComp)
+            {
+                UE_LOG(LogTemp, Error, TEXT("Owner的组件地址: %p"), OwnerComp);
+                UE_LOG(LogTemp, Error, TEXT("是否同一实例: %s"), 
+                    (OwnerComp == this) ? TEXT("✅ 是") : TEXT("❌ 否"));
+            }
+        }
+    }
+    UE_LOG(LogTemp, Error, TEXT("============================================="));
+    UE_LOG(LogTemp, Error, TEXT(""));
+    
+    // ✨ 新增 - 详细调试日志
+    UE_LOG(LogTemp, Warning, TEXT(""));
+    UE_LOG(LogTemp, Warning, TEXT("=== RegenerateFormation 调用 ==="));
+    UE_LOG(LogTemp, Log, TEXT("参数:"));
+    UE_LOG(LogTemp, Log, TEXT("  - SoldierCount: %d"), SoldierCount);
+    UE_LOG(LogTemp, Log, TEXT("  - ManualSlotCount: %d"), ManualSlotCount);
+    UE_LOG(LogTemp, Log, TEXT("配置:"));
+    UE_LOG(LogTemp, Log, TEXT("  - HorizontalSpacing: %.1f"), FormationConfig.HorizontalSpacing);
+    UE_LOG(LogTemp, Log, TEXT("  - VerticalSpacing: %.1f"), FormationConfig.VerticalSpacing);
+    UE_LOG(LogTemp, Log, TEXT("  - MinDistanceToLeader: %.1f"), FormationConfig.MinDistanceToLeader);
+    UE_LOG(LogTemp, Log, TEXT("  - MaxColumns: %d"), FormationConfig.MaxColumns);
+  
     int32 ActualSlotCount = (ManualSlotCount > 0) ? FMath::Max(ManualSlotCount, SoldierCount) : SoldierCount;
 
     FormationSlots.Empty();
@@ -393,6 +513,8 @@ void UXBFormationComponent::RegenerateFormation(int32 SoldierCount)
     if (ActualSlotCount <= 0)
     {
         OnFormationUpdated.Broadcast();
+        UE_LOG(LogTemp, Warning, TEXT("=== 槽位数为0，跳过生成 ==="));
+        UE_LOG(LogTemp, Warning, TEXT(""));
         return;
     }
 
@@ -406,15 +528,23 @@ void UXBFormationComponent::RegenerateFormation(int32 SoldierCount)
         FXBFormationSlot Slot;
         Slot.SlotIndex = i;
         Slot.LocalOffset = CalculateSlotLocalOffset(i, ActualSlotCount, Columns, Rows);
-        Slot.bOccupied = false;  // 🔧 修改 - 初始化时不标记占用，由外部调用时设置
+        Slot.bOccupied = false;
         Slot.OccupantSoldierId = INDEX_NONE;
         FormationSlots.Add(Slot);
+        
+        // ✨ 新增 - 详细日志（可选）
+        if (i < 3 || i == ActualSlotCount - 1) // 只打印前3个和最后1个
+        {
+            UE_LOG(LogTemp, Verbose, TEXT("  槽位[%d]: Offset(%.1f, %.1f)"), 
+                i, Slot.LocalOffset.X, Slot.LocalOffset.Y);
+        }
     }
 
     OnFormationUpdated.Broadcast();
 
-    UE_LOG(LogTemp, Log, TEXT("编队生成: 槽位数=%d (%dx%d)"), 
+    UE_LOG(LogTemp, Warning, TEXT("=== 编队生成完成: 槽位数=%d (%dx%d) ==="), 
         ActualSlotCount, Columns, Rows);
+    UE_LOG(LogTemp, Warning, TEXT(""));
 }
 
 FVector UXBFormationComponent::GetSlotWorldPosition(int32 SlotIndex) const
@@ -519,12 +649,6 @@ void UXBFormationComponent::ReleaseAllSlots()
     }
 }
 
-/**
- * @brief 为士兵分配槽位
- * @param Soldier 士兵
- * @return 分配的槽位索引
- * @note 🔧 修改 - 优化分配逻辑，确保顺序分配
- */
 int32 UXBFormationComponent::AssignSlotToSoldier(AXBSoldierCharacter* Soldier)
 {
     if (!Soldier)
@@ -532,12 +656,10 @@ int32 UXBFormationComponent::AssignSlotToSoldier(AXBSoldierCharacter* Soldier)
         return INDEX_NONE;
     }
 
-    // 🔧 修改 - 优先使用 GetFirstAvailableSlot 确保从头开始分配
     int32 SlotIndex = GetFirstAvailableSlot();
     
     if (SlotIndex == INDEX_NONE)
     {
-        // 没有可用槽位，扩展
         int32 NewSlotCount = FormationSlots.Num() + 1;
         RegenerateFormation(NewSlotCount);
         SlotIndex = FormationSlots.Num() - 1;
@@ -568,11 +690,6 @@ void UXBFormationComponent::RemoveSoldierFromSlot(AXBSoldierCharacter* Soldier)
     }
 }
 
-/**
- * @brief 重新分配所有槽位
- * @param Soldiers 士兵数组
- * @note 🔧 修改 - 调用 CompactSlots 确保槽位连续
- */
 void UXBFormationComponent::ReassignAllSlots(const TArray<AXBSoldierCharacter*>& Soldiers)
 {
     ReleaseAllSlots();

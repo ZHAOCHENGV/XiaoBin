@@ -258,6 +258,9 @@ public:
     UPROPERTY(BlueprintAssignable, Category = "事件", meta = (DisplayName = "冲刺状态变化"))
     FOnSprintStateChanged OnSprintStateChanged;
 
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "编队组件"))
+    TObjectPtr<UXBFormationComponent> FormationComponent;
+
 protected:
     virtual void BeginPlay() override;
     virtual void PossessedBy(AController* NewController) override;
@@ -342,8 +345,7 @@ protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "磁场组件"))
     TObjectPtr<UXBMagnetFieldComponent> MagnetFieldComponent;
 
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "编队组件"))
-    TObjectPtr<UXBFormationComponent> FormationComponent;
+
 
     // ==================== 阵营 ====================
 

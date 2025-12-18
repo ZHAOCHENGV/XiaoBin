@@ -220,7 +220,6 @@ public:
     UFUNCTION(BlueprintPure, Category = "XB|Soldier", meta = (DisplayName = "获取阵营"))
     EXBFaction GetFaction() const { return Faction; }
 
-    // ✨ 新增 - 死亡状态检查
     /**
      * @brief 检查士兵是否已死亡
      * @return 是否已死亡
@@ -263,7 +262,6 @@ public:
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier", meta = (DisplayName = "返回队列"))
     void ReturnToFormation();
     
-
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier|AI", meta = (DisplayName = "移动到编队位置"))
     void MoveToFormationPosition();
 
@@ -315,7 +313,6 @@ public:
 
     friend class AXBSoldierAIController;
 
-    // ==================== ✨ 新增：行为接口组件 ====================
     /**
      * @brief 获取行为接口组件
      * @return 行为接口组件
@@ -334,7 +331,6 @@ protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "数据访问器"))
     TObjectPtr<UXBSoldierDataAccessor> DataAccessor;
 
-    
     /**
      * @brief 行为接口组件
      * @note 封装所有 AI 行为执行逻辑
@@ -386,7 +382,6 @@ protected:
     UPROPERTY(BlueprintReadOnly, Category = "状态", meta = (DisplayName = "是否已招募"))
     bool bIsRecruited = false;
 
-    // ✨ 新增 - 死亡状态变量
     /**
      * @brief 是否已死亡
      * @note 蓝图可读，用于 UI 显示和逻辑判断

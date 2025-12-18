@@ -36,6 +36,8 @@
 
 AXBCharacterBase::AXBCharacterBase()
 {
+  
+    
     PrimaryActorTick.bCanEverTick = true;
 
   
@@ -97,10 +99,13 @@ AXBCharacterBase::AXBCharacterBase()
     // 创建编队组件
     FormationComponent = CreateDefaultSubobject<UXBFormationComponent>(TEXT("FormationComponent"));
 
+    
     // 禁用控制器旋转
     bUseControllerRotationPitch = false;
     bUseControllerRotationYaw = false;
     bUseControllerRotationRoll = false;
+
+
 }
 
 void AXBCharacterBase::BeginPlay()
