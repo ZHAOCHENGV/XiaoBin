@@ -177,6 +177,13 @@ public:
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier", meta = (DisplayName = "被招募"))
     void OnRecruited(AActor* NewLeader, int32 SlotIndex);
 
+    /**
+     * @brief 重置士兵以便重复招募/对象池复用
+     * @note 🔧 修改 - 解决批量招募时反复生成销毁造成的性能抖动
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Soldier", meta = (DisplayName = "重置为待招募状态"))
+    void ResetForRecruitment();
+
     UFUNCTION(BlueprintPure, Category = "XB|Soldier", meta = (DisplayName = "是否已招募"))
     bool IsRecruited() const { return bIsRecruited; }
 
