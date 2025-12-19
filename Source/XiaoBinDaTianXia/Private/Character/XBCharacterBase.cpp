@@ -340,14 +340,24 @@ void AXBCharacterBase::AddSoldier(AXBSoldierCharacter* Soldier)
 
     if (!Soldier)
     {
+        UE_LOG(LogXBCharacter, Warning, TEXT("%s: 士兵指针为空"), *GetName());
         return;
     }
 
-    // ✨ 新增 - 检查是否已在队伍中
-    if (Soldiers.Contains(Soldier))
+    // 🔧 修改 - 检查是否已在队伍中
+    int32 ExistingIndex = Soldiers.Find(Soldier);
+    if (ExistingIndex != INDEX_NONE)
     {
-        UE_LOG(LogXBSoldier, Warning, TEXT("%s: 士兵 %s 已在队伍中，跳过添加"),
-            *GetName(), *Soldier->GetName());
+        UE_LOG(LogXBSoldier, Warning, TEXT("%s: 士兵 %s 已在队伍中（索引: %d），同步槽位"),
+            *GetName(), *Soldier->GetName(), ExistingIndex);
+        
+        // ✨ 新增 - 确保槽位索引正确同步
+        if (Soldier->GetFormationSlotIndex() != ExistingIndex)
+        {
+            Soldier->SetFormationSlotIndex(ExistingIndex);
+            UE_LOG(LogXBSoldier, Log, TEXT("%s: 同步士兵 %s 槽位索引为 %d"),
+                *GetName(), *Soldier->GetName(), ExistingIndex);
+        }
         return;
     }
 
@@ -362,9 +372,8 @@ void AXBCharacterBase::AddSoldier(AXBSoldierCharacter* Soldier)
     // 设置士兵的槽位索引
     Soldier->SetFormationSlotIndex(SlotIndex);
     
-    // 🔧 修改 - 不再调用 SetFollowTarget，由调用者负责配置跟随
-    // 这样可以避免与 AutoRecruitToLeader 中的设置冲突
-    // Soldier->SetFollowTarget(this, SlotIndex);  // 移除此行
+    UE_LOG(LogXBSoldier, Log, TEXT("%s: 士兵 %s 添加成功，分配槽位: %d, 当前数量: %d"),
+        *GetName(), *Soldier->GetName(), SlotIndex, Soldiers.Num());
 
     // 应用成长效果
     ApplyGrowthOnSoldiersAdded(1);
@@ -382,9 +391,6 @@ void AXBCharacterBase::AddSoldier(AXBSoldierCharacter* Soldier)
             FormationComponent->OccupySlot(SlotIndex, Soldier->GetUniqueID());
         }
     }
-
-    UE_LOG(LogXBSoldier, Log, TEXT("%s: 添加士兵 %s，槽位: %d，当前数量: %d"),
-        *GetName(), *Soldier->GetName(), SlotIndex, Soldiers.Num());
 }
 
 void AXBCharacterBase::RemoveSoldier(AXBSoldierCharacter* Soldier)
@@ -975,14 +981,10 @@ void AXBCharacterBase::SpawnDroppedSoldiers()
 
     UXBSoldierPoolSubsystem* PoolSubsystem = World->GetSubsystem<UXBSoldierPoolSubsystem>();
 
-    // ✨ 新增 - 记录目标将领的起始士兵数（用于计算槽位偏移）
-    int32 LeaderStartingSoldierCount = TargetLeader ? TargetLeader->GetSoldierCount() : 0;
-
-    UE_LOG(LogXBCharacter, Log, TEXT("将领 %s 死亡，生成 %d 个掉落士兵，目标将领: %s (当前士兵数: %d)"),
+    UE_LOG(LogXBCharacter, Log, TEXT("将领 %s 死亡，生成 %d 个掉落士兵，目标将领: %s"),
         *GetName(), 
         SoldierDropConfig.DropCount,
-        TargetLeader ? *TargetLeader->GetName() : TEXT("无"),
-        LeaderStartingSoldierCount);
+        TargetLeader ? *TargetLeader->GetName() : TEXT("无"));
 
     for (int32 i = 0; i < SoldierDropConfig.DropCount; ++i)
     {
@@ -1014,6 +1016,7 @@ void AXBCharacterBase::SpawnDroppedSoldiers()
 
         if (bHit)
         {
+            // ✨ 新增 - 落地位置加上半高，确保胶囊体底部触地
             TargetLocation = HitResult.Location + FVector(0.0f, 0.0f, 88.0f);
         }
         else
@@ -1033,7 +1036,9 @@ void AXBCharacterBase::SpawnDroppedSoldiers()
         if (!DroppedSoldier)
         {
             FActorSpawnParameters SpawnParams;
-            SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+            SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+            // ✨ 新增 - 延迟 BeginPlay，避免在配置完成前触发
+            SpawnParams.bDeferConstruction = true;
 
             DroppedSoldier = World->SpawnActor<AXBSoldierCharacter>(
                 DropSoldierClass,
@@ -1045,12 +1050,27 @@ void AXBCharacterBase::SpawnDroppedSoldiers()
             if (DroppedSoldier)
             {
                 DroppedSoldier->MarkAsPooledSoldier();
+                
+                // ✨ 新增 - 在 BeginPlay 前禁用碰撞，避免触发磁场
+                if (UCapsuleComponent* Capsule = DroppedSoldier->GetCapsuleComponent())
+                {
+                    Capsule->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+                }
+                
+                // 完成构造（触发 BeginPlay）
+                DroppedSoldier->FinishSpawning(FTransform(FRotator::ZeroRotator, SpawnOrigin));
             }
         }
 
         if (DroppedSoldier)
         {
-            // 完整初始化
+            // ✨ 新增 - 确保碰撞禁用（对象池获取的士兵也需要）
+            if (UCapsuleComponent* Capsule = DroppedSoldier->GetCapsuleComponent())
+            {
+                Capsule->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+            }
+            
+            // 完整初始化（不会触发磁场，因为碰撞已禁用）
             if (DropSoldierDataTable && !DropSoldierRowName.IsNone())
             {
                 DroppedSoldier->FullInitialize(DropSoldierDataTable, DropSoldierRowName, DropFaction);
@@ -1059,8 +1079,8 @@ void AXBCharacterBase::SpawnDroppedSoldiers()
             // 启动抛物线飞行
             DroppedSoldier->StartDropFlight(SpawnOrigin, TargetLocation, ArcConfig, TargetLeader);
             
-            UE_LOG(LogXBCharacter, Log, TEXT("掉落士兵 [%d] %s 开始飞行 -> 预期槽位: %d"),
-                i, *DroppedSoldier->GetName(), LeaderStartingSoldierCount + i);
+            UE_LOG(LogXBCharacter, Log, TEXT("掉落士兵 [%d] %s 开始飞行"),
+                i, *DroppedSoldier->GetName());
         }
     }
 }

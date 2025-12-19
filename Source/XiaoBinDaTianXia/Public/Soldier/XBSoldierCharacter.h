@@ -348,6 +348,15 @@ public:
     UXBSoldierBehaviorInterface* GetBehaviorInterface() const { return BehaviorInterface; }
 
 protected:
+
+    // ✨ 新增 - 配置跟随并开始移动
+    /**
+     * @brief 配置跟随组件并开始移动到槽位
+     * @param Leader 将领
+     * @param SlotIndex 槽位索引
+     */
+    void SetupFollowingAndStartMoving(AXBCharacterBase* Leader, int32 SlotIndex);
+    
     // ==================== 数据访问器组件 ====================
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "数据访问器"))

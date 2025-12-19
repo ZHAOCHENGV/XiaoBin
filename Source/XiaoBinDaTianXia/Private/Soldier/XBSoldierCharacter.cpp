@@ -223,6 +223,17 @@ void AXBSoldierCharacter::EnableMovementAndTick()
  */
 void AXBSoldierCharacter::FullInitialize(UDataTable* DataTable, FName RowName, EXBFaction InFaction)
 {
+    // ✨ 新增 - 在初始化前先清理之前的归属关系
+    if (FollowTarget.IsValid())
+    {
+        if (AXBCharacterBase* OldLeader = Cast<AXBCharacterBase>(FollowTarget.Get()))
+        {
+            OldLeader->RemoveSoldier(this);
+            UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 从旧将领 %s 队伍中移除"), 
+                *GetName(), *OldLeader->GetName());
+        }
+    }
+    
     // 1. 基础数据初始化
     InitializeFromDataTable(DataTable, RowName, InFaction);
     
@@ -235,19 +246,26 @@ void AXBSoldierCharacter::FullInitialize(UDataTable* DataTable, FName RowName, E
     // 4. 设置阵营
     Faction = InFaction;
     
-    // 5. 重置状态标记
+    // 5. 彻底重置归属状态
     bIsRecruited = false;
     bIsDead = false;
     bIsEscaping = false;
+    FollowTarget = nullptr;
+    FormationSlotIndex = INDEX_NONE;
+    CurrentAttackTarget = nullptr;
     
-    // 6. 显示角色
+    // 6. 重置跟随组件状态
+    if (FollowComponent)
+    {
+        FollowComponent->SetFollowTarget(nullptr);
+        FollowComponent->SetFormationSlotIndex(INDEX_NONE);
+    }
+    
+    // 7. 显示角色
     SetActorHiddenInGame(false);
     
-    // 7. 启用碰撞（Query模式，用于被检测但不阻挡）
-    if (UCapsuleComponent* Capsule = GetCapsuleComponent())
-    {
-        Capsule->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-    }
+    // 🔧 修改 - 不在这里启用碰撞，让调用者控制
+    // 掉落士兵需要在飞行结束后才启用碰撞
     
     UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 完整初始化完成，阵营: %d"), 
         *GetName(), static_cast<int32>(InFaction));
@@ -257,11 +275,11 @@ void AXBSoldierCharacter::FullInitialize(UDataTable* DataTable, FName RowName, E
 
 /**
  * @brief 开始掉落抛物线飞行
- * @param StartLocation 起始位置
+ * @param StartLocation 起始位置（将领死亡位置）
  * @param TargetLocation 目标落地位置
  * @param ArcConfig 抛物线配置
- * @param TargetLeader 落地后要加入的将领
- * @note 🔧 修改 - 新增 TargetLeader 参数，支持落地自动入列
+ * @param TargetLeader 落地后要加入的将领（可选）
+ * @note 🔧 修改 - 优化移动组件状态管理
  */
 void AXBSoldierCharacter::StartDropFlight(const FVector& StartLocation, const FVector& TargetLocation, 
     const FXBDropArcConfig& ArcConfig, AXBCharacterBase* TargetLeader)
@@ -272,8 +290,6 @@ void AXBSoldierCharacter::StartDropFlight(const FVector& StartLocation, const FV
     DropFlightDuration = ArcConfig.FlightDuration;
     DropArcHeight = ArcConfig.ArcHeight;
     bPlayDropLandingEffect = ArcConfig.bPlayLandingEffect;
-    
-    // ✨ 新增 - 保存目标将领和自动入列配置
     DropTargetLeader = TargetLeader;
     bAutoRecruitOnLanding = ArcConfig.bAutoRecruitOnLanding;
     
@@ -295,18 +311,19 @@ void AXBSoldierCharacter::StartDropFlight(const FVector& StartLocation, const FV
     // 确保 Tick 启用
     SetActorTickEnabled(true);
     
-    // 禁用碰撞（飞行期间）
+    // 🔧 修改 - 确保碰撞完全禁用（避免触发磁场）
     if (UCapsuleComponent* Capsule = GetCapsuleComponent())
     {
         Capsule->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     }
     
-    // 禁用移动组件（使用手动位置更新）
+    // 完全禁用移动组件
     if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
     {
-        MoveComp->SetMovementMode(MOVE_Flying);
+        MoveComp->DisableMovement();
         MoveComp->StopMovementImmediately();
         MoveComp->SetComponentTickEnabled(false);
+        MoveComp->GravityScale = 0.0f;
     }
     
     // 隐藏 Zzz 特效
@@ -315,12 +332,10 @@ void AXBSoldierCharacter::StartDropFlight(const FVector& StartLocation, const FV
     // 显示角色
     SetActorHiddenInGame(false);
     
-    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 开始掉落飞行: (%.0f, %.0f, %.0f) -> (%.0f, %.0f, %.0f), 目标将领: %s, 自动入列: %s"),
+    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 开始掉落飞行: (%.0f, %.0f, %.0f) -> (%.0f, %.0f, %.0f)"),
         *GetName(),
         StartLocation.X, StartLocation.Y, StartLocation.Z,
-        TargetLocation.X, TargetLocation.Y, TargetLocation.Z,
-        TargetLeader ? *TargetLeader->GetName() : TEXT("无"),
-        bAutoRecruitOnLanding ? TEXT("是") : TEXT("否"));
+        TargetLocation.X, TargetLocation.Y, TargetLocation.Z);
 }
 
 float AXBSoldierCharacter::GetDropProgress() const
@@ -374,26 +389,30 @@ FVector AXBSoldierCharacter::CalculateArcPosition(float Progress) const
 
 /**
  * @brief 处理落地
- * @note 🔧 修改 - 落地后根据配置决定是自动入列还是进入休眠态
+ * @note 🔧 修改 - 正确恢复移动组件，让物理系统控制贴地
  */
 void AXBSoldierCharacter::OnDropLanded()
 {
     UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 掉落落地"), *GetName());
     
-    // 确保位置精确
+    // 设置落地位置
     SetActorLocation(DropTargetLocation);
     
-    // 恢复碰撞
+    // ✨ Step 1: 恢复碰撞
     if (UCapsuleComponent* Capsule = GetCapsuleComponent())
     {
         Capsule->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
     }
     
-    // 恢复移动组件
+    // ✨ Step 2: 恢复移动组件（让物理系统接管）
     if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
     {
-        MoveComp->SetMovementMode(MOVE_Walking);
+        MoveComp->GravityScale = 1.0f;
         MoveComp->SetComponentTickEnabled(true);
+        MoveComp->SetMovementMode(MOVE_Falling);  // 🔧 修改 - 先设为 Falling，让物理检测地面
+        MoveComp->MaxWalkSpeed = GetMoveSpeed();
+        
+        UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 移动组件已恢复"), *GetName());
     }
     
     // 播放落地特效
@@ -402,17 +421,23 @@ void AXBSoldierCharacter::OnDropLanded()
         PlayLandingEffect();
     }
     
-    // ✨ 核心逻辑 - 根据配置决定落地后的行为
+    // ✨ Step 3: 延迟处理入列，等物理稳定
     if (bAutoRecruitOnLanding && DropTargetLeader.IsValid())
     {
-        // 自动入列到目标将领
-        AutoRecruitToLeader();
+        // 延迟 0.1 秒，让角色落地稳定后再开始移动
+        FTimerHandle TimerHandle;
+        GetWorldTimerManager().SetTimer(
+            TimerHandle,
+            this,
+            &AXBSoldierCharacter::AutoRecruitToLeader,
+            0.1f,
+            false
+        );
     }
     else
     {
-        // 没有目标将领，进入待机态（可被其他将领招募）
         SetSoldierState(EXBSoldierState::Idle);
-        UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 落地后进入待机态，等待招募"), *GetName());
+        UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 落地后进入待机态"), *GetName());
     }
     
     // 广播落地完成事件
@@ -422,8 +447,8 @@ void AXBSoldierCharacter::OnDropLanded()
 /**
  * @brief 落地后自动加入将领队伍
  * @note 🔧 修复版本 - 
- *       1. 正确的调用顺序：先标记招募 → 后添加到将领
- *       2. 手动启用所有必要组件
+ *       1. 修正调用顺序：先 AddSoldier，后设置本地状态
+ *       2. 确保槽位索引正确获取
  *       3. 正确启动跟随过渡
  */
 void AXBSoldierCharacter::AutoRecruitToLeader()
@@ -434,6 +459,7 @@ void AXBSoldierCharacter::AutoRecruitToLeader()
         UE_LOG(LogXBSoldier, Warning, TEXT("士兵 %s: 自动入列失败 - 目标将领无效"), *GetName());
         Faction = EXBFaction::Neutral;
         bIsRecruited = false;
+        FollowTarget = nullptr;
         SetSoldierState(EXBSoldierState::Idle);
         return;
     }
@@ -443,49 +469,104 @@ void AXBSoldierCharacter::AutoRecruitToLeader()
         UE_LOG(LogXBSoldier, Warning, TEXT("士兵 %s: 自动入列失败 - 目标将领已死亡"), *GetName());
         Faction = EXBFaction::Neutral;
         bIsRecruited = false;
+        FollowTarget = nullptr;
         SetSoldierState(EXBSoldierState::Idle);
         return;
     }
     
-    // 防止重复入列
-    if (bIsRecruited && FollowTarget.IsValid())
+    // 检查是否已在该将领的队伍中（可能被磁场提前招募）
+    const TArray<AXBSoldierCharacter*>& LeaderSoldiers = Leader->GetSoldiers();
+    int32 ExistingIndex = LeaderSoldiers.Find(this);
+    
+    if (ExistingIndex != INDEX_NONE)
     {
-        UE_LOG(LogXBSoldier, Warning, TEXT("士兵 %s: 已入列，跳过"), *GetName());
+        UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 已在将领队伍中（索引: %d），同步状态并开始移动"), 
+            *GetName(), ExistingIndex);
+        
+        // 同步状态
+        bIsRecruited = true;
+        FollowTarget = Leader;
+        Faction = Leader->GetFaction();
+        FormationSlotIndex = ExistingIndex;
+        
+        // 配置并启动跟随
+        SetupFollowingAndStartMoving(Leader, ExistingIndex);
         return;
     }
     
-    UE_LOG(LogXBSoldier, Log, TEXT(""));
-    UE_LOG(LogXBSoldier, Log, TEXT("========================================"));
-    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 开始自动入列"), *GetName());
-    UE_LOG(LogXBSoldier, Log, TEXT("目标将领: %s"), *Leader->GetName());
-    UE_LOG(LogXBSoldier, Log, TEXT("将领当前士兵数: %d"), Leader->GetSoldierCount());
-    UE_LOG(LogXBSoldier, Log, TEXT("========================================"));
+    // 如果跟随其他将领，需要先离开
+    if (FollowTarget.IsValid() && FollowTarget.Get() != Leader)
+    {
+        if (AXBCharacterBase* OldLeader = Cast<AXBCharacterBase>(FollowTarget.Get()))
+        {
+            OldLeader->RemoveSoldier(this);
+        }
+        FollowTarget = nullptr;
+        FormationSlotIndex = INDEX_NONE;
+    }
     
-    // ==================== Step 1: 设置状态标记 ====================
+    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 开始自动入列到 %s"), *GetName(), *Leader->GetName());
+    
+    // 添加到将领
+    Leader->AddSoldier(this);
+    
+    // 获取分配的槽位
+    int32 SlotIndex = FormationSlotIndex;
+    
+    // 设置本地状态
     bIsRecruited = true;
     FollowTarget = Leader;
     Faction = Leader->GetFaction();
     
-    // ==================== Step 2: 启用所有组件 ====================
+    // 配置并启动跟随
+    SetupFollowingAndStartMoving(Leader, SlotIndex);
     
-    SetActorTickEnabled(true);
+    OnSoldierRecruited.Broadcast(this, Leader);
     
+   
+    UE_LOG(LogXBSoldier, Log, TEXT("========================================"));
+    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 自动入列完成，槽位: %d"), *GetName(), SlotIndex);
+    UE_LOG(LogXBSoldier, Log, TEXT("将领最终士兵数: %d"), Leader->GetSoldierCount());
+    UE_LOG(LogXBSoldier, Log, TEXT("========================================"));
+    UE_LOG(LogXBSoldier, Log, TEXT(""));
+}
+
+
+/**
+ * @brief 配置跟随组件并开始移动
+ * @param Leader 将领
+ * @param SlotIndex 槽位索引
+ * @note ✨ 新增 - 抽取公共逻辑
+ */
+void AXBSoldierCharacter::SetupFollowingAndStartMoving(AXBCharacterBase* Leader, int32 SlotIndex)
+{
+    // 确保移动组件正确配置
+    if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+    {
+        MoveComp->GravityScale = 1.0f;
+        MoveComp->SetComponentTickEnabled(true);
+        MoveComp->SetMovementMode(MOVE_Walking);
+        MoveComp->MaxWalkSpeed = GetMoveSpeed();
+    }
+    
+    // 确保碰撞启用
     if (UCapsuleComponent* Capsule = GetCapsuleComponent())
     {
         Capsule->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
     }
     
-    if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
-    {
-        MoveComp->SetComponentTickEnabled(true);
-        MoveComp->SetMovementMode(MOVE_Walking);
-        MoveComp->MaxWalkSpeed = GetMoveSpeed();
-        UE_LOG(LogXBSoldier, Log, TEXT("移动组件启用，速度: %.1f"), MoveComp->MaxWalkSpeed);
-    }
-    
+    // 配置跟随组件
     if (FollowComponent)
     {
         FollowComponent->SetComponentTickEnabled(true);
+        FollowComponent->SetFollowTarget(Leader);
+        FollowComponent->SetFormationSlotIndex(SlotIndex);
+        FollowComponent->SyncLeaderSprintState(Leader->IsSprinting(), Leader->GetCurrentMoveSpeed());
+        FollowComponent->StartRecruitTransition();
+        
+        FVector TargetPos = FollowComponent->GetTargetPosition();
+        UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 开始移动到槽位 %d，目标: (%.1f, %.1f, %.1f)"), 
+            *GetName(), SlotIndex, TargetPos.X, TargetPos.Y, TargetPos.Z);
     }
     
     if (BehaviorInterface)
@@ -493,48 +574,10 @@ void AXBSoldierCharacter::AutoRecruitToLeader()
         BehaviorInterface->SetComponentTickEnabled(true);
     }
     
-    // ==================== Step 3: 添加到将领（自动分配槽位） ====================
-    
-    // AddSoldier 会：
-    // - 将士兵添加到 Soldiers 数组
-    // - 分配 FormationSlotIndex = Soldiers.Num() - 1
-    // - 调用 SetFollowTarget (会更新 FollowComponent)
-    // - 触发成长效果
-    Leader->AddSoldier(this);
-    
-    int32 SlotIndex = FormationSlotIndex;
-    UE_LOG(LogXBSoldier, Log, TEXT("已添加到将领，槽位: %d"), SlotIndex);
-    
-    // ==================== Step 4: 确保跟随组件正确配置 ====================
-    
-    if (FollowComponent)
-    {
-        // 确认跟随目标和槽位（可能已被 AddSoldier->SetFollowTarget 设置）
-        if (FollowComponent->GetFollowTarget() != Leader)
-        {
-            FollowComponent->SetFollowTarget(Leader);
-        }
-        
-        if (FollowComponent->GetFormationSlotIndex() != SlotIndex)
-        {
-            FollowComponent->SetFormationSlotIndex(SlotIndex);
-        }
-        
-        // 同步将领冲刺状态
-        FollowComponent->SyncLeaderSprintState(Leader->IsSprinting(), Leader->GetCurrentMoveSpeed());
-        
-        // ✨ 核心 - 开始招募过渡，士兵会移动到槽位位置
-        FollowComponent->StartRecruitTransition();
-        
-        FVector TargetPos = FollowComponent->GetTargetPosition();
-        UE_LOG(LogXBSoldier, Log, TEXT("开始移动到槽位位置: (%.1f, %.1f, %.1f)"), 
-            TargetPos.X, TargetPos.Y, TargetPos.Z);
-    }
-    
-    // ==================== Step 5: 设置状态并启动 AI ====================
-    
+    // 设置状态
     SetSoldierState(EXBSoldierState::Following);
     
+    // 延迟启动 AI
     GetWorldTimerManager().SetTimer(
         DelayedAIStartTimerHandle,
         this,
@@ -542,14 +585,6 @@ void AXBSoldierCharacter::AutoRecruitToLeader()
         0.3f,
         false
     );
-    
-    OnSoldierRecruited.Broadcast(this, Leader);
-    
-    UE_LOG(LogXBSoldier, Log, TEXT("========================================"));
-    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 自动入列完成，槽位: %d"), *GetName(), SlotIndex);
-    UE_LOG(LogXBSoldier, Log, TEXT("将领最终士兵数: %d"), Leader->GetSoldierCount());
-    UE_LOG(LogXBSoldier, Log, TEXT("========================================"));
-    UE_LOG(LogXBSoldier, Log, TEXT(""));
 }
 
 void AXBSoldierCharacter::PlayLandingEffect()
@@ -1013,26 +1048,45 @@ float AXBSoldierCharacter::GetAvoidanceWeight() const
 }
 
 // ==================== 招募系统 ====================
-
+/**
+ * @brief 检查士兵是否可以被招募
+ * @return 是否可招募
+ * @note 🔧 修改 - 增加更多状态检查，防止掉落中或已入列的士兵被磁场抢走
+ */
 bool AXBSoldierCharacter::CanBeRecruited() const
 {
+    // 已招募
     if (bIsRecruited)
     {
         return false;
     }
     
+    // 已有跟随目标
     if (FollowTarget.IsValid())
     {
         return false;
     }
     
+    // 非中立阵营（已属于某个阵营）
     if (Faction != EXBFaction::Neutral)
     {
         return false;
     }
     
-    // 掉落中不可招募
+    // 掉落中不可招募（由抛物线系统控制入列）
     if (CurrentState == EXBSoldierState::Dropping)
+    {
+        return false;
+    }
+    
+    // ✨ 新增 - 跟随状态不可招募（已在某个队伍中）
+    if (CurrentState == EXBSoldierState::Following)
+    {
+        return false;
+    }
+    
+    // ✨ 新增 - 战斗状态不可招募
+    if (CurrentState == EXBSoldierState::Combat)
     {
         return false;
     }
@@ -1043,11 +1097,13 @@ bool AXBSoldierCharacter::CanBeRecruited() const
         return false;
     }
     
+    // 已死亡
     if (bIsDead || CurrentHealth <= 0.0f)
     {
         return false;
     }
     
+    // 组件未初始化
     if (!bComponentsInitialized)
     {
         return false;

@@ -251,7 +251,7 @@ void UXBSoldierFollowComponent::UpdateLockedMode(float DeltaTime)
 
 /**
  * @brief 更新招募过渡模式
- * @note 🔧 修改 - 改进旋转逻辑，平滑过渡
+ * @note 🔧 修改 - 使用 AI 移动而非手动设置位置，确保物理正确
  */
 void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
 {
@@ -278,54 +278,68 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
     // 计算动态速度
     float ActualSpeed = CalculateRecruitTransitionSpeed(Distance);
     
-    // 移动到目标位置
-    bool bArrived = MoveTowardsTargetXY(TargetPosition, DeltaTime, ActualSpeed);
+    // 🔧 修改 - 使用移动组件进行移动
+    UCharacterMovementComponent* MoveComp = GetCachedMovementComponent();
+    ACharacter* CharOwner = Cast<ACharacter>(Owner);
     
-    // 🔧 修改 - 改进旋转逻辑
-    if (bFollowRotation)
+    if (MoveComp && CharOwner && Distance > ArrivalThreshold)
     {
-        // 招募过渡期间：面向移动方向，而非直接跟随将领旋转
+        // 设置移动速度
+        MoveComp->MaxWalkSpeed = ActualSpeed;
+        
+        // 计算移动方向
         FVector MoveDirection = (TargetPosition - CurrentPosition).GetSafeNormal2D();
-        if (!MoveDirection.IsNearlyZero() && Distance > ArrivalThreshold)
+        
+        if (!MoveDirection.IsNearlyZero())
         {
-            // 平滑插值旋转
-            FRotator CurrentRotation = Owner->GetActorRotation();
-            FRotator TargetRotation = MoveDirection.Rotation();
-            FRotator NewRotation = FMath::RInterpTo(CurrentRotation, TargetRotation, DeltaTime, 10.0f);
-            Owner->SetActorRotation(FRotator(0.0f, NewRotation.Yaw, 0.0f));
-        }
-        else if (bArrived)
-        {
-            // 到达后：跟随将领旋转
-            FRotator LeaderRotation = CalculateFormationWorldRotation();
-            Owner->SetActorRotation(LeaderRotation);
+            // ✨ 核心 - 使用 AddMovementInput 驱动移动
+            CharOwner->AddMovementInput(MoveDirection, 1.0f);
+            
+            // 平滑旋转
+            if (bFollowRotation)
+            {
+                FRotator CurrentRotation = Owner->GetActorRotation();
+                FRotator TargetRotation = MoveDirection.Rotation();
+                FRotator NewRotation = FMath::RInterpTo(CurrentRotation, TargetRotation, DeltaTime, 10.0f);
+                Owner->SetActorRotation(FRotator(0.0f, NewRotation.Yaw, 0.0f));
+            }
         }
     }
     
     // 卡住检测
     FVector NewPosition = Owner->GetActorLocation();
     float MovedDistance = FVector::Dist2D(NewPosition, LastPositionForStuckCheck);
-    float InstantSpeed = (DeltaTime > KINDA_SMALL_NUMBER) ? (MovedDistance / DeltaTime) : 0.0f;
     
-    if (InstantSpeed < StuckSpeedThreshold && Distance > ArrivalThreshold * 2.0f)
+    if (DeltaTime > KINDA_SMALL_NUMBER)
     {
-        AccumulatedStuckTime += DeltaTime;
-    }
-    else
-    {
-        AccumulatedStuckTime = 0.0f;
-        LastPositionForStuckCheck = NewPosition;
+        float InstantSpeed = MovedDistance / DeltaTime;
+        
+        if (InstantSpeed < StuckSpeedThreshold && Distance > ArrivalThreshold * 2.0f)
+        {
+            AccumulatedStuckTime += DeltaTime;
+        }
+        else
+        {
+            AccumulatedStuckTime = 0.0f;
+            LastPositionForStuckCheck = NewPosition;
+        }
     }
     
     // 到达检测
-    if (bArrived)
+    float CurrentDistance = FVector::Dist2D(Owner->GetActorLocation(), TargetPosition);
+    if (CurrentDistance <= ArrivalThreshold)
     {
         UE_LOG(LogXBSoldier, Log, TEXT("跟随组件: 招募过渡完成，切换到锁定模式"));
         SetFollowMode(EXBFollowMode::Locked);
         
-        // 清理将领速度缓存
         bLeaderIsSprinting = false;
         CachedLeaderSpeed = 0.0f;
+        
+        if (bFollowRotation)
+        {
+            FRotator LeaderRotation = CalculateFormationWorldRotation();
+            Owner->SetActorRotation(LeaderRotation);
+        }
         
         OnRecruitTransitionCompleted.Broadcast();
     }
@@ -601,7 +615,10 @@ void UXBSoldierFollowComponent::StartInterpolateToFormation()
     
     UE_LOG(LogXBSoldier, Log, TEXT("跟随组件: StartInterpolateToFormation -> 直接锁定"));
 }
-
+/**
+ * @brief 开始招募过渡
+ * @note 🔧 修改 - 确保移动组件正确配置
+ */
 void UXBSoldierFollowComponent::StartRecruitTransition()
 {
     SetCombatState(false);
@@ -618,19 +635,23 @@ void UXBSoldierFollowComponent::StartRecruitTransition()
     }
     AccumulatedStuckTime = 0.0f;
     
-    // ✨ 新增 - 开始过渡时立即获取将领状态
+    // 确保移动组件正确配置
+    UCharacterMovementComponent* MoveComp = GetCachedMovementComponent();
+    if (MoveComp)
+    {
+        MoveComp->GravityScale = 1.0f;
+        MoveComp->SetComponentTickEnabled(true);
+        MoveComp->SetMovementMode(MOVE_Walking);
+    }
+    
+    // 获取将领状态
     if (CachedLeaderCharacter.IsValid())
     {
         bLeaderIsSprinting = CachedLeaderCharacter->IsSprinting();
         CachedLeaderSpeed = CachedLeaderCharacter->GetCurrentMoveSpeed();
-        
-        UE_LOG(LogXBSoldier, Log, TEXT("跟随组件: 开始招募过渡，将领冲刺: %s, 速度: %.1f"), 
-            bLeaderIsSprinting ? TEXT("是") : TEXT("否"), CachedLeaderSpeed);
     }
-    else
-    {
-        UE_LOG(LogXBSoldier, Log, TEXT("跟随组件: 开始招募过渡"));
-    }
+    
+    UE_LOG(LogXBSoldier, Log, TEXT("跟随组件: 开始招募过渡"));
 }
 
 // ==================== 状态查询 ====================
