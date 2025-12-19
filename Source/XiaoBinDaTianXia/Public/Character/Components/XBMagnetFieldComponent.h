@@ -167,12 +167,6 @@ protected:
 
     // ============ ✨ 新增：士兵对象池配置 ============
 
-    /** @brief 是否启用士兵对象池（默认关闭，避免潜在风险时回退为直接生成） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|Pooling", meta = (DisplayName = "启用士兵对象池"))
-    bool bEnableSoldierPooling = false;
-
-    // ============ ✨ 新增：士兵对象池配置 ============
-
     /** @brief 预热士兵数量（启动时生成并隐藏，避免批量招募时卡顿） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|Pooling", meta = (DisplayName = "预热士兵数量", ClampMin = "0"))
     int32 SoldierPoolWarmCount = 5;

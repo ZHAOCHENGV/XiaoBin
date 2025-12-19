@@ -387,12 +387,6 @@ void AXBSoldierCharacter::ResetForRecruitment()
     // 🔧 修改 - 确保不会被延迟销毁
     SetLifeSpan(0.0f);
 
-    // 🔧 修改 - 清理旧控制器/跟随状态，避免复用时残留指针
-    if (AAIController* AICtrl = Cast<AAIController>(GetController()))
-    {
-        AICtrl->UnPossess();
-    }
-
     // 🔧 修改 - 重置运行时状态
     bIsDead = false;
     bIsRecruited = false;
