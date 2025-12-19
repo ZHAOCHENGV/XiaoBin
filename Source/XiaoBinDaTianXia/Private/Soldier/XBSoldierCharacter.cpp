@@ -36,6 +36,7 @@
 #include "NiagaraComponent.h"
 #include "NiagaraSystem.h"
 #include "NiagaraFunctionLibrary.h"
+#include "DrawDebugHelpers.h"
 #include "TimerManager.h"
 #include "XBCollisionChannels.h"
 
@@ -284,19 +285,22 @@ void AXBSoldierCharacter::FullInitialize(UDataTable* DataTable, FName RowName, E
 void AXBSoldierCharacter::StartDropFlight(const FVector& StartLocation, const FVector& TargetLocation, 
     const FXBDropArcConfig& ArcConfig, AXBCharacterBase* TargetLeader)
 {
+    // 🔧 修改 - 缓存抛物线配置，便于蓝图实时调试
+    ActiveDropArcConfig = ArcConfig;
+
     // 保存飞行参数
     DropStartLocation = StartLocation;
-    DropTargetLocation = TargetLocation;
-    DropFlightDuration = ArcConfig.FlightDuration;
-    DropArcHeight = ArcConfig.ArcHeight;
-    bPlayDropLandingEffect = ArcConfig.bPlayLandingEffect;
+    DropTargetLocation = ComputeGroundSnappedLocation(TargetLocation, ActiveDropArcConfig);
+    DropFlightDuration = ActiveDropArcConfig.FlightDuration;
+    DropArcHeight = ActiveDropArcConfig.ArcHeight;
+    bPlayDropLandingEffect = ActiveDropArcConfig.bPlayLandingEffect;
     DropTargetLeader = TargetLeader;
-    bAutoRecruitOnLanding = ArcConfig.bAutoRecruitOnLanding;
+    bAutoRecruitOnLanding = ActiveDropArcConfig.bAutoRecruitOnLanding;
     
     // 保存落地特效资源
-    if (!ArcConfig.LandingEffect.IsNull())
+    if (!ActiveDropArcConfig.LandingEffect.IsNull())
     {
-        DropLandingEffectAsset = ArcConfig.LandingEffect;
+        DropLandingEffectAsset = ActiveDropArcConfig.LandingEffect;
     }
     
     // 重置计时器
@@ -331,11 +335,17 @@ void AXBSoldierCharacter::StartDropFlight(const FVector& StartLocation, const FV
     
     // 显示角色
     SetActorHiddenInGame(false);
+
+    // ✨ 新增 - 启用调试绘制帮助调参
+    if (ActiveDropArcConfig.bEnableDebugDraw)
+    {
+        DrawDropDebugArc(ActiveDropArcConfig.DebugDrawDuration, ActiveDropArcConfig.DebugArcSegments);
+    }
     
     UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 开始掉落飞行: (%.0f, %.0f, %.0f) -> (%.0f, %.0f, %.0f)"),
         *GetName(),
         StartLocation.X, StartLocation.Y, StartLocation.Z,
-        TargetLocation.X, TargetLocation.Y, TargetLocation.Z);
+        DropTargetLocation.X, DropTargetLocation.Y, DropTargetLocation.Z);
 }
 
 float AXBSoldierCharacter::GetDropProgress() const
@@ -388,6 +398,107 @@ FVector AXBSoldierCharacter::CalculateArcPosition(float Progress) const
 }
 
 /**
+ * @brief 将期望落地点投射到地面
+ * @param DesiredLocation 期望落地世界坐标
+ * @param ArcConfig 抛物线配置（包含检测距离与偏移）
+ * @return 贴合地面的落点
+ * @note 🔧 修改 - 统一地面检测，消除悬空落地问题
+ */
+FVector AXBSoldierCharacter::ComputeGroundSnappedLocation(const FVector& DesiredLocation, const FXBDropArcConfig& ArcConfig) const
+{
+    // 🔧 修改 - 默认使用当前高度，若检测失败至少应用额外偏移
+    FVector Result = DesiredLocation + FVector(0.0f, 0.0f, ArcConfig.LandingExtraZOffset);
+
+    UWorld* World = GetWorld();
+    if (!World)
+    {
+        return Result;
+    }
+
+    // 🔧 修改 - 使用胶囊半高，确保底部贴地
+    float CapsuleHalfHeight = 88.0f;
+    if (const UCapsuleComponent* Capsule = GetCapsuleComponent())
+    {
+        CapsuleHalfHeight = Capsule->GetScaledCapsuleHalfHeight();
+    }
+
+    // 🔧 修改 - 按配置构造自上而下的射线
+    FVector TraceStart = FVector(DesiredLocation.X, DesiredLocation.Y, DesiredLocation.Z + ArcConfig.GroundTraceUpDistance);
+    FVector TraceEnd = FVector(DesiredLocation.X, DesiredLocation.Y, DesiredLocation.Z - ArcConfig.GroundTraceDownDistance);
+
+    FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(ComputeGroundSnappedLocation), false, this);
+    FHitResult HitResult;
+    if (World->LineTraceSingleByChannel(HitResult, TraceStart, TraceEnd, ECC_WorldStatic, QueryParams))
+    {
+        // 在检测命中时，补上半高与额外偏移
+        Result = HitResult.Location + FVector(0.0f, 0.0f, CapsuleHalfHeight + ArcConfig.LandingExtraZOffset);
+    }
+
+    return Result;
+}
+
+/**
+ * @brief 绘制掉落抛物线调试轨迹
+ * @param DurationOverride 调试持续时间（<0 使用配置）
+ * @param SegmentOverride 调试段数（<=0 使用配置）
+ * @note ✨ 新增 - 可视化轨迹便于蓝图调参
+ */
+void AXBSoldierCharacter::DrawDropDebugArc(float DurationOverride, int32 SegmentOverride) const
+{
+    // 仅在需要时绘制，避免无意义的性能开销
+    if (!ActiveDropArcConfig.bEnableDebugDraw && DurationOverride < 0.0f && SegmentOverride <= 0)
+    {
+        return;
+    }
+
+    UWorld* World = GetWorld();
+    if (!World)
+    {
+        return;
+    }
+
+    const int32 SegmentCount = SegmentOverride > 0 ? SegmentOverride : FMath::Max(ActiveDropArcConfig.DebugArcSegments, 2);
+    const float Step = 1.0f / static_cast<float>(SegmentCount);
+    const float DrawDuration = DurationOverride >= 0.0f ? DurationOverride : ActiveDropArcConfig.DebugDrawDuration;
+    const FColor DebugColor = ActiveDropArcConfig.DebugArcColor.ToFColor(true);
+    const float DebugPointRadius = ActiveDropArcConfig.DebugPointSize * 0.5f;
+
+    // 🔧 修改 - 逐段采样，确保曲线连续
+    for (int32 Index = 0; Index <= SegmentCount; ++Index)
+    {
+        float CurrentProgress = FMath::Clamp(Step * Index, 0.0f, 1.0f);
+        FVector CurrentPoint = CalculateArcPosition(CurrentProgress);
+
+        DrawDebugSphere(
+            World,
+            CurrentPoint,
+            DebugPointRadius,
+            8,
+            DebugColor,
+            false,
+            DrawDuration
+        );
+
+        if (Index > 0)
+        {
+            float PrevProgress = FMath::Clamp(Step * (Index - 1), 0.0f, 1.0f);
+            FVector PrevPoint = CalculateArcPosition(PrevProgress);
+
+            DrawDebugLine(
+                World,
+                PrevPoint,
+                CurrentPoint,
+                DebugColor,
+                false,
+                DrawDuration,
+                0,
+                1.5f
+            );
+        }
+    }
+}
+
+/**
  * @brief 处理落地
  * @note 🔧 修改 - 正确恢复移动组件，让物理系统控制贴地
  */
@@ -395,6 +506,9 @@ void AXBSoldierCharacter::OnDropLanded()
 {
     UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 掉落落地"), *GetName());
     
+    // 🔧 修改 - 落地点再次对齐地面，避免悬空
+    DropTargetLocation = ComputeGroundSnappedLocation(DropTargetLocation, ActiveDropArcConfig);
+
     // 设置落地位置
     SetActorLocation(DropTargetLocation);
     
