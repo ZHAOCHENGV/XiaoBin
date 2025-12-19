@@ -377,6 +377,58 @@ bool AXBSoldierCharacter::CanBeRecruited() const
     
     return true;
 }
+
+/**
+ * @brief 重置士兵以便复用
+ * @note 🔧 修改 - 支持对象池：重置生命、阵营、状态并禁用生命周期计时器
+ */
+void AXBSoldierCharacter::ResetForRecruitment()
+{
+    // 🔧 修改 - 确保不会被延迟销毁
+    SetLifeSpan(0.0f);
+
+    // 🔧 修改 - 清理旧控制器/跟随状态，避免复用时残留指针
+    if (AAIController* AICtrl = Cast<AAIController>(GetController()))
+    {
+        AICtrl->UnPossess();
+    }
+
+    // 🔧 修改 - 重置运行时状态
+    bIsDead = false;
+    bIsRecruited = false;
+    bIsEscaping = false;
+    CurrentState = EXBSoldierState::Idle;
+    CurrentAttackTarget = nullptr;
+    AttackCooldownTimer = 0.0f;
+    TargetSearchTimer = 0.0f;
+    LastEnemySeenTime = 0.0f;
+    FormationSlotIndex = INDEX_NONE;
+    FollowTarget = nullptr;
+    Faction = EXBFaction::Neutral;
+
+    // 🔧 修改 - 恢复血量
+    CurrentHealth = IsDataAccessorValid() ? DataAccessor->GetMaxHealth() : 100.0f;
+
+    // 🔧 修改 - 重新启用组件
+    if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+    {
+        MoveComp->SetComponentTickEnabled(true);
+        MoveComp->SetMovementMode(EMovementMode::MOVE_Walking);
+        MoveComp->MaxWalkSpeed = GetMoveSpeed();
+    }
+
+    if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+    {
+        Capsule->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    }
+
+    // 🔧 修改 - 重新显示并开启Tick
+    SetActorHiddenInGame(false);
+    SetActorTickEnabled(true);
+    SetActorEnableCollision(true);
+
+    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 已重置为待招募状态"), *GetName());
+}
 /**
  * @brief 士兵被招募
  * @param NewLeader 新将领
