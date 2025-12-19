@@ -127,8 +127,10 @@ void AXBVillagerActor::OnRecruited(AActor* Leader)
 
     UE_LOG(LogTemp, Log, TEXT("村民 %s 被 %s 招募"), *GetName(), *Leader->GetName());
 
-    // 延迟销毁，给磁场组件时间处理转化逻辑
-    SetLifeSpan(0.1f);
+    // 🔧 修改 - 隐藏与停用，避免频繁销毁造成的性能抖动
+    SetActorHiddenInGame(true);
+    SetActorEnableCollision(false);
+    SetActorTickEnabled(false);
 }
 
 void AXBVillagerActor::SetZzzEffectEnabled(bool bEnabled)
