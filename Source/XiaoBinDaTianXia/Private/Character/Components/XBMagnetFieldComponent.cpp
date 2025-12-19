@@ -71,8 +71,11 @@ void UXBMagnetFieldComponent::BeginPlay()
         SetComponentTickEnabled(true);
     }
 
-    // ✨ 新增 - 启动时预热士兵对象池，降低集中招募时的生成开销
-    PrewarmSoldierPool();
+    // ✨ 新增 - 启动时预热士兵对象池，降低集中招募时的生成开销（可选）
+    if (bEnableSoldierPooling)
+    {
+        PrewarmSoldierPool();
+    }
 
     UE_LOG(LogTemp, Warning, TEXT("磁场组件 %s BeginPlay - 半径: %.1f, 启用: %s, 调试: %s"), 
         *GetOwner()->GetName(), 
@@ -466,6 +469,14 @@ AXBSoldierCharacter* UXBMagnetFieldComponent::AcquireSoldierFromPool(const FVect
         {
             // 🔧 修改 - 重置状态确保可招募
             Soldier->ResetForRecruitment();
+            if (AXBCharacterBase* PrevLeader = Soldier->GetLeaderCharacter())
+            {
+                // 🔧 修改 - 防御性：仅在有效且不同将领时移除，避免对无效队列进行 RemoveAt
+                if (PrevLeader != Leader && IsValid(PrevLeader) && !PrevLeader->IsPendingKillPending())
+                {
+                    PrevLeader->RemoveSoldier(Soldier);
+                }
+            }
             Soldier->SetActorLocationAndRotation(SpawnLocation, SpawnRotation);
             Soldier->SetActorHiddenInGame(false);
             Soldier->SetActorEnableCollision(true);
@@ -736,11 +747,23 @@ bool UXBMagnetFieldComponent::TryRecruitVillager(AXBVillagerActor* Villager)
     FVector SpawnLocation = Villager->GetActorLocation();
     FRotator SpawnRotation = Villager->GetActorRotation();
     
-    // ✨ 新增 - 从对象池获取或生成士兵，减少 Spawn/Destroy 峰值
-    AXBSoldierCharacter* NewSoldier = AcquireSoldierFromPool(SpawnLocation, SpawnRotation, Leader);
+    AXBSoldierCharacter* NewSoldier = nullptr;
+
+    // ✨ 新增 - 优先尝试对象池；失败回退到直接生成，避免阻塞招募
+    if (bEnableSoldierPooling)
+    {
+        NewSoldier = AcquireSoldierFromPool(SpawnLocation, SpawnRotation, Leader);
+    }
+
     if (!NewSoldier)
     {
-        UE_LOG(LogTemp, Error, TEXT("生成士兵失败（对象池不足且无法扩容）"));
+        // 🔧 修改 - 回退到直接生成，保证稳定性
+        NewSoldier = SpawnNewSoldierInstance(SpawnLocation, SpawnRotation, Leader);
+    }
+
+    if (!NewSoldier)
+    {
+        UE_LOG(LogTemp, Error, TEXT("生成士兵失败（对象池或直接生成均失败）"));
         return false;
     }
 
