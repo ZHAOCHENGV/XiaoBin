@@ -165,6 +165,20 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|Debug", meta = (DisplayName = "显示统计数据"))
     bool bShowStats = true;
 
+    // ============ ✨ 新增：士兵对象池配置 ============
+
+    /** @brief 预热士兵数量（启动时生成并隐藏，避免批量招募时卡顿） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|Pooling", meta = (DisplayName = "预热士兵数量", ClampMin = "0"))
+    int32 SoldierPoolWarmCount = 5;
+
+    /** @brief 是否允许池子不足时动态扩容 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|Pooling", meta = (DisplayName = "允许动态扩容"))
+    bool bAllowSoldierPoolExpansion = true;
+
+    /** @brief 将村民隐藏而非销毁，避免重复 Spawn/Destroy 带来的开销 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|Pooling", meta = (DisplayName = "隐藏村民代替销毁"))
+    bool bHideVillagerInsteadOfDestroy = true;
+
     // ============ 运行时数据 ============
 
     /** @brief 磁场统计数据 */
@@ -174,6 +188,10 @@ protected:
     /** @brief 当前范围内的Actor列表 */
     UPROPERTY()
     TArray<TWeakObjectPtr<AActor>> ActorsInField;
+
+    /** @brief 士兵对象池（隐藏且待命的士兵实例） */
+    UPROPERTY()
+    TArray<TWeakObjectPtr<AXBSoldierCharacter>> SoldierPool;
 
     // ============ 内部回调 ============
 
@@ -199,6 +217,12 @@ private:
 
     // ✨ 新增 - 绘制单个Actor的调试信息
     void DrawDebugActorInfo(AActor* Actor, float Duration);
+
+    // ✨ 新增 - 预热并获取士兵对象池
+    void PrewarmSoldierPool();
+    AXBSoldierCharacter* AcquireSoldierFromPool(const FVector& SpawnLocation, const FRotator& SpawnRotation, AXBCharacterBase* Leader);
+    AXBSoldierCharacter* SpawnNewSoldierInstance(const FVector& SpawnLocation, const FRotator& SpawnRotation, AXBCharacterBase* Leader);
+    void DeactivateVillager(AXBVillagerActor* Villager);
 
 protected:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XB|MagnetField", meta = (DisplayName = "招募增益效果"))

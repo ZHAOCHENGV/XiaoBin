@@ -71,6 +71,9 @@ void UXBMagnetFieldComponent::BeginPlay()
         SetComponentTickEnabled(true);
     }
 
+    // ✨ 新增 - 启动时预热士兵对象池，降低集中招募时的生成开销
+    PrewarmSoldierPool();
+
     UE_LOG(LogTemp, Warning, TEXT("磁场组件 %s BeginPlay - 半径: %.1f, 启用: %s, 调试: %s"), 
         *GetOwner()->GetName(), 
         GetScaledSphereRadius(),
@@ -402,6 +405,165 @@ void UXBMagnetFieldComponent::ResetStats()
     UE_LOG(LogTemp, Log, TEXT("磁场统计已重置: %s"), *GetOwner()->GetName());
 }
 
+/**
+ * @brief 预热士兵对象池
+ * @note ✨ 新增 - 启动时生成并隐藏士兵，减少集中招募时的 Spawn 峰值
+ */
+void UXBMagnetFieldComponent::PrewarmSoldierPool()
+{
+    AXBCharacterBase* Leader = Cast<AXBCharacterBase>(GetOwner());
+    if (!Leader || SoldierPoolWarmCount <= 0)
+    {
+        return;
+    }
+
+    UWorld* World = GetWorld();
+    if (!World)
+    {
+        return;
+    }
+
+    FVector BaseLocation = GetComponentLocation();
+    FRotator BaseRotation = GetComponentRotation();
+
+    for (int32 Index = 0; Index < SoldierPoolWarmCount; ++Index)
+    {
+        // 🔧 修改 - 分散预热位置，避免重叠碰撞
+        FVector Offset = FVector(FMath::FRandRange(-50.f, 50.f), FMath::FRandRange(-50.f, 50.f), 0.f);
+        AXBSoldierCharacter* Soldier = SpawnNewSoldierInstance(BaseLocation + Offset, BaseRotation, Leader);
+        if (Soldier)
+        {
+            Soldier->ResetForRecruitment();
+            Soldier->SetActorHiddenInGame(true);
+            Soldier->SetActorEnableCollision(false);
+            Soldier->SetActorTickEnabled(false);
+            SoldierPool.Add(Soldier);
+        }
+    }
+
+    UE_LOG(LogTemp, Log, TEXT("磁场组件 %s 预热士兵对象池完成，数量: %d"), *GetOwner()->GetName(), SoldierPool.Num());
+}
+
+/**
+ * @brief 从对象池获取士兵，不足时视配置扩容
+ * @param SpawnLocation 生成位置
+ * @param SpawnRotation 生成旋转
+ * @param Leader 所属将领
+ * @return 可用士兵实例
+ * @note ✨ 新增 - 优先复用隐藏的士兵实例，降低运行时 Spawn 开销
+ */
+AXBSoldierCharacter* UXBMagnetFieldComponent::AcquireSoldierFromPool(const FVector& SpawnLocation, const FRotator& SpawnRotation, AXBCharacterBase* Leader)
+{
+    // 清理无效引用
+    SoldierPool.RemoveAll([](const TWeakObjectPtr<AXBSoldierCharacter>& WeakSoldier)
+    {
+        return !WeakSoldier.IsValid();
+    });
+
+    for (int32 Index = SoldierPool.Num() - 1; Index >= 0; --Index)
+    {
+        if (AXBSoldierCharacter* Soldier = SoldierPool[Index].Get())
+        {
+            // 🔧 修改 - 重置状态确保可招募
+            Soldier->ResetForRecruitment();
+            Soldier->SetActorLocationAndRotation(SpawnLocation, SpawnRotation);
+            Soldier->SetActorHiddenInGame(false);
+            Soldier->SetActorEnableCollision(true);
+            Soldier->SetActorTickEnabled(true);
+            SoldierPool.RemoveAt(Index);
+            return Soldier;
+        }
+    }
+
+    if (!bAllowSoldierPoolExpansion)
+    {
+        return nullptr;
+    }
+
+    // 🔧 修改 - 池子不足时动态扩容
+    return SpawnNewSoldierInstance(SpawnLocation, SpawnRotation, Leader);
+}
+
+/**
+ * @brief 生成新的士兵实例
+ * @param SpawnLocation 生成位置
+ * @param SpawnRotation 生成旋转
+ * @param Leader 所属将领
+ * @return 新生成的士兵
+ * @note 🔧 修改 - 统一生成流程，便于池化/动态扩容共享
+ */
+AXBSoldierCharacter* UXBMagnetFieldComponent::SpawnNewSoldierInstance(const FVector& SpawnLocation, const FRotator& SpawnRotation, AXBCharacterBase* Leader)
+{
+    if (!Leader)
+    {
+        return nullptr;
+    }
+
+    UWorld* World = GetWorld();
+    if (!World)
+    {
+        return nullptr;
+    }
+
+    UDataTable* SoldierDT = Leader->GetSoldierDataTable();
+    FName SoldierRowName = Leader->GetRecruitSoldierRowName();
+
+    if (!SoldierDT || SoldierRowName.IsNone())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("将领 %s 未配置士兵数据表，无法生成士兵"), *Leader->GetName());
+        return nullptr;
+    }
+
+    TSubclassOf<AXBSoldierCharacter> SoldierClass = Leader->GetSoldierActorClass();
+    if (!SoldierClass)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("将领 %s 未配置士兵Actor类"), *Leader->GetName());
+        return nullptr;
+    }
+
+    FActorSpawnParameters SpawnParams;
+    SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
+    AXBSoldierCharacter* NewSoldier = World->SpawnActor<AXBSoldierCharacter>(
+        SoldierClass,
+        SpawnLocation,
+        SpawnRotation,
+        SpawnParams
+    );
+
+    if (!NewSoldier)
+    {
+        return nullptr;
+    }
+
+    NewSoldier->InitializeFromDataTable(SoldierDT, SoldierRowName, Leader->GetFaction());
+    return NewSoldier;
+}
+
+/**
+ * @brief 隐藏并停用村民，避免销毁开销
+ * @param Villager 目标村民
+ * @note ✨ 新增 - 禁用碰撞与Tick，保留 Actor 以减少反复销毁
+ */
+void UXBMagnetFieldComponent::DeactivateVillager(AXBVillagerActor* Villager)
+{
+    if (!Villager)
+    {
+        return;
+    }
+
+    if (bHideVillagerInsteadOfDestroy)
+    {
+        Villager->SetActorHiddenInGame(true);
+        Villager->SetActorEnableCollision(false);
+        Villager->SetActorTickEnabled(false);
+    }
+    else
+    {
+        Villager->SetLifeSpan(0.1f);
+    }
+}
+
 // ==================== 原有功能实现（略微修改） ====================
 
 void UXBMagnetFieldComponent::SetFieldRadius(float NewRadius)
@@ -573,24 +735,14 @@ bool UXBMagnetFieldComponent::TryRecruitVillager(AXBVillagerActor* Villager)
 
     FVector SpawnLocation = Villager->GetActorLocation();
     FRotator SpawnRotation = Villager->GetActorRotation();
-
-    FActorSpawnParameters SpawnParams;
-    SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
-
-    AXBSoldierCharacter* NewSoldier = World->SpawnActor<AXBSoldierCharacter>(
-        SoldierClass,
-        SpawnLocation,
-        SpawnRotation,
-        SpawnParams
-    );
-
+    
+    // ✨ 新增 - 从对象池获取或生成士兵，减少 Spawn/Destroy 峰值
+    AXBSoldierCharacter* NewSoldier = AcquireSoldierFromPool(SpawnLocation, SpawnRotation, Leader);
     if (!NewSoldier)
     {
-        UE_LOG(LogTemp, Error, TEXT("生成士兵失败"));
+        UE_LOG(LogTemp, Error, TEXT("生成士兵失败（对象池不足且无法扩容）"));
         return false;
     }
-
-    NewSoldier->InitializeFromDataTable(SoldierDT, SoldierRowName, Leader->GetFaction());
 
     int32 SlotIndex = Leader->GetSoldierCount();
     NewSoldier->OnRecruited(Leader, SlotIndex);
@@ -598,7 +750,8 @@ bool UXBMagnetFieldComponent::TryRecruitVillager(AXBVillagerActor* Villager)
 
     ApplyRecruitEffect(Leader, NewSoldier);
 
-    Villager->OnRecruited(Leader);
+    // ✨ 新增 - 村民隐藏而非销毁，避免频繁析构
+    DeactivateVillager(Villager);
 
     UE_LOG(LogTemp, Log, TEXT("村民 %s 转化为士兵 %s，将领当前士兵数: %d"),
         *Villager->GetName(), *NewSoldier->GetName(), Leader->GetSoldierCount());
