@@ -701,6 +701,29 @@ void AXBSoldierCharacter::SetupFollowingAndStartMoving(AXBCharacterBase* Leader,
     );
 }
 
+/**
+ * @brief 当槽位变化时触发补位移动
+ * @param bForceRecruitTransition 是否强制使用招募过渡模式
+ * @note ✨ 新增 - 统一补位逻辑，避免瞬移
+ */
+void AXBSoldierCharacter::RequestRelocateToSlot(bool bForceRecruitTransition)
+{
+    // 🔧 修改 - 仅在跟随或待机状态下执行补位
+    if (CurrentState != EXBSoldierState::Following && CurrentState != EXBSoldierState::Idle)
+    {
+        return;
+    }
+    
+    if (FollowComponent)
+    {
+        // 使用招募过渡模式移动到新槽位
+        if (bForceRecruitTransition || FollowComponent->GetFollowMode() != EXBFollowMode::RecruitTransition)
+        {
+            FollowComponent->StartRecruitTransition();
+        }
+    }
+}
+
 void AXBSoldierCharacter::PlayLandingEffect()
 {
     if (DropLandingEffectAsset.IsNull())
@@ -1321,6 +1344,7 @@ void AXBSoldierCharacter::SetFollowTarget(AActor* NewLeader, int32 SlotIndex)
     {
         FollowComponent->SetFollowTarget(NewLeader);
         FollowComponent->SetFormationSlotIndex(SlotIndex);
+        RequestRelocateToSlot(true);
     }
 
     if (AAIController* AICtrl = Cast<AAIController>(GetController()))
@@ -1349,11 +1373,18 @@ AXBCharacterBase* AXBSoldierCharacter::GetLeaderCharacter() const
 
 void AXBSoldierCharacter::SetFormationSlotIndex(int32 NewIndex)
 {
+    int32 OldIndex = FormationSlotIndex;
     FormationSlotIndex = NewIndex;
 
     if (FollowComponent)
     {
         FollowComponent->SetFormationSlotIndex(NewIndex);
+        
+        // 🔧 修改 - 槽位变更时使用招募过渡移动而非瞬移
+        if (OldIndex != NewIndex && CurrentState == EXBSoldierState::Following)
+        {
+            RequestRelocateToSlot(true);
+        }
     }
 
     if (AAIController* AICtrl = Cast<AAIController>(GetController()))

@@ -365,6 +365,13 @@ protected:
      * @param SlotIndex 槽位索引
      */
     void SetupFollowingAndStartMoving(AXBCharacterBase* Leader, int32 SlotIndex);
+
+    /**
+     * @brief 当槽位变化时触发补位移动
+     * @param bForceRecruitTransition 是否强制使用招募过渡模式
+     * @note ✨ 新增 - 防止槽位变化时瞬移
+     */
+    void RequestRelocateToSlot(bool bForceRecruitTransition = false);
     
     // ==================== 数据访问器组件 ====================
 
