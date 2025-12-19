@@ -981,6 +981,17 @@ void AXBCharacterBase::SpawnDroppedSoldiers()
 
     UXBSoldierPoolSubsystem* PoolSubsystem = World->GetSubsystem<UXBSoldierPoolSubsystem>();
 
+    // 🔧 修改 - 使用士兵胶囊半高参与落点校正，避免悬空
+    float DropCapsuleHalfHeight = 88.0f;
+    if (DropSoldierClass)
+    {
+        const AXBSoldierCharacter* SoldierCDO = DropSoldierClass->GetDefaultObject<AXBSoldierCharacter>();
+        if (SoldierCDO && SoldierCDO->GetCapsuleComponent())
+        {
+            DropCapsuleHalfHeight = SoldierCDO->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+        }
+    }
+
     UE_LOG(LogXBCharacter, Log, TEXT("将领 %s 死亡，生成 %d 个掉落士兵，目标将领: %s"),
         *GetName(), 
         SoldierDropConfig.DropCount,
@@ -1000,8 +1011,8 @@ void AXBCharacterBase::SpawnDroppedSoldiers()
 
         // 地面检测
         FHitResult HitResult;
-        FVector TraceStart = FVector(TargetLocation.X, TargetLocation.Y, SpawnOrigin.Z + 500.0f);
-        FVector TraceEnd = FVector(TargetLocation.X, TargetLocation.Y, SpawnOrigin.Z - 1000.0f);
+        FVector TraceStart = FVector(TargetLocation.X, TargetLocation.Y, SpawnOrigin.Z + ArcConfig.GroundTraceUpDistance);
+        FVector TraceEnd = FVector(TargetLocation.X, TargetLocation.Y, SpawnOrigin.Z - ArcConfig.GroundTraceDownDistance);
 
         FCollisionQueryParams QueryParams;
         QueryParams.AddIgnoredActor(this);
@@ -1017,11 +1028,11 @@ void AXBCharacterBase::SpawnDroppedSoldiers()
         if (bHit)
         {
             // ✨ 新增 - 落地位置加上半高，确保胶囊体底部触地
-            TargetLocation = HitResult.Location + FVector(0.0f, 0.0f, 88.0f);
+            TargetLocation = HitResult.Location + FVector(0.0f, 0.0f, DropCapsuleHalfHeight + ArcConfig.LandingExtraZOffset);
         }
         else
         {
-            TargetLocation.Z = SpawnOrigin.Z;
+            TargetLocation.Z = SpawnOrigin.Z + ArcConfig.LandingExtraZOffset;
         }
 
         AXBSoldierCharacter* DroppedSoldier = nullptr;
