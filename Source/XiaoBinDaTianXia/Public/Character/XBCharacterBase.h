@@ -9,6 +9,7 @@
  *       1. 修复士兵计数同步问题
  *       2. 添加将领死亡标记防止循环回调
  *       3. 优化代码结构
+ *       4. ✨ 新增 掉落抛物线配置和逻辑
  */
 
 #pragma once
@@ -42,46 +43,35 @@ struct XIAOBINDATIANXIA_API FXBGrowthConfigCache
 {
     GENERATED_BODY()
 
-    /** @brief 每个士兵增加的生命值 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长", meta = (DisplayName = "每士兵生命加成"))
     float HealthPerSoldier = 20.0f;
 
-    /** @brief 每个士兵增加的体型缩放（累加方式：1 + 0.1 + 0.1...） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长", meta = (DisplayName = "每士兵体型加成"))
     float ScalePerSoldier = 0.01f;
 
-    /** @brief 最大体型缩放 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长", meta = (DisplayName = "最大体型缩放"))
     float MaxScale = 2.f;
 
-    
-    // ✨ 新增 - 伤害倍率成长配置
-    /** @brief 每个士兵增加的伤害倍率 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长", meta = (DisplayName = "每士兵伤害倍率加成"))
     float DamageMultiplierPerSoldier = 0.01f;
 
-    /** @brief 最大伤害倍率 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长", meta = (DisplayName = "最大伤害倍率", ClampMin = "1.0"))
     float MaxDamageMultiplier = 3.0f;
 
-    /** @brief 是否启用技能特效缩放 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长", meta = (DisplayName = "启用技能特效缩放"))
     bool bEnableSkillEffectScaling = true;
 
-
-    /** @brief 技能特效缩放倍率（相对于角色缩放） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长", meta = (DisplayName = "技能特效缩放倍率", ClampMin = "0.1"))
     float SkillEffectScaleMultiplier = 1.0f;
 
-    /** @brief 是否启用攻击范围缩放 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长", meta = (DisplayName = "启用攻击范围缩放"))
     bool bEnableAttackRangeScaling = true;
 
-    /** @brief 攻击范围缩放倍率（相对于角色缩放） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长", meta = (DisplayName = "攻击范围缩放倍率", ClampMin = "0.1"))
     float AttackRangeScaleMultiplier = 1.0f;
 };
 
+// 🔧 修改 - 更新掉落配置结构体，整合抛物线配置
 USTRUCT(BlueprintType)
 struct XIAOBINDATIANXIA_API FXBSoldierDropConfig
 {
@@ -90,14 +80,14 @@ struct XIAOBINDATIANXIA_API FXBSoldierDropConfig
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "掉落", meta = (DisplayName = "掉落数量", ClampMin = "0"))
     int32 DropCount = 5;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "掉落", meta = (DisplayName = "掉落半径", ClampMin = "50.0"))
-    float DropRadius = 300.0f;
-
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "掉落", meta = (DisplayName = "掉落士兵类"))
     TSubclassOf<AXBSoldierCharacter> DropSoldierClass;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "掉落", meta = (DisplayName = "掉落动画时长", ClampMin = "0.1"))
-    float DropAnimDuration = 0.5f;
+    // ✨ 新增 - 抛物线配置
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "掉落", meta = (DisplayName = "抛物线配置"))
+    FXBDropArcConfig ArcConfig;
+
+    // ❌ 删除 - 移除旧的 DropRadius 和 DropAnimDuration，由 ArcConfig 替代
 };
 
 UCLASS()
@@ -163,13 +153,6 @@ public:
     UFUNCTION(BlueprintPure, Category = "士兵")
     const TArray<AXBSoldierCharacter*>& GetSoldiers() const { return Soldiers; }
 
-    // 🔧 修改 - 重命名并调整参数
-    /**
-     * @brief 士兵死亡回调
-     * @param DeadSoldier 死亡的士兵
-     * @note 由士兵调用，处理将领的缩减逻辑
-     *       修复：不再手动修改 CurrentSoldierCount，由 RemoveSoldier 统一处理
-     */
     UFUNCTION(BlueprintCallable, Category = "成长")
     virtual void OnSoldierDied(AXBSoldierCharacter* DeadSoldier);
 
@@ -179,15 +162,12 @@ public:
     UFUNCTION(BlueprintPure, Category = "成长", meta = (DisplayName = "获取当前攻击范围"))
     float GetScaledAttackRange() const;
 
-    // ✨ 新增 - 获取当前伤害倍率
     UFUNCTION(BlueprintPure, Category = "成长", meta = (DisplayName = "获取当前伤害倍率"))
     float GetCurrentDamageMultiplier() const;
 
-    // ✨ 新增 - 攻击状态回调
     UFUNCTION()
     void OnCombatAttackStateChanged(bool bIsAttacking);
 
-    // ✨ 新增 - 绑定战斗组件事件
     void BindCombatEvents();
     
     // ============ 死亡系统 ============
@@ -250,12 +230,6 @@ public:
     UFUNCTION(BlueprintCallable, Category = "士兵")
     virtual void SetSoldiersEscaping(bool bEscaping);
 
-    // ✨ 新增 - 设置最后伤害来源
-    /**
-     * @brief 设置最后造成伤害的 Actor
-     * @param Instigator 伤害来源
-     * @note 由伤害系统调用，用于死亡时确定掉落士兵配置
-     */
     UFUNCTION(BlueprintCallable, Category = "死亡", meta = (DisplayName = "设置伤害来源"))
     void SetLastDamageInstigator(AActor* InInstigator) { LastDamageInstigator = InInstigator; }
 
@@ -290,6 +264,7 @@ protected:
 
     virtual void PreDestroyCleanup();
 
+    // 🔧 修改 - 重构掉落士兵方法
     virtual void SpawnDroppedSoldiers();
 
     void ReassignSoldierSlots(int32 StartIndex);
@@ -301,52 +276,17 @@ protected:
     UFUNCTION()
     virtual void OnMagnetFieldActorEntered(AActor* EnteredActor);
 
-    // ✨ 新增 - 内部士兵管理方法
-    /**
-     * @brief 内部添加士兵（不触发成长逻辑）
-     * @param Soldier 士兵
-     * @return 是否添加成功
-     */
     bool Internal_AddSoldierToArray(AXBSoldierCharacter* Soldier);
-
-    /**
-     * @brief 内部移除士兵（不触发缩减逻辑）
-     * @param Soldier 士兵
-     * @return 是否移除成功
-     */
     bool Internal_RemoveSoldierFromArray(AXBSoldierCharacter* Soldier);
-
-    /**
-     * @brief 更新士兵计数并广播事件
-     * @param OldCount 旧计数
-     */
     void UpdateSoldierCount(int32 OldCount);
 
-    // ✨ 新增 - 成长系统内部方法
-    /**
-     * @brief 应用士兵增加带来的成长效果
-     * @param SoldierCount 增加的士兵数量
-     */
     void ApplyGrowthOnSoldiersAdded(int32 SoldierCount);
-
-    /**
-     * @brief 应用士兵减少带来的缩减效果
-     * @param SoldierCount 减少的士兵数量
-     */
     void ApplyGrowthOnSoldiersRemoved(int32 SoldierCount);
-
-
-
 
     void UpdateSkillEffectScaling();
     void UpdateAttackRangeScaling();
     void UpdateLeaderScale();
     void AddHealthWithOverflow(float HealthToAdd);
-    // ✨ 新增 - 更新伤害倍率
-    /**
-     * @brief 更新将领伤害倍率
-     * @note 根据士兵数量计算，公式：基础倍率 + (士兵数 × 每士兵加成)
-     */
     void UpdateDamageMultiplier();
 
     // ==================== 核心组件 ====================
@@ -366,8 +306,6 @@ protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "磁场组件"))
     TObjectPtr<UXBMagnetFieldComponent> MagnetFieldComponent;
 
-
-
     // ==================== 阵营 ====================
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "阵营", meta = (DisplayName = "阵营"))
@@ -377,9 +315,6 @@ protected:
 
     UPROPERTY(BlueprintReadOnly, Category = "士兵")
     TArray<AXBSoldierCharacter*> Soldiers;
-
-    // 🔧 修改 - 移除 CurrentSoldierCount，直接使用 Soldiers.Num()
-    // 原因：避免计数不同步问题
 
     UPROPERTY(BlueprintReadOnly, Category = "成长")
     float BaseScale = 1.0f;
@@ -456,25 +391,14 @@ protected:
     UPROPERTY(BlueprintReadOnly, Category = "死亡")
     bool bIsDead = false;
 
-    // ✨ 新增 - 正在清理士兵标记（防止循环回调）
     UPROPERTY(BlueprintReadOnly, Category = "死亡")
     bool bIsCleaningUpSoldiers = false;
 
-    // ✨ 新增 - 最后伤害来源
-    /**
-     * @brief 最后造成伤害的 Actor
-     * @note 用于判断掉落士兵的阵营和配置
-     */
     UPROPERTY(BlueprintReadOnly, Category = "死亡", meta = (DisplayName = "最后伤害来源"))
     TWeakObjectPtr<AActor> LastDamageInstigator;
 
     FTimerHandle DeathDestroyTimerHandle;
 
-    // ✨ 新增 - 杀死所有士兵
-    /**
-     * @brief 杀死所有跟随的士兵
-     * @note 将领死亡时调用，确保士兵正确执行死亡流程并播放蒙太奇
-     */
     void KillAllSoldiers();
 
     // ==================== 逃跑配置 ====================

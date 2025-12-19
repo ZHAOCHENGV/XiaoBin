@@ -10,6 +10,8 @@
  *       2. ✨ 新增 组件启用/禁用管理
  *       3. ✨ 新增 Zzz 特效系统
  *       4. 🔧 修改 CanBeRecruited 支持休眠态检查
+ *       5. ✨ 新增 掉落抛物线飞行系统（支持落地自动入列）
+ *       6. ✨ 新增 FullInitialize 完整初始化方法
  */
 
 #include "Soldier/XBSoldierCharacter.h"
@@ -33,6 +35,7 @@
 #include "Animation/AnimSequence.h"
 #include "NiagaraComponent.h"
 #include "NiagaraSystem.h"
+#include "NiagaraFunctionLibrary.h"
 #include "TimerManager.h"
 #include "XBCollisionChannels.h"
 
@@ -63,7 +66,6 @@ AXBSoldierCharacter::AXBSoldierCharacter()
     DebugComponent = CreateDefaultSubobject<UXBSoldierDebugComponent>(TEXT("DebugComponent"));
     BehaviorInterface = CreateDefaultSubobject<UXBSoldierBehaviorInterface>(TEXT("BehaviorInterface"));
     
-    // ✨ 新增 - 创建 Zzz 特效组件
     ZzzEffectComponent = CreateDefaultSubobject<UNiagaraComponent>(TEXT("ZzzEffectComponent"));
     ZzzEffectComponent->SetupAttachment(RootComponent);
     ZzzEffectComponent->SetAutoActivate(false);
@@ -88,7 +90,6 @@ void AXBSoldierCharacter::PostInitializeComponents()
     
     bComponentsInitialized = true;
     
-    // 组件校验
     UCapsuleComponent* Capsule = GetCapsuleComponent();
     if (Capsule)
     {
@@ -115,7 +116,6 @@ void AXBSoldierCharacter::BeginPlay()
 {
     Super::BeginPlay();
 
-    // 加载 Zzz 特效资源
     if (!ZzzEffectAsset.IsNull() && ZzzEffectComponent)
     {
         if (UNiagaraSystem* LoadedEffect = ZzzEffectAsset.LoadSynchronous())
@@ -140,10 +140,8 @@ void AXBSoldierCharacter::BeginPlay()
         CurrentHealth = 100.0f;
     }
 
-    // ✨ 关键 - 根据配置决定初始状态
     if (bStartAsDormant)
     {
-        // 确保阵营是中立的
         Faction = EXBFaction::Neutral;
         EnterDormantState(DormantConfig.DormantType);
         
@@ -167,6 +165,12 @@ void AXBSoldierCharacter::BeginPlay()
 void AXBSoldierCharacter::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
+
+    // 更新掉落飞行
+    if (CurrentState == EXBSoldierState::Dropping)
+    {
+        UpdateDropFlight(DeltaTime);
+    }
 }
 
 void AXBSoldierCharacter::EnableMovementAndTick()
@@ -176,8 +180,8 @@ void AXBSoldierCharacter::EnableMovementAndTick()
         return;
     }
     
-    // ✨ 新增 - 休眠态不启用移动
-    if (CurrentState == EXBSoldierState::Dormant)
+    // 休眠态和掉落态不启用移动
+    if (CurrentState == EXBSoldierState::Dormant || CurrentState == EXBSoldierState::Dropping)
     {
         return;
     }
@@ -204,18 +208,389 @@ void AXBSoldierCharacter::EnableMovementAndTick()
     UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 移动组件和Tick已启用"), *GetName());
 }
 
-// ==================== ✨ 新增：休眠系统实现 ====================
+// ==================== ✨ 新增：完整初始化方法 ====================
 
 /**
- * @brief 进入休眠态
- * @param DormantType 休眠类型
- * @note 禁用所有非必要组件，显示休眠视觉效果
+ * @brief 完整初始化士兵（数据 + 组件 + 视觉）
+ * @param DataTable 数据表
+ * @param RowName 行名
+ * @param InFaction 阵营
+ * @note 用于掉落士兵，在生成时立即完成所有初始化
+ *       与 InitializeFromDataTable 的区别：
+ *       1. 立即启用所有组件
+ *       2. 立即启用 Tick
+ *       3. 不进入休眠态
  */
+void AXBSoldierCharacter::FullInitialize(UDataTable* DataTable, FName RowName, EXBFaction InFaction)
+{
+    // 1. 基础数据初始化
+    InitializeFromDataTable(DataTable, RowName, InFaction);
+    
+    // 2. 确保组件初始化标记
+    bComponentsInitialized = true;
+    
+    // 3. 启用 Tick（掉落状态需要）
+    SetActorTickEnabled(true);
+    
+    // 4. 设置阵营
+    Faction = InFaction;
+    
+    // 5. 重置状态标记
+    bIsRecruited = false;
+    bIsDead = false;
+    bIsEscaping = false;
+    
+    // 6. 显示角色
+    SetActorHiddenInGame(false);
+    
+    // 7. 启用碰撞（Query模式，用于被检测但不阻挡）
+    if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+    {
+        Capsule->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+    }
+    
+    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 完整初始化完成，阵营: %d"), 
+        *GetName(), static_cast<int32>(InFaction));
+}
+
+// ==================== 掉落抛物线飞行系统 ====================
+
+/**
+ * @brief 开始掉落抛物线飞行
+ * @param StartLocation 起始位置
+ * @param TargetLocation 目标落地位置
+ * @param ArcConfig 抛物线配置
+ * @param TargetLeader 落地后要加入的将领
+ * @note 🔧 修改 - 新增 TargetLeader 参数，支持落地自动入列
+ */
+void AXBSoldierCharacter::StartDropFlight(const FVector& StartLocation, const FVector& TargetLocation, 
+    const FXBDropArcConfig& ArcConfig, AXBCharacterBase* TargetLeader)
+{
+    // 保存飞行参数
+    DropStartLocation = StartLocation;
+    DropTargetLocation = TargetLocation;
+    DropFlightDuration = ArcConfig.FlightDuration;
+    DropArcHeight = ArcConfig.ArcHeight;
+    bPlayDropLandingEffect = ArcConfig.bPlayLandingEffect;
+    
+    // ✨ 新增 - 保存目标将领和自动入列配置
+    DropTargetLeader = TargetLeader;
+    bAutoRecruitOnLanding = ArcConfig.bAutoRecruitOnLanding;
+    
+    // 保存落地特效资源
+    if (!ArcConfig.LandingEffect.IsNull())
+    {
+        DropLandingEffectAsset = ArcConfig.LandingEffect;
+    }
+    
+    // 重置计时器
+    DropElapsedTime = 0.0f;
+    
+    // 设置初始位置
+    SetActorLocation(StartLocation);
+    
+    // 进入掉落状态
+    SetSoldierState(EXBSoldierState::Dropping);
+    
+    // 确保 Tick 启用
+    SetActorTickEnabled(true);
+    
+    // 禁用碰撞（飞行期间）
+    if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+    {
+        Capsule->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    }
+    
+    // 禁用移动组件（使用手动位置更新）
+    if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+    {
+        MoveComp->SetMovementMode(MOVE_Flying);
+        MoveComp->StopMovementImmediately();
+        MoveComp->SetComponentTickEnabled(false);
+    }
+    
+    // 隐藏 Zzz 特效
+    SetZzzEffectEnabled(false);
+    
+    // 显示角色
+    SetActorHiddenInGame(false);
+    
+    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 开始掉落飞行: (%.0f, %.0f, %.0f) -> (%.0f, %.0f, %.0f), 目标将领: %s, 自动入列: %s"),
+        *GetName(),
+        StartLocation.X, StartLocation.Y, StartLocation.Z,
+        TargetLocation.X, TargetLocation.Y, TargetLocation.Z,
+        TargetLeader ? *TargetLeader->GetName() : TEXT("无"),
+        bAutoRecruitOnLanding ? TEXT("是") : TEXT("否"));
+}
+
+float AXBSoldierCharacter::GetDropProgress() const
+{
+    if (DropFlightDuration <= KINDA_SMALL_NUMBER)
+    {
+        return 1.0f;
+    }
+    return FMath::Clamp(DropElapsedTime / DropFlightDuration, 0.0f, 1.0f);
+}
+
+void AXBSoldierCharacter::UpdateDropFlight(float DeltaTime)
+{
+    // 更新计时器
+    DropElapsedTime += DeltaTime;
+    
+    // 计算进度
+    float Progress = GetDropProgress();
+    
+    // 计算当前位置
+    FVector CurrentPosition = CalculateArcPosition(Progress);
+    SetActorLocation(CurrentPosition);
+    
+    // 计算面向方向（朝向目标）
+    FVector Direction = (DropTargetLocation - DropStartLocation).GetSafeNormal2D();
+    if (!Direction.IsNearlyZero())
+    {
+        SetActorRotation(Direction.Rotation());
+    }
+    
+    // 检查是否完成
+    if (Progress >= 1.0f)
+    {
+        OnDropLanded();
+    }
+}
+
+FVector AXBSoldierCharacter::CalculateArcPosition(float Progress) const
+{
+    // XY 线性插值
+    float X = FMath::Lerp(DropStartLocation.X, DropTargetLocation.X, Progress);
+    float Y = FMath::Lerp(DropStartLocation.Y, DropTargetLocation.Y, Progress);
+    
+    // Z 抛物线计算
+    float LinearZ = FMath::Lerp(DropStartLocation.Z, DropTargetLocation.Z, Progress);
+    float ArcOffset = DropArcHeight * 4.0f * Progress * (1.0f - Progress);
+    float Z = LinearZ + ArcOffset;
+    
+    return FVector(X, Y, Z);
+}
+
+/**
+ * @brief 处理落地
+ * @note 🔧 修改 - 落地后根据配置决定是自动入列还是进入休眠态
+ */
+void AXBSoldierCharacter::OnDropLanded()
+{
+    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 掉落落地"), *GetName());
+    
+    // 确保位置精确
+    SetActorLocation(DropTargetLocation);
+    
+    // 恢复碰撞
+    if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+    {
+        Capsule->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    }
+    
+    // 恢复移动组件
+    if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+    {
+        MoveComp->SetMovementMode(MOVE_Walking);
+        MoveComp->SetComponentTickEnabled(true);
+    }
+    
+    // 播放落地特效
+    if (bPlayDropLandingEffect)
+    {
+        PlayLandingEffect();
+    }
+    
+    // ✨ 核心逻辑 - 根据配置决定落地后的行为
+    if (bAutoRecruitOnLanding && DropTargetLeader.IsValid())
+    {
+        // 自动入列到目标将领
+        AutoRecruitToLeader();
+    }
+    else
+    {
+        // 没有目标将领，进入待机态（可被其他将领招募）
+        SetSoldierState(EXBSoldierState::Idle);
+        UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 落地后进入待机态，等待招募"), *GetName());
+    }
+    
+    // 广播落地完成事件
+    OnDropLandingComplete.Broadcast(this);
+}
+
+/**
+ * @brief 落地后自动加入将领队伍
+ * @note 🔧 修复版本 - 
+ *       1. 正确的调用顺序：先标记招募 → 后添加到将领
+ *       2. 手动启用所有必要组件
+ *       3. 正确启动跟随过渡
+ */
+void AXBSoldierCharacter::AutoRecruitToLeader()
+{
+    AXBCharacterBase* Leader = DropTargetLeader.Get();
+    if (!Leader || !IsValid(Leader))
+    {
+        UE_LOG(LogXBSoldier, Warning, TEXT("士兵 %s: 自动入列失败 - 目标将领无效"), *GetName());
+        Faction = EXBFaction::Neutral;
+        bIsRecruited = false;
+        SetSoldierState(EXBSoldierState::Idle);
+        return;
+    }
+    
+    if (Leader->IsDead())
+    {
+        UE_LOG(LogXBSoldier, Warning, TEXT("士兵 %s: 自动入列失败 - 目标将领已死亡"), *GetName());
+        Faction = EXBFaction::Neutral;
+        bIsRecruited = false;
+        SetSoldierState(EXBSoldierState::Idle);
+        return;
+    }
+    
+    // 防止重复入列
+    if (bIsRecruited && FollowTarget.IsValid())
+    {
+        UE_LOG(LogXBSoldier, Warning, TEXT("士兵 %s: 已入列，跳过"), *GetName());
+        return;
+    }
+    
+    UE_LOG(LogXBSoldier, Log, TEXT(""));
+    UE_LOG(LogXBSoldier, Log, TEXT("========================================"));
+    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 开始自动入列"), *GetName());
+    UE_LOG(LogXBSoldier, Log, TEXT("目标将领: %s"), *Leader->GetName());
+    UE_LOG(LogXBSoldier, Log, TEXT("将领当前士兵数: %d"), Leader->GetSoldierCount());
+    UE_LOG(LogXBSoldier, Log, TEXT("========================================"));
+    
+    // ==================== Step 1: 设置状态标记 ====================
+    bIsRecruited = true;
+    FollowTarget = Leader;
+    Faction = Leader->GetFaction();
+    
+    // ==================== Step 2: 启用所有组件 ====================
+    
+    SetActorTickEnabled(true);
+    
+    if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+    {
+        Capsule->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    }
+    
+    if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+    {
+        MoveComp->SetComponentTickEnabled(true);
+        MoveComp->SetMovementMode(MOVE_Walking);
+        MoveComp->MaxWalkSpeed = GetMoveSpeed();
+        UE_LOG(LogXBSoldier, Log, TEXT("移动组件启用，速度: %.1f"), MoveComp->MaxWalkSpeed);
+    }
+    
+    if (FollowComponent)
+    {
+        FollowComponent->SetComponentTickEnabled(true);
+    }
+    
+    if (BehaviorInterface)
+    {
+        BehaviorInterface->SetComponentTickEnabled(true);
+    }
+    
+    // ==================== Step 3: 添加到将领（自动分配槽位） ====================
+    
+    // AddSoldier 会：
+    // - 将士兵添加到 Soldiers 数组
+    // - 分配 FormationSlotIndex = Soldiers.Num() - 1
+    // - 调用 SetFollowTarget (会更新 FollowComponent)
+    // - 触发成长效果
+    Leader->AddSoldier(this);
+    
+    int32 SlotIndex = FormationSlotIndex;
+    UE_LOG(LogXBSoldier, Log, TEXT("已添加到将领，槽位: %d"), SlotIndex);
+    
+    // ==================== Step 4: 确保跟随组件正确配置 ====================
+    
+    if (FollowComponent)
+    {
+        // 确认跟随目标和槽位（可能已被 AddSoldier->SetFollowTarget 设置）
+        if (FollowComponent->GetFollowTarget() != Leader)
+        {
+            FollowComponent->SetFollowTarget(Leader);
+        }
+        
+        if (FollowComponent->GetFormationSlotIndex() != SlotIndex)
+        {
+            FollowComponent->SetFormationSlotIndex(SlotIndex);
+        }
+        
+        // 同步将领冲刺状态
+        FollowComponent->SyncLeaderSprintState(Leader->IsSprinting(), Leader->GetCurrentMoveSpeed());
+        
+        // ✨ 核心 - 开始招募过渡，士兵会移动到槽位位置
+        FollowComponent->StartRecruitTransition();
+        
+        FVector TargetPos = FollowComponent->GetTargetPosition();
+        UE_LOG(LogXBSoldier, Log, TEXT("开始移动到槽位位置: (%.1f, %.1f, %.1f)"), 
+            TargetPos.X, TargetPos.Y, TargetPos.Z);
+    }
+    
+    // ==================== Step 5: 设置状态并启动 AI ====================
+    
+    SetSoldierState(EXBSoldierState::Following);
+    
+    GetWorldTimerManager().SetTimer(
+        DelayedAIStartTimerHandle,
+        this,
+        &AXBSoldierCharacter::SpawnAndPossessAIController,
+        0.3f,
+        false
+    );
+    
+    OnSoldierRecruited.Broadcast(this, Leader);
+    
+    UE_LOG(LogXBSoldier, Log, TEXT("========================================"));
+    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 自动入列完成，槽位: %d"), *GetName(), SlotIndex);
+    UE_LOG(LogXBSoldier, Log, TEXT("将领最终士兵数: %d"), Leader->GetSoldierCount());
+    UE_LOG(LogXBSoldier, Log, TEXT("========================================"));
+    UE_LOG(LogXBSoldier, Log, TEXT(""));
+}
+
+void AXBSoldierCharacter::PlayLandingEffect()
+{
+    if (DropLandingEffectAsset.IsNull())
+    {
+        return;
+    }
+    
+    UNiagaraSystem* EffectSystem = DropLandingEffectAsset.LoadSynchronous();
+    if (!EffectSystem)
+    {
+        return;
+    }
+    
+    UWorld* World = GetWorld();
+    if (!World)
+    {
+        return;
+    }
+    
+    UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+        World,
+        EffectSystem,
+        DropTargetLocation,
+        FRotator::ZeroRotator,
+        FVector::OneVector,
+        true,
+        true,
+        ENCPoolMethod::AutoRelease
+    );
+    
+    UE_LOG(LogXBSoldier, Verbose, TEXT("士兵 %s 播放落地特效"), *GetName());
+}
+
+// ==================== 休眠系统实现 ====================
+
 void AXBSoldierCharacter::EnterDormantState(EXBDormantType DormantType)
 {
     if (CurrentState == EXBSoldierState::Dormant)
     {
-        // 已经在休眠态，只切换类型
         SetDormantType(DormantType);
         return;
     }
@@ -224,15 +599,12 @@ void AXBSoldierCharacter::EnterDormantState(EXBDormantType DormantType)
     CurrentState = EXBSoldierState::Dormant;
     CurrentDormantType = DormantType;
 
-    // 重置招募状态
     bIsRecruited = false;
     bIsDead = false;
     Faction = EXBFaction::Neutral;
 
-    // 禁用激活态组件
     DisableActiveComponents();
 
-    // 更新视觉效果
     if (DormantType != EXBDormantType::Hidden)
     {
         SetActorHiddenInGame(false);
@@ -241,12 +613,10 @@ void AXBSoldierCharacter::EnterDormantState(EXBDormantType DormantType)
     }
     else
     {
-        // Hidden 类型完全隐藏（对象池中）
         SetActorHiddenInGame(true);
         SetZzzEffectEnabled(false);
     }
 
-    // 广播事件
     OnSoldierStateChanged.Broadcast(OldState, CurrentState);
     OnDormantStateChanged.Broadcast(this, true);
 
@@ -254,10 +624,6 @@ void AXBSoldierCharacter::EnterDormantState(EXBDormantType DormantType)
         *GetName(), static_cast<int32>(DormantType));
 }
 
-/**
- * @brief 退出休眠态（激活）
- * @note 启用所有组件，准备进入战斗
- */
 void AXBSoldierCharacter::ExitDormantState()
 {
     if (CurrentState != EXBSoldierState::Dormant)
@@ -268,42 +634,32 @@ void AXBSoldierCharacter::ExitDormantState()
     EXBSoldierState OldState = CurrentState;
     CurrentState = EXBSoldierState::Idle;
 
-    // 关闭休眠视觉效果
     SetZzzEffectEnabled(false);
     
-    // 停止休眠动画
     if (USkeletalMeshComponent* MeshComp = GetMesh())
     {
         MeshComp->Stop();
     }
 
-    // 显示角色
     SetActorHiddenInGame(false);
 
-    // 启用激活态组件
     EnableActiveComponents();
 
-    // 广播事件
     OnSoldierStateChanged.Broadcast(OldState, CurrentState);
     OnDormantStateChanged.Broadcast(this, false);
 
     UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 退出休眠态"), *GetName());
 }
 
-/**
- * @brief 设置休眠视觉配置
- */
 void AXBSoldierCharacter::SetDormantVisualConfig(const FXBDormantVisualConfig& NewConfig)
 {
     DormantConfig = NewConfig;
 
-    // 更新 Zzz 特效位置
     if (ZzzEffectComponent)
     {
         ZzzEffectComponent->SetRelativeLocation(DormantConfig.ZzzEffectOffset);
     }
 
-    // 如果当前在休眠态，立即更新视觉效果
     if (CurrentState == EXBSoldierState::Dormant)
     {
         UpdateDormantAnimation();
@@ -311,9 +667,6 @@ void AXBSoldierCharacter::SetDormantVisualConfig(const FXBDormantVisualConfig& N
     }
 }
 
-/**
- * @brief 设置 Zzz 特效启用状态
- */
 void AXBSoldierCharacter::SetZzzEffectEnabled(bool bEnabled)
 {
     if (!ZzzEffectComponent)
@@ -331,9 +684,6 @@ void AXBSoldierCharacter::SetZzzEffectEnabled(bool bEnabled)
     }
 }
 
-/**
- * @brief 切换休眠类型
- */
 void AXBSoldierCharacter::SetDormantType(EXBDormantType NewType)
 {
     if (CurrentDormantType == NewType)
@@ -343,7 +693,6 @@ void AXBSoldierCharacter::SetDormantType(EXBDormantType NewType)
 
     CurrentDormantType = NewType;
 
-    // 只有在休眠态才更新视觉效果
     if (CurrentState == EXBSoldierState::Dormant)
     {
         if (NewType == EXBDormantType::Hidden)
@@ -363,40 +712,31 @@ void AXBSoldierCharacter::SetDormantType(EXBDormantType NewType)
         *GetName(), static_cast<int32>(NewType));
 }
 
-/**
- * @brief 启用激活态组件
- */
 void AXBSoldierCharacter::EnableActiveComponents()
 {
-    // 启用 Tick
     SetActorTickEnabled(true);
 
-    // 启用移动组件
     if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
     {
         MoveComp->SetComponentTickEnabled(true);
         MoveComp->SetMovementMode(MOVE_Walking);
     }
 
-    // 启用碰撞
     if (UCapsuleComponent* Capsule = GetCapsuleComponent())
     {
         Capsule->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
     }
 
-    // 启用跟随组件
     if (FollowComponent)
     {
         FollowComponent->SetComponentTickEnabled(true);
     }
 
-    // 启用行为接口组件
     if (BehaviorInterface)
     {
         BehaviorInterface->SetComponentTickEnabled(true);
     }
 
-    // 启用调试组件
     if (DebugComponent)
     {
         DebugComponent->SetComponentTickEnabled(true);
@@ -405,44 +745,35 @@ void AXBSoldierCharacter::EnableActiveComponents()
     UE_LOG(LogXBSoldier, Verbose, TEXT("士兵 %s: 激活态组件已启用"), *GetName());
 }
 
-/**
- * @brief 禁用激活态组件
- */
 void AXBSoldierCharacter::DisableActiveComponents()
 {
-    // 禁用移动组件
     if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
     {
         MoveComp->StopMovementImmediately();
         MoveComp->SetComponentTickEnabled(false);
     }
 
-    // 保留碰撞（用于被招募检测）
     if (UCapsuleComponent* Capsule = GetCapsuleComponent())
     {
         Capsule->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
     }
 
-    // 禁用跟随组件
     if (FollowComponent)
     {
         FollowComponent->SetFollowTarget(nullptr);
         FollowComponent->SetComponentTickEnabled(false);
     }
 
-    // 禁用行为接口组件
     if (BehaviorInterface)
     {
         BehaviorInterface->SetComponentTickEnabled(false);
     }
 
-    // 🔧 修改 - 重命名局部变量为 CurrentController
     if (AController* CurrentController = GetController())
     {
         CurrentController->UnPossess();
     }
 
-    // 清除跟随目标
     FollowTarget = nullptr;
     FormationSlotIndex = INDEX_NONE;
     CurrentAttackTarget = nullptr;
@@ -450,9 +781,6 @@ void AXBSoldierCharacter::DisableActiveComponents()
     UE_LOG(LogXBSoldier, Verbose, TEXT("士兵 %s: 激活态组件已禁用"), *GetName());
 }
 
-/**
- * @brief 更新休眠动画
- */
 void AXBSoldierCharacter::UpdateDormantAnimation()
 {
     UAnimSequence* AnimToPlay = nullptr;
@@ -468,28 +796,20 @@ void AXBSoldierCharacter::UpdateDormantAnimation()
         break;
         
     case EXBDormantType::Hidden:
-        // Hidden 不播放动画，直接返回
         return;
     }
 
     PlayAnimationSequence(AnimToPlay, true);
 }
 
-/**
- * @brief 更新 Zzz 特效
- */
 void AXBSoldierCharacter::UpdateZzzEffect()
 {
-    // 只有睡眠类型且配置启用时才显示 Zzz
     bool bShouldShowZzz = (CurrentDormantType == EXBDormantType::Sleeping) && 
                           DormantConfig.bShowZzzEffect;
     
     SetZzzEffectEnabled(bShouldShowZzz);
 }
 
-/**
- * @brief 播放指定动画序列
- */
 void AXBSoldierCharacter::PlayAnimationSequence(UAnimSequence* Animation, bool bLoop)
 {
     USkeletalMeshComponent* MeshComp = GetMesh();
@@ -508,9 +828,6 @@ void AXBSoldierCharacter::PlayAnimationSequence(UAnimSequence* Animation, bool b
     }
 }
 
-/**
- * @brief 加载休眠动画资源
- */
 void AXBSoldierCharacter::LoadDormantAnimations()
 {
     if (!DormantConfig.SleepingAnimation.IsNull())
@@ -697,27 +1014,25 @@ float AXBSoldierCharacter::GetAvoidanceWeight() const
 
 // ==================== 招募系统 ====================
 
-/**
- * @brief 检查是否可以被招募
- * @return 是否可招募
- * @note 🔧 修改 - 增强检查条件，防止重复招募
- */
 bool AXBSoldierCharacter::CanBeRecruited() const
 {
-    // 已被招募则不可再招募
     if (bIsRecruited)
     {
         return false;
     }
     
-    // 已有跟随目标则不可招募
     if (FollowTarget.IsValid())
     {
         return false;
     }
     
-    // 必须是中立阵营
     if (Faction != EXBFaction::Neutral)
+    {
+        return false;
+    }
+    
+    // 掉落中不可招募
+    if (CurrentState == EXBSoldierState::Dropping)
     {
         return false;
     }
@@ -728,13 +1043,11 @@ bool AXBSoldierCharacter::CanBeRecruited() const
         return false;
     }
     
-    // 已死亡不可招募
     if (bIsDead || CurrentHealth <= 0.0f)
     {
         return false;
     }
     
-    // 组件必须初始化
     if (!bComponentsInitialized)
     {
         return false;
@@ -743,21 +1056,14 @@ bool AXBSoldierCharacter::CanBeRecruited() const
     return true;
 }
 
-/**
- * @brief 士兵被招募
- * @param NewLeader 新将领
- * @param SlotIndex 槽位索引
- * @note 🔧 修改 - 增强防重复招募检查，修复旋转问题
- */
 void AXBSoldierCharacter::OnRecruited(AActor* NewLeader, int32 SlotIndex)
 {
-   if (!NewLeader)
+    if (!NewLeader)
     {
         UE_LOG(LogXBSoldier, Warning, TEXT("士兵 %s: 招募失败 - 将领为空"), *GetName());
         return;
     }
     
-    // 🔧 核心修复 - 严格检查是否已被招募
     if (bIsRecruited)
     {
         UE_LOG(LogXBSoldier, Warning, TEXT("士兵 %s: 已被招募，忽略来自 %s 的重复招募请求"), 
@@ -765,7 +1071,6 @@ void AXBSoldierCharacter::OnRecruited(AActor* NewLeader, int32 SlotIndex)
         return;
     }
 
-    // 🔧 新增 - 检查是否已有跟随目标（可能是被其他将领招募中）
     if (FollowTarget.IsValid() && FollowTarget.Get() != NewLeader)
     {
         UE_LOG(LogXBSoldier, Warning, TEXT("士兵 %s: 已跟随 %s，拒绝 %s 的招募"), 
@@ -787,37 +1092,31 @@ void AXBSoldierCharacter::OnRecruited(AActor* NewLeader, int32 SlotIndex)
     UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 被将领 %s 招募，槽位: %d，当前状态: %d"), 
         *GetName(), *NewLeader->GetName(), SlotIndex, static_cast<int32>(CurrentState));
     
-    // 🔧 核心 - 立即标记为已招募，防止其他将领抢夺
     bIsRecruited = true;
     FollowTarget = NewLeader;
     FormationSlotIndex = SlotIndex;
     
-    // 如果处于休眠态，先退出休眠
     if (CurrentState == EXBSoldierState::Dormant)
     {
         ExitDormantState();
     }
     
-    // 设置阵营
     if (AXBCharacterBase* LeaderChar = Cast<AXBCharacterBase>(NewLeader))
     {
         Faction = LeaderChar->GetFaction();
     }
     
-    // 🔧 修复旋转 - 先面向将领
     FVector DirectionToLeader = (NewLeader->GetActorLocation() - GetActorLocation()).GetSafeNormal2D();
     if (!DirectionToLeader.IsNearlyZero())
     {
         SetActorRotation(DirectionToLeader.Rotation());
     }
     
-    // 配置跟随组件
     if (FollowComponent)
     {
         FollowComponent->SetFollowTarget(NewLeader);
         FollowComponent->SetFormationSlotIndex(SlotIndex);
         
-        // 同步将领冲刺状态
         if (AXBCharacterBase* LeaderChar = Cast<AXBCharacterBase>(NewLeader))
         {
             bool bLeaderSprinting = LeaderChar->IsSprinting();
@@ -828,10 +1127,8 @@ void AXBSoldierCharacter::OnRecruited(AActor* NewLeader, int32 SlotIndex)
         FollowComponent->StartRecruitTransition();
     }
     
-    // 设置状态
     SetSoldierState(EXBSoldierState::Following);
     
-    // 延迟启动 AI
     GetWorldTimerManager().SetTimer(
         DelayedAIStartTimerHandle,
         this,
@@ -840,7 +1137,6 @@ void AXBSoldierCharacter::OnRecruited(AActor* NewLeader, int32 SlotIndex)
         false
     );
     
-    // 广播事件
     OnSoldierRecruited.Broadcast(this, NewLeader);
 }
 
@@ -929,7 +1225,7 @@ void AXBSoldierCharacter::SetSoldierState(EXBSoldierState NewState)
 
 void AXBSoldierCharacter::EnterCombat()
 {
-    if (CurrentState == EXBSoldierState::Dead || CurrentState == EXBSoldierState::Dormant)
+    if (CurrentState == EXBSoldierState::Dead || CurrentState == EXBSoldierState::Dormant || CurrentState == EXBSoldierState::Dropping)
     {
         return;
     }
@@ -961,7 +1257,7 @@ void AXBSoldierCharacter::EnterCombat()
 
 void AXBSoldierCharacter::ExitCombat()
 {
-    if (CurrentState == EXBSoldierState::Dead || CurrentState == EXBSoldierState::Dormant)
+    if (CurrentState == EXBSoldierState::Dead || CurrentState == EXBSoldierState::Dormant || CurrentState == EXBSoldierState::Dropping)
     {
         return;
     }
@@ -990,7 +1286,6 @@ float AXBSoldierCharacter::TakeSoldierDamage(float DamageAmount, AActor* DamageS
         return 0.0f;
     }
 
-    // ✨ 新增 - 休眠态也可以受伤
     if (DamageAmount <= 0.0f)
     {
         return 0.0f;
@@ -1044,7 +1339,7 @@ bool AXBSoldierCharacter::PlayAttackMontage()
 
 bool AXBSoldierCharacter::CanAttack() const
 {
-    if (CurrentState == EXBSoldierState::Dead || CurrentState == EXBSoldierState::Dormant)
+    if (CurrentState == EXBSoldierState::Dead || CurrentState == EXBSoldierState::Dormant || CurrentState == EXBSoldierState::Dropping)
     {
         return false;
     }
@@ -1087,8 +1382,8 @@ bool AXBSoldierCharacter::IsInAttackRange(AActor* Target) const
         return false;
     }
 
-    float AttackRange = GetAttackRange();
-    return GetDistanceToTarget(Target) <= AttackRange;
+    float AttackRangeVal = GetAttackRange();
+    return GetDistanceToTarget(Target) <= AttackRangeVal;
 }
 
 void AXBSoldierCharacter::ReturnToFormation()
@@ -1110,10 +1405,10 @@ void AXBSoldierCharacter::ReturnToFormation()
 
 FVector AXBSoldierCharacter::CalculateAvoidanceDirection(const FVector& DesiredDirection)
 {
-    float AvoidanceRadius = GetAvoidanceRadius();
+    float AvoidanceRadiusVal = GetAvoidanceRadius();
     float AvoidanceWeightVal = GetAvoidanceWeight();
 
-    if (AvoidanceRadius <= 0.0f)
+    if (AvoidanceRadiusVal <= 0.0f)
     {
         return DesiredDirection;
     }
@@ -1125,7 +1420,7 @@ FVector AXBSoldierCharacter::CalculateAvoidanceDirection(const FVector& DesiredD
     UXBBlueprintFunctionLibrary::DetectAlliesInRadius(
         this,
         MyLocation,
-        AvoidanceRadius,
+        AvoidanceRadiusVal,
         Faction,
         true,
         AlliesResult
@@ -1144,7 +1439,7 @@ FVector AXBSoldierCharacter::CalculateAvoidanceDirection(const FVector& DesiredD
         if (Distance > KINDA_SMALL_NUMBER)
         {
             FVector AwayDirection = (MyLocation - OtherActor->GetActorLocation()).GetSafeNormal2D();
-            float Strength = 1.0f - (Distance / AvoidanceRadius);
+            float Strength = 1.0f - (Distance / AvoidanceRadiusVal);
             AvoidanceForce += AwayDirection * Strength;
             AvoidanceCount++;
         }
@@ -1280,35 +1575,29 @@ void AXBSoldierCharacter::SetEscaping(bool bEscaping)
 
 // ==================== 对象池支持 ====================
 
-/**
- * @brief 重置士兵状态（用于对象池回收）
- * @note 🔧 修改 - 进入 Hidden 休眠态
- */
 void AXBSoldierCharacter::ResetForPooling()
 {
-    // 进入 Hidden 休眠态
     EnterDormantState(EXBDormantType::Hidden);
 
-    // 清除跟随目标
     FollowTarget = nullptr;
     FormationSlotIndex = INDEX_NONE;
 
-    // 重置状态变量
     bIsRecruited = false;
     bIsDead = false;
     bIsEscaping = false;
 
-    // 重置血量
     CurrentHealth = 100.0f;
 
-    // 清除攻击目标
     CurrentAttackTarget = nullptr;
 
-    // 重置冷却
     AttackCooldownTimer = 0.0f;
     TargetSearchTimer = 0.0f;
 
-    // 清除 AI 定时器
+    // 重置掉落状态
+    DropElapsedTime = 0.0f;
+    DropTargetLeader = nullptr;
+    bAutoRecruitOnLanding = true;
+
     GetWorldTimerManager().ClearTimer(DelayedAIStartTimerHandle);
 
     UE_LOG(LogXBSoldier, Verbose, TEXT("士兵 %s 状态已重置，进入池化休眠"), *GetName());
@@ -1316,13 +1605,9 @@ void AXBSoldierCharacter::ResetForPooling()
 
 // ==================== 死亡系统 ====================
 
-/**
- * @brief 处理士兵死亡
- * @note 🔧 修改 - 支持对象池回收
- */
 void AXBSoldierCharacter::HandleDeath()
 {
-     if (bIsDead)
+    if (bIsDead)
     {
         return;
     }
@@ -1363,7 +1648,6 @@ void AXBSoldierCharacter::HandleDeath()
         MoveComp->SetComponentTickEnabled(false);
     }
 
-    // 播放死亡蒙太奇
     bool bMontageStarted = false;
     float DeathAnimDuration = 1.5f;
     
@@ -1384,7 +1668,6 @@ void AXBSoldierCharacter::HandleDeath()
         }
     }
 
-    // 🔧 修改 - 统一使用对象池回收
     FTimerHandle RecycleTimerHandle;
     GetWorldTimerManager().SetTimer(
         RecycleTimerHandle,
@@ -1404,7 +1687,6 @@ void AXBSoldierCharacter::HandleDeath()
                 }
                 else
                 {
-                    // 没有对象池，直接重置为休眠态
                     ResetForPooling();
                     UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 已重置为休眠态（无对象池）"), *GetName());
                 }
@@ -1445,8 +1727,7 @@ void AXBSoldierCharacter::SpawnAndPossessAIController()
         return;
     }
 
-    // 休眠态不需要 AI
-    if (CurrentState == EXBSoldierState::Dormant)
+    if (CurrentState == EXBSoldierState::Dormant || CurrentState == EXBSoldierState::Dropping)
     {
         return;
     }

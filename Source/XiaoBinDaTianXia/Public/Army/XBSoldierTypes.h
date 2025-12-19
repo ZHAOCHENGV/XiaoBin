@@ -33,6 +33,7 @@ UENUM(BlueprintType)
 enum class EXBSoldierState : uint8
 {
     Dormant     UMETA(DisplayName = "休眠"), 
+    Dropping    UMETA(DisplayName = "掉落中"),
     Idle        UMETA(DisplayName = "待机"),
     Following   UMETA(DisplayName = "跟随"),
     Combat      UMETA(DisplayName = "战斗"),
@@ -90,13 +91,9 @@ struct FXBFormationConfig
 
 
 // ============================================
-// ✨ 新增：休眠类型枚举
+// 休眠类型枚举
 // ============================================
 
-/**
- * @brief 休眠类型枚举
- * @note 用于配置未招募士兵的外观表现
- */
 UENUM(BlueprintType)
 enum class EXBDormantType : uint8
 {
@@ -106,37 +103,67 @@ enum class EXBDormantType : uint8
 };
 
 // ============================================
-// ✨ 新增：休眠配置结构体
+// 休眠配置结构体
 // ============================================
 
-/**
- * @brief 休眠态视觉配置
- * @note 用于配置未招募时的外观
- */
 USTRUCT(BlueprintType)
 struct FXBDormantVisualConfig
 {
     GENERATED_BODY()
 
-    /** @brief 休眠动画类型 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "休眠", meta = (DisplayName = "休眠类型"))
     EXBDormantType DormantType = EXBDormantType::Sleeping;
 
-    /** @brief 是否显示 Zzz 特效 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "休眠", meta = (DisplayName = "显示Zzz特效"))
     bool bShowZzzEffect = true;
 
-    /** @brief Zzz 特效位置偏移 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "休眠", meta = (DisplayName = "Zzz特效偏移"))
     FVector ZzzEffectOffset = FVector(0.0f, 0.0f, 100.0f);
 
-    /** @brief 睡眠动画序列 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "休眠", meta = (DisplayName = "睡眠动画"))
     TSoftObjectPtr<UAnimSequence> SleepingAnimation;
 
-    /** @brief 站立待机动画序列 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "休眠", meta = (DisplayName = "站立动画"))
     TSoftObjectPtr<UAnimSequence> StandingAnimation;
+};
+
+// ============================================
+// 掉落抛物线配置
+// ============================================
+
+USTRUCT(BlueprintType)
+struct FXBDropArcConfig
+{
+    GENERATED_BODY()
+
+    /** @brief 抛出的初始高度（相对于起始点） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "抛物线", meta = (DisplayName = "抛出高度", ClampMin = "50.0"))
+    float ArcHeight = 200.0f;
+
+    /** @brief 抛出的水平距离范围（最小值） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "抛物线", meta = (DisplayName = "最小抛出距离", ClampMin = "50.0"))
+    float MinDropDistance = 150.0f;
+
+    /** @brief 抛出的水平距离范围（最大值） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "抛物线", meta = (DisplayName = "最大抛出距离", ClampMin = "100.0"))
+    float MaxDropDistance = 400.0f;
+
+    /** @brief 抛物线飞行时间 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "抛物线", meta = (DisplayName = "飞行时间", ClampMin = "0.2"))
+    float FlightDuration = 0.6f;
+
+    /** @brief 是否播放落地特效 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "抛物线", meta = (DisplayName = "播放落地特效"))
+    bool bPlayLandingEffect = true;
+
+    /** @brief 落地特效资源 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "抛物线", meta = (DisplayName = "落地特效", EditCondition = "bPlayLandingEffect"))
+    TSoftObjectPtr<class UNiagaraSystem> LandingEffect;
+
+    // ✨ 新增 - 落地后自动入列配置
+    /** @brief 落地后是否自动入列 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "抛物线", meta = (DisplayName = "落地自动入列"))
+    bool bAutoRecruitOnLanding = true;
 };
 
 // ============================================

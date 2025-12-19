@@ -3,14 +3,14 @@
 
 /**
  * @file XBSoldierCharacter.h
- * @brief 士兵Actor类 - 统一角色系统（休眠态 + 激活态）
+ * @brief 士兵Actor类 - 统一角色系统（休眠态 + 激活态 + 掉落态）
  * 
  * @note 🔧 架构重构记录:
  *       1. ✨ 新增 休眠态系统（替代 XBVillagerActor）
  *       2. ✨ 新增 组件启用/禁用管理
  *       3. ✨ 新增 Zzz 特效系统
- *       4. ✨ 新增 休眠可视化调试
- *       5. 🔧 修改 状态机支持 Dormant 状态
+ *       4. ✨ 新增 掉落抛物线系统（支持落地自动入列）
+ *       5. 🔧 修改 状态机支持 Dormant 和 Dropping 状态
  */
 
 #pragma once
@@ -45,22 +45,13 @@ class UNiagaraSystem;
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnSoldierStateChanged, EXBSoldierState, OldState, EXBSoldierState, NewState);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSoldierDied, AXBSoldierCharacter*, Soldier);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnSoldierRecruited, AXBSoldierCharacter*, Soldier, AActor*, Leader);
-// ✨ 新增 - 休眠状态变化委托
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnDormantStateChanged, AXBSoldierCharacter*, Soldier, bool, bIsDormant);
-
-
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDropLandingComplete, AXBSoldierCharacter*, Soldier);
 
 // ============================================
 // 士兵Actor类
 // ============================================
 
-/**
- * @brief 士兵Actor - 统一角色系统
- * @note 🔧 新架构职责:
- *       - 休眠态：作为可招募的中立单位（原村民功能）
- *       - 激活态：作为战斗士兵
- *       - 组件按需启用/禁用
- */
 UCLASS()
 class XIAOBINDATIANXIA_API AXBSoldierCharacter : public ACharacter
 {
@@ -93,61 +84,62 @@ public:
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier", meta = (DisplayName = "从数据表初始化"))
     void InitializeFromDataTable(UDataTable* DataTable, FName RowName, EXBFaction InFaction);
 
-    // ==================== ✨ 新增：休眠系统接口 ====================
-
+    // ✨ 新增 - 完整初始化（用于掉落士兵）
     /**
-     * @brief 进入休眠态
-     * @param DormantType 休眠类型
-     * @note 禁用所有非必要组件，显示休眠视觉效果
+     * @brief 完整初始化士兵（数据 + 组件 + 视觉）
+     * @param DataTable 数据表
+     * @param RowName 行名
+     * @param InFaction 阵营
+     * @note 用于掉落士兵，在生成时立即完成所有初始化
      */
+    UFUNCTION(BlueprintCallable, Category = "XB|Soldier", meta = (DisplayName = "完整初始化"))
+    void FullInitialize(UDataTable* DataTable, FName RowName, EXBFaction InFaction);
+
+    // ==================== 休眠系统接口 ====================
+
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier|Dormant", meta = (DisplayName = "进入休眠态"))
     void EnterDormantState(EXBDormantType DormantType = EXBDormantType::Sleeping);
 
-    /**
-     * @brief 退出休眠态（激活）
-     * @note 启用所有组件，准备进入战斗
-     */
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier|Dormant", meta = (DisplayName = "退出休眠态"))
     void ExitDormantState();
 
-    /**
-     * @brief 检查是否处于休眠态
-     */
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|Dormant", meta = (DisplayName = "是否休眠中"))
     bool IsDormant() const { return CurrentState == EXBSoldierState::Dormant; }
 
-    /**
-     * @brief 设置休眠视觉配置
-     * @param NewConfig 新配置
-     */
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier|Dormant", meta = (DisplayName = "设置休眠配置"))
     void SetDormantVisualConfig(const FXBDormantVisualConfig& NewConfig);
 
-    /**
-     * @brief 获取休眠视觉配置
-     */
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|Dormant", meta = (DisplayName = "获取休眠配置"))
     const FXBDormantVisualConfig& GetDormantVisualConfig() const { return DormantConfig; }
 
-    /**
-     * @brief 设置 Zzz 特效启用状态
-     * @param bEnabled 是否启用
-     */
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier|Dormant", meta = (DisplayName = "设置Zzz特效"))
     void SetZzzEffectEnabled(bool bEnabled);
 
-    /**
-     * @brief 切换休眠类型（不改变休眠状态）
-     * @param NewType 新的休眠类型
-     */
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier|Dormant", meta = (DisplayName = "切换休眠类型"))
     void SetDormantType(EXBDormantType NewType);
 
-    /**
-     * @brief 获取当前休眠类型
-     */
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|Dormant", meta = (DisplayName = "获取休眠类型"))
     EXBDormantType GetDormantType() const { return CurrentDormantType; }
+
+    // ==================== 掉落抛物线系统接口 ====================
+
+    /**
+     * @brief 开始掉落抛物线飞行
+     * @param StartLocation 起始位置（将领死亡位置）
+     * @param TargetLocation 目标落地位置
+     * @param ArcConfig 抛物线配置
+     * @param TargetLeader 落地后要加入的将领（可选）
+     * @note 士兵会进入 Dropping 状态，飞行期间不可招募
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Soldier|Drop", meta = (DisplayName = "开始掉落飞行"))
+    void StartDropFlight(const FVector& StartLocation, const FVector& TargetLocation, 
+        const FXBDropArcConfig& ArcConfig, AXBCharacterBase* TargetLeader = nullptr);
+
+    UFUNCTION(BlueprintPure, Category = "XB|Soldier|Drop", meta = (DisplayName = "是否掉落中"))
+    bool IsDropping() const { return CurrentState == EXBSoldierState::Dropping; }
+
+    UFUNCTION(BlueprintPure, Category = "XB|Soldier|Drop", meta = (DisplayName = "获取掉落进度"))
+    float GetDropProgress() const;
 
     // ==================== 配置属性访问方法 ====================
 
@@ -241,6 +233,10 @@ public:
     UFUNCTION(BlueprintPure, Category = "XB|Soldier", meta = (DisplayName = "获取阵营"))
     EXBFaction GetFaction() const { return Faction; }
 
+    // ✨ 新增 - 设置阵营
+    UFUNCTION(BlueprintCallable, Category = "XB|Soldier", meta = (DisplayName = "设置阵营"))
+    void SetFaction(EXBFaction NewFaction) { Faction = NewFaction; }
+
     UFUNCTION(BlueprintPure, Category = "XB|Soldier", meta = (DisplayName = "是否已死亡"))
     bool IsDead() const { return bIsDead; }
 
@@ -322,9 +318,11 @@ public:
     UPROPERTY(BlueprintAssignable, Category = "XB|Soldier")
     FOnSoldierRecruited OnSoldierRecruited;
 
-    // ✨ 新增 - 休眠状态变化委托
     UPROPERTY(BlueprintAssignable, Category = "XB|Soldier|Dormant", meta = (DisplayName = "休眠状态变化"))
     FOnDormantStateChanged OnDormantStateChanged;
+
+    UPROPERTY(BlueprintAssignable, Category = "XB|Soldier|Drop", meta = (DisplayName = "掉落完成"))
+    FOnDropLandingComplete OnDropLandingComplete;
 
     // ==================== 组件访问 ====================
 
@@ -334,7 +332,6 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "调试组件"))
     TObjectPtr<UXBSoldierDebugComponent> DebugComponent;
 
-    // ✨ 新增 - Zzz 特效组件
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "Zzz特效"))
     TObjectPtr<UNiagaraComponent> ZzzEffectComponent;
 
@@ -359,23 +356,50 @@ protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "行为接口"))
     TObjectPtr<UXBSoldierBehaviorInterface> BehaviorInterface;
 
-    // ==================== ✨ 新增：休眠配置 ====================
+    // ==================== 休眠配置 ====================
 
-    /** @brief 休眠态视觉配置 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Soldier|Dormant", meta = (DisplayName = "休眠配置"))
     FXBDormantVisualConfig DormantConfig;
 
-    /** @brief Zzz 特效资源 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Soldier|Dormant", meta = (DisplayName = "Zzz特效资源"))
     TSoftObjectPtr<UNiagaraSystem> ZzzEffectAsset;
 
-    /** @brief 当前休眠类型 */
     UPROPERTY(BlueprintReadOnly, Category = "状态", meta = (DisplayName = "休眠类型"))
     EXBDormantType CurrentDormantType = EXBDormantType::Sleeping;
 
-    /** @brief 是否以休眠态开始 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Soldier|Dormant", meta = (DisplayName = "初始休眠态"))
     bool bStartAsDormant = false;
+
+    // ==================== 掉落飞行状态 ====================
+
+    UPROPERTY(BlueprintReadOnly, Category = "XB|Soldier|Drop")
+    FVector DropStartLocation;
+
+    UPROPERTY(BlueprintReadOnly, Category = "XB|Soldier|Drop")
+    FVector DropTargetLocation;
+
+    UPROPERTY(BlueprintReadOnly, Category = "XB|Soldier|Drop")
+    float DropFlightDuration = 0.6f;
+
+    UPROPERTY(BlueprintReadOnly, Category = "XB|Soldier|Drop")
+    float DropArcHeight = 200.0f;
+
+    UPROPERTY(BlueprintReadOnly, Category = "XB|Soldier|Drop")
+    float DropElapsedTime = 0.0f;
+
+    UPROPERTY(BlueprintReadOnly, Category = "XB|Soldier|Drop")
+    bool bPlayDropLandingEffect = true;
+
+    // ✨ 新增 - 落地后自动入列的目标将领
+    UPROPERTY(BlueprintReadOnly, Category = "XB|Soldier|Drop", meta = (DisplayName = "落地目标将领"))
+    TWeakObjectPtr<AXBCharacterBase> DropTargetLeader;
+
+    // ✨ 新增 - 是否落地后自动入列
+    UPROPERTY(BlueprintReadOnly, Category = "XB|Soldier|Drop")
+    bool bAutoRecruitOnLanding = true;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Soldier|Drop", meta = (DisplayName = "落地特效"))
+    TSoftObjectPtr<UNiagaraSystem> DropLandingEffectAsset;
 
     // ==================== 运行时状态 ====================
 
@@ -431,51 +455,34 @@ protected:
     void FaceTarget(AActor* Target, float DeltaTime);
     FVector CalculateAvoidanceDirection(const FVector& DesiredDirection);
 
-    // ✨ 新增 - 休眠系统内部方法
-    
-    /**
-     * @brief 启用激活态组件
-     * @note 启用 AI、跟随、行为接口等
-     */
+    // 休眠系统内部方法
     void EnableActiveComponents();
-
-    /**
-     * @brief 禁用激活态组件（进入休眠）
-     * @note 禁用 AI、跟随、行为接口等，保留基础碰撞
-     */
     void DisableActiveComponents();
-
-    /**
-     * @brief 更新休眠动画
-     */
     void UpdateDormantAnimation();
-
-    /**
-     * @brief 更新 Zzz 特效
-     */
     void UpdateZzzEffect();
-
-    /**
-     * @brief 播放指定动画序列
-     * @param Animation 动画序列
-     * @param bLoop 是否循环
-     */
     void PlayAnimationSequence(UAnimSequence* Animation, bool bLoop = true);
-
-    /**
-     * @brief 加载休眠动画资源
-     */
     void LoadDormantAnimations();
+
+    // 掉落飞行内部方法
+    void UpdateDropFlight(float DeltaTime);
+    FVector CalculateArcPosition(float Progress) const;
+    void OnDropLanded();
+    void PlayLandingEffect();
+
+    // ✨ 新增 - 落地后自动入列
+    /**
+     * @brief 落地后自动加入将领队伍
+     * @note 在 OnDropLanded 中调用，将士兵添加到 DropTargetLeader 的队伍
+     */
+    void AutoRecruitToLeader();
 
 private:
     void SpawnAndPossessAIController();
     void InitializeAI();
     FTimerHandle DelayedAIStartTimerHandle;
 
-    // ✨ 新增 - 缓存的动画资源
     UPROPERTY()
     TObjectPtr<UAnimSequence> LoadedSleepingAnimation;
     UPROPERTY()
     TObjectPtr<UAnimSequence> LoadedStandingAnimation;
-
 };
