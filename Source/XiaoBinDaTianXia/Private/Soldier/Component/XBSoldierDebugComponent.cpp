@@ -649,6 +649,8 @@ FString UXBSoldierDebugComponent::GetStateName(EXBSoldierState State) const
 {
     switch (State)
     {
+    case EXBSoldierState::Dormant:      // ✨ 新增
+        return TEXT("休眠");  
     case EXBSoldierState::Idle:
         return TEXT("待机");
     case EXBSoldierState::Following:

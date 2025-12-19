@@ -5,12 +5,17 @@
 #include "Player/XBPlayerController.h"
 #include "Character/XBPlayerCharacter.h"
 #include "Kismet/GameplayStatics.h"
+#include "Soldier/XBSoldierCharacter.h"
+#include "Soldier/Component/XBSoldierPoolSubsystem.h"
 
 AXBGameMode::AXBGameMode()
 {
 	// 设置默认类
 	DefaultPawnClass = AXBPlayerCharacter::StaticClass();
 	PlayerControllerClass = AXBPlayerController::StaticClass();
+	// 默认配置
+	PoolWarmupCount = 100;
+	bAsyncWarmup = true;
 }
 
 void AXBGameMode::InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage)
@@ -27,6 +32,7 @@ void AXBGameMode::BeginPlay()
 {
 	Super::BeginPlay();
 
+	
 	// 默认进入配置阶段
 	EnterConfigPhase();
 }
@@ -60,3 +66,8 @@ void AXBGameMode::ResumeGame()
 {
 	UGameplayStatics::SetGamePaused(GetWorld(), false);
 }
+
+void AXBGameMode::InitializeSoldierPool()
+{
+}
+

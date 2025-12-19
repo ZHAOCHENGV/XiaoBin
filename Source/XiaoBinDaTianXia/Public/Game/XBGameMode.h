@@ -5,6 +5,7 @@
 #include "GameFramework/GameModeBase.h"
 #include "XBGameMode.generated.h"
 
+class AXBSoldierCharacter;
 /**
  * 游戏模式基类
  */
@@ -43,6 +44,32 @@ public:
 	bool IsInConfigPhase() const { return bIsConfigPhase; }
 
 protected:
+	// ==================== 对象池配置（保留用于未来扩展） ====================
+
+	/**
+	 * @brief 默认士兵类
+	 * @note 用于动态生成士兵时（如掉落）
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "XB|对象池", meta = (DisplayName = "默认士兵类"))
+	TSubclassOf<AXBSoldierCharacter> DefaultSoldierClass;
+
+	/**
+	 * @brief 预热数量（当前未使用）
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "XB|对象池", meta = (DisplayName = "预热数量", ClampMin = "0"))
+	int32 PoolWarmupCount = 100;
+
+	/**
+	 * @brief 是否异步预热（当前未使用）
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "XB|对象池", meta = (DisplayName = "异步预热"))
+	bool bAsyncWarmup = true;
+
+	/**
+	 * @brief 初始化对象池（当前为空实现）
+	 */
+	void InitializeSoldierPool();
+	
 	/** 是否处于配置阶段 */
 	UPROPERTY(BlueprintReadOnly, Category = "XB|GameMode")
 	bool bIsConfigPhase = true;

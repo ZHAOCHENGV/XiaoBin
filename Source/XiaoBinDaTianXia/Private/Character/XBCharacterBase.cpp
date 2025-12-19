@@ -33,6 +33,7 @@
 #include "XBCollisionChannels.h"
 #include "AI/XBSoldierPerceptionSubsystem.h"
 #include "Particles/ParticleSystemComponent.h"
+#include "Soldier/Component/XBSoldierPoolSubsystem.h"
 
 AXBCharacterBase::AXBCharacterBase()
 {
@@ -1126,7 +1127,7 @@ void AXBCharacterBase::HandleDeath()
  */
 void AXBCharacterBase::SpawnDroppedSoldiers()
 {
-     if (SoldierDropConfig.DropCount <= 0 || !SoldierDropConfig.DropSoldierClass)
+    if (SoldierDropConfig.DropCount <= 0 || !SoldierDropConfig.DropSoldierClass)
     {
         return;
     }
@@ -1137,7 +1138,7 @@ void AXBCharacterBase::SpawnDroppedSoldiers()
         return;
     }
 
-    // ✨ 新增 - 获取击杀者的士兵配置
+    // 获取击杀者的士兵配置
     UDataTable* DropSoldierDataTable = nullptr;
     FName DropSoldierRowName = NAME_None;
     EXBFaction DropFaction = EXBFaction::Neutral;
@@ -1148,14 +1149,14 @@ void AXBCharacterBase::SpawnDroppedSoldiers()
         {
             DropSoldierDataTable = Killer->GetSoldierDataTable();
             DropSoldierRowName = Killer->GetRecruitSoldierRowName();
-            DropFaction = EXBFaction::Neutral; // 掉落的士兵为中立阵营，等待被招募
+            DropFaction = EXBFaction::Neutral;
             
             UE_LOG(LogXBCharacter, Log, TEXT("掉落士兵使用击杀者 %s 的配置: %s"), 
                 *Killer->GetName(), *DropSoldierRowName.ToString());
         }
     }
 
-    // 🔧 回退逻辑 - 如果没有击杀者信息，使用自身配置
+    // 回退逻辑
     if (!DropSoldierDataTable || DropSoldierRowName.IsNone())
     {
         DropSoldierDataTable = SoldierDataTable;
@@ -1166,6 +1167,9 @@ void AXBCharacterBase::SpawnDroppedSoldiers()
     }
 
     FVector SpawnOrigin = GetActorLocation();
+
+    // 🔧 修改 - 获取对象池子系统
+    UXBSoldierPoolSubsystem* PoolSubsystem = World->GetSubsystem<UXBSoldierPoolSubsystem>();
 
     for (int32 i = 0; i < SoldierDropConfig.DropCount; ++i)
     {
@@ -1178,27 +1182,40 @@ void AXBCharacterBase::SpawnDroppedSoldiers()
         FVector Direction = FRotator(0.0f, Angle, 0.0f).RotateVector(FVector::ForwardVector);
         FVector TargetLocation = SpawnOrigin + Direction * Distance;
 
-        FActorSpawnParameters SpawnParams;
-        SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+        AXBSoldierCharacter* DroppedSoldier = nullptr;
 
-        AXBSoldierCharacter* DroppedSoldier = World->SpawnActor<AXBSoldierCharacter>(
-            SoldierDropConfig.DropSoldierClass,
-            TargetLocation,
-            FRotator::ZeroRotator,
-            SpawnParams
-        );
+        // 🔧 修改 - 尝试从对象池获取
+        if (PoolSubsystem)
+        {
+            DroppedSoldier = PoolSubsystem->AcquireSoldier(TargetLocation, FRotator::ZeroRotator);
+        }
+
+        // 如果池中没有，生成新的
+        if (!DroppedSoldier)
+        {
+            FActorSpawnParameters SpawnParams;
+            SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
+            DroppedSoldier = World->SpawnActor<AXBSoldierCharacter>(
+                SoldierDropConfig.DropSoldierClass,
+                TargetLocation,
+                FRotator::ZeroRotator,
+                SpawnParams
+            );
+        }
 
         if (DroppedSoldier)
         {
-            // 🔧 修改 - 使用击杀者的配置初始化士兵
+            // 初始化士兵数据
             if (DropSoldierDataTable && !DropSoldierRowName.IsNone())
             {
                 DroppedSoldier->InitializeFromDataTable(DropSoldierDataTable, DropSoldierRowName, DropFaction);
             }
-            DroppedSoldier->SetSoldierState(EXBSoldierState::Idle);
             
-            UE_LOG(LogXBCharacter, Log, TEXT("掉落士兵 %s 已生成，配置: %s"), 
-                *DroppedSoldier->GetName(), *DropSoldierRowName.ToString());
+            // 设置为站立休眠态（可被招募）
+            DroppedSoldier->EnterDormantState(EXBDormantType::Standing);
+            
+            UE_LOG(LogXBCharacter, Log, TEXT("掉落士兵 %s 已生成"), *DroppedSoldier->GetName());
         }
     }
 }

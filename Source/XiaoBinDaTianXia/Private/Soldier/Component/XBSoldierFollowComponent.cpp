@@ -251,8 +251,7 @@ void UXBSoldierFollowComponent::UpdateLockedMode(float DeltaTime)
 
 /**
  * @brief 更新招募过渡模式
- * @note 🔧 修改 - 使用动态速度计算，同步将领移动状态
- *       新招募的士兵需要快速移动到槽位，而不是直接传送
+ * @note 🔧 修改 - 改进旋转逻辑，平滑过渡
  */
 void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
 {
@@ -276,16 +275,31 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
     
     float Distance = FVector::Dist2D(CurrentPosition, TargetPosition);
     
-    // ✨ 新增 - 使用动态速度计算
+    // 计算动态速度
     float ActualSpeed = CalculateRecruitTransitionSpeed(Distance);
     
-    // 🔧 修改 - 使用士兵当前Z坐标，不使用目标的Z
+    // 移动到目标位置
     bool bArrived = MoveTowardsTargetXY(TargetPosition, DeltaTime, ActualSpeed);
     
+    // 🔧 修改 - 改进旋转逻辑
     if (bFollowRotation)
     {
-        FRotator TargetRotation = CalculateFormationWorldRotation();
-        Owner->SetActorRotation(TargetRotation);
+        // 招募过渡期间：面向移动方向，而非直接跟随将领旋转
+        FVector MoveDirection = (TargetPosition - CurrentPosition).GetSafeNormal2D();
+        if (!MoveDirection.IsNearlyZero() && Distance > ArrivalThreshold)
+        {
+            // 平滑插值旋转
+            FRotator CurrentRotation = Owner->GetActorRotation();
+            FRotator TargetRotation = MoveDirection.Rotation();
+            FRotator NewRotation = FMath::RInterpTo(CurrentRotation, TargetRotation, DeltaTime, 10.0f);
+            Owner->SetActorRotation(FRotator(0.0f, NewRotation.Yaw, 0.0f));
+        }
+        else if (bArrived)
+        {
+            // 到达后：跟随将领旋转
+            FRotator LeaderRotation = CalculateFormationWorldRotation();
+            Owner->SetActorRotation(LeaderRotation);
+        }
     }
     
     // 卡住检测
@@ -309,7 +323,7 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
         UE_LOG(LogXBSoldier, Log, TEXT("跟随组件: 招募过渡完成，切换到锁定模式"));
         SetFollowMode(EXBFollowMode::Locked);
         
-        // ✨ 新增 - 清理将领速度缓存
+        // 清理将领速度缓存
         bLeaderIsSprinting = false;
         CachedLeaderSpeed = 0.0f;
         

@@ -32,6 +32,7 @@ enum class EXBFaction : uint8
 UENUM(BlueprintType)
 enum class EXBSoldierState : uint8
 {
+    Dormant     UMETA(DisplayName = "休眠"), 
     Idle        UMETA(DisplayName = "待机"),
     Following   UMETA(DisplayName = "跟随"),
     Combat      UMETA(DisplayName = "战斗"),
@@ -88,6 +89,55 @@ struct FXBFormationConfig
 };
 
 
+// ============================================
+// ✨ 新增：休眠类型枚举
+// ============================================
+
+/**
+ * @brief 休眠类型枚举
+ * @note 用于配置未招募士兵的外观表现
+ */
+UENUM(BlueprintType)
+enum class EXBDormantType : uint8
+{
+    Sleeping    UMETA(DisplayName = "睡眠"),
+    Standing    UMETA(DisplayName = "站立"),
+    Hidden      UMETA(DisplayName = "隐藏")
+};
+
+// ============================================
+// ✨ 新增：休眠配置结构体
+// ============================================
+
+/**
+ * @brief 休眠态视觉配置
+ * @note 用于配置未招募时的外观
+ */
+USTRUCT(BlueprintType)
+struct FXBDormantVisualConfig
+{
+    GENERATED_BODY()
+
+    /** @brief 休眠动画类型 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "休眠", meta = (DisplayName = "休眠类型"))
+    EXBDormantType DormantType = EXBDormantType::Sleeping;
+
+    /** @brief 是否显示 Zzz 特效 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "休眠", meta = (DisplayName = "显示Zzz特效"))
+    bool bShowZzzEffect = true;
+
+    /** @brief Zzz 特效位置偏移 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "休眠", meta = (DisplayName = "Zzz特效偏移"))
+    FVector ZzzEffectOffset = FVector(0.0f, 0.0f, 100.0f);
+
+    /** @brief 睡眠动画序列 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "休眠", meta = (DisplayName = "睡眠动画"))
+    TSoftObjectPtr<UAnimSequence> SleepingAnimation;
+
+    /** @brief 站立待机动画序列 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "休眠", meta = (DisplayName = "站立动画"))
+    TSoftObjectPtr<UAnimSequence> StandingAnimation;
+};
 
 // ============================================
 // 轻量级小兵数据（用于集群系统）

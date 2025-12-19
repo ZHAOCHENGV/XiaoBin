@@ -3,17 +3,14 @@
 
 /**
  * @file XBSoldierCharacter.h
- * @brief 士兵Actor类 - 重构为纯数据容器 + 状态持有者
+ * @brief 士兵Actor类 - 统一角色系统（休眠态 + 激活态）
  * 
  * @note 🔧 架构重构记录:
- *       1. ❌ 删除 FXBSoldierConfig 冗余结构
- *       2. ❌ 删除 FXBSoldierTableRow CachedTableRow
- *       3. ❌ 删除 ToSoldierConfig() 转换方法
- *       4. ❌ 删除 bInitializedFromDataTable 标记
- *       5. ✨ 新增 UXBSoldierDataAccessor 数据访问器组件
- *       6. 🔧 所有配置数据访问委托给 DataAccessor
- *       7. 🔧 保留运行时状态（CurrentHealth, CurrentState等）
- *       8. ✨ 新增 bIsDead 死亡状态变量（蓝图可读）
+ *       1. ✨ 新增 休眠态系统（替代 XBVillagerActor）
+ *       2. ✨ 新增 组件启用/禁用管理
+ *       3. ✨ 新增 Zzz 特效系统
+ *       4. ✨ 新增 休眠可视化调试
+ *       5. 🔧 修改 状态机支持 Dormant 状态
  */
 
 #pragma once
@@ -37,6 +34,9 @@ class AXBSoldierAIController;
 class AXBCharacterBase;
 class UDataTable;
 class UAnimMontage;
+class UAnimSequence;
+class UNiagaraComponent;
+class UNiagaraSystem;
 
 // ============================================
 // 委托声明
@@ -45,19 +45,21 @@ class UAnimMontage;
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnSoldierStateChanged, EXBSoldierState, OldState, EXBSoldierState, NewState);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSoldierDied, AXBSoldierCharacter*, Soldier);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnSoldierRecruited, AXBSoldierCharacter*, Soldier, AActor*, Leader);
+// ✨ 新增 - 休眠状态变化委托
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnDormantStateChanged, AXBSoldierCharacter*, Soldier, bool, bIsDormant);
+
+
 
 // ============================================
 // 士兵Actor类
 // ============================================
 
 /**
- * @brief 士兵Actor - 数据驱动架构
+ * @brief 士兵Actor - 统一角色系统
  * @note 🔧 新架构职责:
- *       - 持有运行时状态（血量、位置、目标等）
- *       - 管理组件生命周期
- *       - 响应游戏事件
- *       - 委托数据访问给 DataAccessor
- *       - AI逻辑由行为树和AIController处理
+ *       - 休眠态：作为可招募的中立单位（原村民功能）
+ *       - 激活态：作为战斗士兵
+ *       - 组件按需启用/禁用
  */
 UCLASS()
 class XIAOBINDATIANXIA_API AXBSoldierCharacter : public ACharacter
@@ -78,40 +80,76 @@ public:
 
     void EnableMovementAndTick();
 
-    // ==================== ✨ 新增：数据访问器接口 ====================
+    // ==================== 数据访问器接口 ====================
 
-    /**
-     * @brief 获取数据访问器组件
-     * @return 数据访问器引用
-     * @note 所有配置数据读取必须通过此组件
-     */
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|Data", meta = (DisplayName = "获取数据访问器"))
     UXBSoldierDataAccessor* GetDataAccessor() const { return DataAccessor; }
 
-    /**
-     * @brief 检查数据访问器是否有效
-     * @return 是否有效且已初始化
-     */
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|Data", meta = (DisplayName = "数据访问器有效"))
     bool IsDataAccessorValid() const;
 
-    // ==================== 🔧 重构：初始化方法 ====================
+    // ==================== 初始化方法 ====================
 
-    /**
-     * @brief 从数据表初始化
-     * @param DataTable 数据表资源
-     * @param RowName 行名
-     * @param InFaction 阵营
-     * @note 🔧 重构 - 简化为直接初始化 DataAccessor
-     */
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier", meta = (DisplayName = "从数据表初始化"))
     void InitializeFromDataTable(UDataTable* DataTable, FName RowName, EXBFaction InFaction);
 
+    // ==================== ✨ 新增：休眠系统接口 ====================
 
-    // ==================== 🔧 重构：配置属性访问方法 ====================
-    // 所有配置数据访问都委托给 DataAccessor
+    /**
+     * @brief 进入休眠态
+     * @param DormantType 休眠类型
+     * @note 禁用所有非必要组件，显示休眠视觉效果
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Soldier|Dormant", meta = (DisplayName = "进入休眠态"))
+    void EnterDormantState(EXBDormantType DormantType = EXBDormantType::Sleeping);
 
-    // --- 基础属性 ---
+    /**
+     * @brief 退出休眠态（激活）
+     * @note 启用所有组件，准备进入战斗
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Soldier|Dormant", meta = (DisplayName = "退出休眠态"))
+    void ExitDormantState();
+
+    /**
+     * @brief 检查是否处于休眠态
+     */
+    UFUNCTION(BlueprintPure, Category = "XB|Soldier|Dormant", meta = (DisplayName = "是否休眠中"))
+    bool IsDormant() const { return CurrentState == EXBSoldierState::Dormant; }
+
+    /**
+     * @brief 设置休眠视觉配置
+     * @param NewConfig 新配置
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Soldier|Dormant", meta = (DisplayName = "设置休眠配置"))
+    void SetDormantVisualConfig(const FXBDormantVisualConfig& NewConfig);
+
+    /**
+     * @brief 获取休眠视觉配置
+     */
+    UFUNCTION(BlueprintPure, Category = "XB|Soldier|Dormant", meta = (DisplayName = "获取休眠配置"))
+    const FXBDormantVisualConfig& GetDormantVisualConfig() const { return DormantConfig; }
+
+    /**
+     * @brief 设置 Zzz 特效启用状态
+     * @param bEnabled 是否启用
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Soldier|Dormant", meta = (DisplayName = "设置Zzz特效"))
+    void SetZzzEffectEnabled(bool bEnabled);
+
+    /**
+     * @brief 切换休眠类型（不改变休眠状态）
+     * @param NewType 新的休眠类型
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Soldier|Dormant", meta = (DisplayName = "切换休眠类型"))
+    void SetDormantType(EXBDormantType NewType);
+
+    /**
+     * @brief 获取当前休眠类型
+     */
+    UFUNCTION(BlueprintPure, Category = "XB|Soldier|Dormant", meta = (DisplayName = "获取休眠类型"))
+    EXBDormantType GetDormantType() const { return CurrentDormantType; }
+
+    // ==================== 配置属性访问方法 ====================
 
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|Data", meta = (DisplayName = "获取士兵类型"))
     EXBSoldierType GetSoldierType() const { return SoldierType; }
@@ -121,8 +159,6 @@ public:
 
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|Data", meta = (DisplayName = "获取士兵标签"))
     FGameplayTagContainer GetSoldierTags() const;
-
-    // --- 战斗配置 ---
 
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|Combat", meta = (DisplayName = "获取最大血量"))
     float GetMaxHealth() const;
@@ -136,8 +172,6 @@ public:
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|Combat", meta = (DisplayName = "获取攻击间隔"))
     float GetAttackInterval() const;
 
-    // --- 移动配置 ---
-
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|Movement", meta = (DisplayName = "获取移动速度"))
     float GetMoveSpeed() const;
 
@@ -149,8 +183,6 @@ public:
 
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|Movement", meta = (DisplayName = "获取旋转速度"))
     float GetRotationSpeed() const;
-
-    // --- AI配置 ---
 
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|AI", meta = (DisplayName = "获取视野范围"))
     float GetVisionRange() const;
@@ -170,19 +202,10 @@ public:
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|AI", meta = (DisplayName = "获取避让权重"))
     float GetAvoidanceWeight() const;
 
-
-
     // ==================== 招募系统 ====================
 
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier", meta = (DisplayName = "被招募"))
     void OnRecruited(AActor* NewLeader, int32 SlotIndex);
-
-    /**
-     * @brief 重置士兵以便重复招募/对象池复用
-     * @note 🔧 修改 - 解决批量招募时反复生成销毁造成的性能抖动
-     */
-    UFUNCTION(BlueprintCallable, Category = "XB|Soldier", meta = (DisplayName = "重置为待招募状态"))
-    void ResetForRecruitment();
 
     UFUNCTION(BlueprintPure, Category = "XB|Soldier", meta = (DisplayName = "是否已招募"))
     bool IsRecruited() const { return bIsRecruited; }
@@ -218,11 +241,6 @@ public:
     UFUNCTION(BlueprintPure, Category = "XB|Soldier", meta = (DisplayName = "获取阵营"))
     EXBFaction GetFaction() const { return Faction; }
 
-    /**
-     * @brief 检查士兵是否已死亡
-     * @return 是否已死亡
-     * @note 蓝图可读，用于 UI 和逻辑判断
-     */
     UFUNCTION(BlueprintPure, Category = "XB|Soldier", meta = (DisplayName = "是否已死亡"))
     bool IsDead() const { return bIsDead; }
 
@@ -283,6 +301,16 @@ public:
     UFUNCTION(BlueprintPure, Category = "XB|Soldier", meta = (DisplayName = "是否正在逃跑"))
     bool IsEscaping() const { return bIsEscaping; }
 
+    // ==================== 对象池支持 ====================
+
+    UFUNCTION(BlueprintCallable, Category = "XB|Soldier|Pool", meta = (DisplayName = "重置状态"))
+    void ResetForPooling();
+
+    UFUNCTION(BlueprintPure, Category = "XB|Soldier|Pool", meta = (DisplayName = "是否池化士兵"))
+    bool IsPooledSoldier() const { return bIsPooledSoldier; }
+
+    void MarkAsPooledSoldier() { bIsPooledSoldier = true; }
+
     // ==================== 委托事件 ====================
 
     UPROPERTY(BlueprintAssignable, Category = "XB|Soldier")
@@ -294,6 +322,10 @@ public:
     UPROPERTY(BlueprintAssignable, Category = "XB|Soldier")
     FOnSoldierRecruited OnSoldierRecruited;
 
+    // ✨ 新增 - 休眠状态变化委托
+    UPROPERTY(BlueprintAssignable, Category = "XB|Soldier|Dormant", meta = (DisplayName = "休眠状态变化"))
+    FOnDormantStateChanged OnDormantStateChanged;
+
     // ==================== 组件访问 ====================
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "跟随组件"))
@@ -301,6 +333,10 @@ public:
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "调试组件"))
     TObjectPtr<UXBSoldierDebugComponent> DebugComponent;
+
+    // ✨ 新增 - Zzz 特效组件
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "Zzz特效"))
+    TObjectPtr<UNiagaraComponent> ZzzEffectComponent;
 
     // ==================== 公开访问的战斗状态 ====================
 
@@ -311,82 +347,73 @@ public:
 
     friend class AXBSoldierAIController;
 
-    /**
-     * @brief 获取行为接口组件
-     * @return 行为接口组件
-     * @note 所有 AI 行为执行通过此组件
-     */
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|Behavior", meta = (DisplayName = "获取行为接口"))
     UXBSoldierBehaviorInterface* GetBehaviorInterface() const { return BehaviorInterface; }
 
 protected:
-    // ==================== ✨ 新增：数据访问器组件 ====================
+    // ==================== 数据访问器组件 ====================
 
-    /**
-     * @brief 数据访问器组件 - 唯一数据源入口
-     * @note 所有配置数据必须通过此组件访问
-     */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "数据访问器"))
     TObjectPtr<UXBSoldierDataAccessor> DataAccessor;
 
-    /**
-     * @brief 行为接口组件
-     * @note 封装所有 AI 行为执行逻辑
-     */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "行为接口"))
     TObjectPtr<UXBSoldierBehaviorInterface> BehaviorInterface;
 
-    // ==================== 保留：运行时状态（非配置数据） ====================
+    // ==================== ✨ 新增：休眠配置 ====================
 
-    /** @brief 士兵类型（缓存以提高访问速度） */
+    /** @brief 休眠态视觉配置 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Soldier|Dormant", meta = (DisplayName = "休眠配置"))
+    FXBDormantVisualConfig DormantConfig;
+
+    /** @brief Zzz 特效资源 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Soldier|Dormant", meta = (DisplayName = "Zzz特效资源"))
+    TSoftObjectPtr<UNiagaraSystem> ZzzEffectAsset;
+
+    /** @brief 当前休眠类型 */
+    UPROPERTY(BlueprintReadOnly, Category = "状态", meta = (DisplayName = "休眠类型"))
+    EXBDormantType CurrentDormantType = EXBDormantType::Sleeping;
+
+    /** @brief 是否以休眠态开始 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Soldier|Dormant", meta = (DisplayName = "初始休眠态"))
+    bool bStartAsDormant = false;
+
+    // ==================== 运行时状态 ====================
+
     UPROPERTY(BlueprintReadOnly, Category = "状态", meta = (DisplayName = "士兵类型"))
     EXBSoldierType SoldierType = EXBSoldierType::Infantry;
 
-    /** @brief 阵营 */
     UPROPERTY(BlueprintReadOnly, Category = "状态", meta = (DisplayName = "阵营"))
     EXBFaction Faction = EXBFaction::Neutral;
 
-    /** @brief 当前状态 */
     UPROPERTY(BlueprintReadOnly, Category = "状态", meta = (DisplayName = "当前状态"))
     EXBSoldierState CurrentState = EXBSoldierState::Idle;
 
-    /** @brief 跟随目标 */
     UPROPERTY(BlueprintReadOnly, Category = "状态", meta = (DisplayName = "跟随目标"))
     TWeakObjectPtr<AActor> FollowTarget;
 
-    /** @brief 编队槽位索引 */
     UPROPERTY(BlueprintReadOnly, Category = "状态", meta = (DisplayName = "槽位索引"))
     int32 FormationSlotIndex = INDEX_NONE;
 
-    /** @brief 当前血量 */
     UPROPERTY(BlueprintReadOnly, Category = "状态", meta = (DisplayName = "当前血量"))
     float CurrentHealth = 100.0f;
 
-    /** @brief 是否正在逃跑 */
     UPROPERTY(BlueprintReadOnly, Category = "状态", meta = (DisplayName = "正在逃跑"))
     bool bIsEscaping = false;
 
-    /** @brief 攻击冷却计时器 */
     UPROPERTY(BlueprintReadOnly, Category = "状态")
     float AttackCooldownTimer = 0.0f;
 
-    /** @brief 目标搜索计时器 */
     float TargetSearchTimer = 0.0f;
-
-    /** @brief 上次看见敌人的时间 */
     float LastEnemySeenTime = 0.0f;
 
-    /** @brief 是否已招募 */
     UPROPERTY(BlueprintReadOnly, Category = "状态", meta = (DisplayName = "是否已招募"))
     bool bIsRecruited = false;
 
-    /**
-     * @brief 是否已死亡
-     * @note 蓝图可读，用于 UI 显示和逻辑判断
-     *       在 HandleDeath() 中设置为 true
-     */
     UPROPERTY(BlueprintReadOnly, Category = "状态", meta = (DisplayName = "是否已死亡"))
     bool bIsDead = false;
+
+    UPROPERTY(BlueprintReadOnly, Category = "状态")
+    bool bIsPooledSoldier = false;
 
     // ==================== AI配置 ====================
 
@@ -404,8 +431,51 @@ protected:
     void FaceTarget(AActor* Target, float DeltaTime);
     FVector CalculateAvoidanceDirection(const FVector& DesiredDirection);
 
+    // ✨ 新增 - 休眠系统内部方法
+    
+    /**
+     * @brief 启用激活态组件
+     * @note 启用 AI、跟随、行为接口等
+     */
+    void EnableActiveComponents();
+
+    /**
+     * @brief 禁用激活态组件（进入休眠）
+     * @note 禁用 AI、跟随、行为接口等，保留基础碰撞
+     */
+    void DisableActiveComponents();
+
+    /**
+     * @brief 更新休眠动画
+     */
+    void UpdateDormantAnimation();
+
+    /**
+     * @brief 更新 Zzz 特效
+     */
+    void UpdateZzzEffect();
+
+    /**
+     * @brief 播放指定动画序列
+     * @param Animation 动画序列
+     * @param bLoop 是否循环
+     */
+    void PlayAnimationSequence(UAnimSequence* Animation, bool bLoop = true);
+
+    /**
+     * @brief 加载休眠动画资源
+     */
+    void LoadDormantAnimations();
+
 private:
     void SpawnAndPossessAIController();
     void InitializeAI();
     FTimerHandle DelayedAIStartTimerHandle;
+
+    // ✨ 新增 - 缓存的动画资源
+    UPROPERTY()
+    TObjectPtr<UAnimSequence> LoadedSleepingAnimation;
+    UPROPERTY()
+    TObjectPtr<UAnimSequence> LoadedStandingAnimation;
+
 };
