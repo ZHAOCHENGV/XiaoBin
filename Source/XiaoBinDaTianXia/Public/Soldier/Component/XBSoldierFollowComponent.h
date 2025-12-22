@@ -158,6 +158,19 @@ protected:
     void UpdateRecruitTransitionMode(float DeltaTime);
 
     /**
+     * @brief 更新幽灵目标（位置与旋转插值）
+     * @param DeltaTime 帧间隔
+     * @note 🔧 使用插值后的幽灵位置/朝向计算槽位，避免瞬间转向导致摆尾过猛
+     */
+    void UpdateGhostTarget(float DeltaTime);
+
+    /**
+     * @brief 获取当前平滑后的编队目标位置
+     * @note ✨ 优先使用幽灵目标对应的槽位位置，避免直接依赖将领位置导致堆叠
+     */
+    FVector GetSmoothedFormationTarget() const;
+
+    /**
      * @brief 计算编队世界位置
      */
     FVector CalculateFormationWorldPosition() const;
@@ -266,6 +279,17 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked", meta = (DisplayName = "锁定转向速度", ClampMin = "0.1"))
     float LockedRotationInterpSpeed = 8.0f;
 
+    // ✨ 新增 - 幽灵目标插值配置
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Ghost", meta = (DisplayName = "幽灵位置插值速度", ClampMin = "0.1"))
+    float GhostLocationInterpSpeed = 6.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Ghost", meta = (DisplayName = "幽灵旋转插值速度", ClampMin = "0.1"))
+    float GhostRotationInterpSpeed = 8.0f;
+
+    // ✨ 新增 - 避让配置
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Avoidance", meta = (DisplayName = "编队启用RVO避让"))
+    bool bEnableRVOWhileFollowing = true;
+
     // ✨ 新增 - 追赶补偿配置
     /**
      * @brief 追赶速度补偿倍率
@@ -320,6 +344,9 @@ protected:
     UPROPERTY(BlueprintReadOnly, Category = "XB|Follow", meta = (DisplayName = "当前移动速度"))
     float CurrentMoveSpeed = 0.0f;
 
+    // ✨ 新增 - 首次入列跳过RVO
+    bool bSkipRVOForFirstJoin = false;
+
     ECollisionResponse OriginalPawnResponse = ECR_Block;
     bool bCollisionModified = false;
 
@@ -327,4 +354,10 @@ protected:
     float RecruitTransitionStartTime = 0.0f;
     FVector LastPositionForStuckCheck = FVector::ZeroVector;
     float AccumulatedStuckTime = 0.0f;
+
+    // ✨ 新增 - 幽灵目标状态
+    FVector GhostTargetLocation = FVector::ZeroVector;
+    FRotator GhostTargetRotation = FRotator::ZeroRotator;
+    bool bGhostInitialized = false;
+    FVector GhostSlotTargetLocation = FVector::ZeroVector;
 };
