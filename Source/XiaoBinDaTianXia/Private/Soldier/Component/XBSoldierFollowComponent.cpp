@@ -289,6 +289,39 @@ FVector UXBSoldierFollowComponent::ComputeAvoidanceOffset(const FVector& Current
     return Repulsion;
 }
 
+/**
+ * @brief 计算转向后的移动方向（Steering Behavior）
+ * @param CurrentXY 当前XY位置
+ * @param TargetXY 目标XY位置
+ * @param CurrentPosition 带Z的当前位置（用于避让检测）
+ * @return 融合避让后的归一化方向
+ */
+FVector2D UXBSoldierFollowComponent::ComputeSteeringDirection(const FVector2D& CurrentXY, const FVector2D& TargetXY, const FVector& CurrentPosition) const
+{
+    // 期望方向
+    FVector2D DesiredDir = (TargetXY - CurrentXY).GetSafeNormal();
+
+    // 避让方向
+    FVector AvoidOffset3D = ComputeAvoidanceOffset(CurrentPosition);
+    FVector2D AvoidDir(AvoidOffset3D.X, AvoidOffset3D.Y);
+
+    if (AvoidDir.IsNearlyZero())
+    {
+        return DesiredDir;
+    }
+
+    AvoidDir.Normalize();
+
+    // Steering 混合：期望方向 + 避让方向 × 权重
+    FVector2D Steering = DesiredDir + AvoidDir * CustomAvoidanceWeight;
+    if (Steering.IsNearlyZero())
+    {
+        return DesiredDir;
+    }
+
+    return Steering.GetSafeNormal();
+}
+
 // ==================== 🔧 修改：锁定模式 ====================
 
 /**
@@ -370,7 +403,7 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
         {
             // ✨ 核心 - 使用 Steering 行为的移动方向，避免RVO
             FVector2D DesiredDir = FVector2D(MoveDirection.X, MoveDirection.Y);
-            if (bEnableCustomAvoidance && bHasCompletedFirstRecruit)
+            if (bEnableCustomAvoidance && bHasCompletedFirstRecruit && bHasReachedFirstSlot)
             {
                 FVector2D CurrentXY(CurrentPosition.X, CurrentPosition.Y);
                 FVector2D TargetXY(TargetPosition.X, TargetPosition.Y);
@@ -786,11 +819,17 @@ bool UXBSoldierFollowComponent::MoveTowardsTargetXY(const FVector& TargetPositio
     {
         // 到达时也保持当前Z
         Owner->SetActorLocation(FVector(TargetXY.X, TargetXY.Y, CurrentPosition.Z));
+
+        // ✨ 新增 - 首次达到槽位后再开启避让
+        if (!bHasReachedFirstSlot)
+        {
+            bHasReachedFirstSlot = true;
+        }
         return true;
     }
     
     // 🔧 修改 - 使用 Steering 行为融合期望方向与避让方向
-    if (bApplyAvoidance && bEnableCustomAvoidance && bHasCompletedFirstRecruit)
+    if (bApplyAvoidance && bEnableCustomAvoidance && bHasCompletedFirstRecruit && bHasReachedFirstSlot)
     {
         FVector2D DesiredSteering = ComputeSteeringDirection(CurrentXY, TargetXY, CurrentPosition);
 

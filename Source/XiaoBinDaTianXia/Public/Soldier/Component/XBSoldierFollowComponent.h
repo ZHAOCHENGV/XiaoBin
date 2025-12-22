@@ -223,6 +223,9 @@ protected:
     // ✨ 新增 - 是否已完成首次招募（用于避让启用条件）
     bool bHasCompletedFirstRecruit = false;
 
+    // ✨ 新增 - 是否已首次到达槽位（到达后才启用避让）
+    bool bHasReachedFirstSlot = false;
+
 protected:
     // ==================== 引用 ====================
 
