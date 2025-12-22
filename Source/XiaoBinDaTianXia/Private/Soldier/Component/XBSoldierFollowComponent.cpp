@@ -22,6 +22,8 @@
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Engine/World.h"
+#include "Engine/EngineTypes.h"
 
 UXBSoldierFollowComponent::UXBSoldierFollowComponent()
 {
@@ -820,8 +822,20 @@ bool UXBSoldierFollowComponent::MoveTowardsTargetXY(const FVector& TargetPositio
     // 🔧 修改 - 使用 Steering 行为融合期望方向与避让方向
     if (bApplyAvoidance && bEnableCustomAvoidance)
     {
-        Direction = ComputeSteeringDirection(CurrentXY, TargetXY, CurrentPosition);
-        // 重新计算距离，确保移动距离准确
+        FVector2D DesiredSteering = ComputeSteeringDirection(CurrentXY, TargetXY, CurrentPosition);
+
+        // 🔧 修改 - 平滑转向，避免来回闪避
+        float LerpAlpha = FMath::Clamp(DeltaTime * AvoidanceSteeringLerpRate, 0.0f, 1.0f);
+        if (LastSteeringDirection.IsNearlyZero())
+        {
+            LastSteeringDirection = DesiredSteering;
+        }
+        else
+        {
+            LastSteeringDirection = FMath::Lerp(LastSteeringDirection, DesiredSteering, LerpAlpha);
+        }
+
+        Direction = LastSteeringDirection.GetSafeNormal();
         Distance = FVector2D::Distance(CurrentXY, TargetXY);
     }
 
