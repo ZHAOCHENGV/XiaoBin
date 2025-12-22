@@ -312,14 +312,47 @@ FVector2D UXBSoldierFollowComponent::ComputeSteeringDirection(const FVector2D& C
 
     AvoidDir.Normalize();
 
+    // 根据与目标距离缩放避让权重，靠近目标时降低避让防止绕圈
+    float DistanceToTarget = FVector2D::Distance(CurrentXY, TargetXY);
+    float WeightScale = 1.0f;
+    if (AvoidanceNearDistance > KINDA_SMALL_NUMBER)
+    {
+        float Alpha = FMath::Clamp(DistanceToTarget / AvoidanceNearDistance, 0.0f, 1.0f);
+        WeightScale = FMath::Lerp(AvoidanceNearWeightScale, 1.0f, Alpha);
+    }
+
+    float FinalWeight = CustomAvoidanceWeight * WeightScale;
+
     // Steering 混合：期望方向 + 避让方向 × 权重
-    FVector2D Steering = DesiredDir + AvoidDir * CustomAvoidanceWeight;
+    FVector2D Steering = DesiredDir + AvoidDir * FinalWeight;
     if (Steering.IsNearlyZero())
     {
         return DesiredDir;
     }
 
-    return Steering.GetSafeNormal();
+    FVector2D SteeringDir = Steering.GetSafeNormal();
+
+    // 限制偏转角，避免大角度绕行
+    if (AvoidanceMaxDeviationDeg < 179.9f)
+    {
+        float CosMax = FMath::Cos(FMath::DegreesToRadians(AvoidanceMaxDeviationDeg));
+        float Dot = FVector2D::DotProduct(DesiredDir, SteeringDir);
+        if (Dot < CosMax)
+        {
+            // 将 SteeringDir 夹在最大偏转角内
+            FVector2D Right(-DesiredDir.Y, DesiredDir.X);
+            float Sign = FVector2D::DotProduct(SteeringDir, Right) >= 0 ? 1.0f : -1.0f;
+            float MaxAngleRad = FMath::DegreesToRadians(AvoidanceMaxDeviationDeg);
+            float CosA = FMath::Cos(MaxAngleRad);
+            float SinA = FMath::Sin(MaxAngleRad);
+            SteeringDir = FVector2D(
+                DesiredDir.X * CosA - DesiredDir.Y * SinA * Sign,
+                DesiredDir.X * SinA * Sign + DesiredDir.Y * CosA
+            ).GetSafeNormal();
+        }
+    }
+
+    return SteeringDir;
 }
 
 // ==================== 🔧 修改：锁定模式 ====================
@@ -846,6 +879,11 @@ bool UXBSoldierFollowComponent::MoveTowardsTargetXY(const FVector& TargetPositio
 
         Direction = LastSteeringDirection.GetSafeNormal();
         Distance = FVector2D::Distance(CurrentXY, TargetXY);
+    }
+    else
+    {
+        // 未启用避让时重置平滑方向，防止残留
+        LastSteeringDirection = FVector2D::ZeroVector;
     }
 
     Direction.Normalize();

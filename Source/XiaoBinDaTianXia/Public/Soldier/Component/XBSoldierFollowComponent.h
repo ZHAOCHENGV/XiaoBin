@@ -299,6 +299,17 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Avoidance", meta = (DisplayName = "避让平滑速度", ClampMin = "0.0"))
     float AvoidanceSteeringLerpRate = 6.0f;
 
+    // ✨ 新增 - 贴近目标时降低避让权重，避免绕圈
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Avoidance", meta = (DisplayName = "贴近目标距离", ClampMin = "0.0"))
+    float AvoidanceNearDistance = 300.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Avoidance", meta = (DisplayName = "贴近目标避让权重系数", ClampMin = "0.0"))
+    float AvoidanceNearWeightScale = 0.2f;
+
+    // ✨ 新增 - 避让偏转角限制，避免大角度绕行
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Avoidance", meta = (DisplayName = "最大偏转角(度)", ClampMin = "0.0", ClampMax = "180.0"))
+    float AvoidanceMaxDeviationDeg = 45.0f;
+
     // ✨ 新增 - 追赶补偿配置
     /**
      * @brief 追赶速度补偿倍率
