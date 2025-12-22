@@ -286,6 +286,39 @@ FVector UXBSoldierFollowComponent::ComputeAvoidanceOffset(const FVector& Current
     return Repulsion;
 }
 
+/**
+ * @brief 计算转向后的移动方向（Steering Behavior）
+ * @param CurrentXY 当前XY位置
+ * @param TargetXY 目标XY位置
+ * @param CurrentPosition 带Z的当前位置（用于避让检测）
+ * @return 融合避让后的归一化方向
+ */
+FVector2D UXBSoldierFollowComponent::ComputeSteeringDirection(const FVector2D& CurrentXY, const FVector2D& TargetXY, const FVector& CurrentPosition) const
+{
+    // 期望方向
+    FVector2D DesiredDir = (TargetXY - CurrentXY).GetSafeNormal();
+
+    // 避让方向
+    FVector AvoidOffset3D = ComputeAvoidanceOffset(CurrentPosition);
+    FVector2D AvoidDir(AvoidOffset3D.X, AvoidOffset3D.Y);
+
+    if (AvoidDir.IsNearlyZero())
+    {
+        return DesiredDir;
+    }
+
+    AvoidDir.Normalize();
+
+    // 🔧 修改 - Steering 混合：期望方向 + 避让方向 × 权重
+    FVector2D Steering = DesiredDir + AvoidDir * CustomAvoidanceWeight;
+    if (Steering.IsNearlyZero())
+    {
+        return DesiredDir;
+    }
+
+    return Steering.GetSafeNormal();
+}
+
 // ==================== 🔧 修改：锁定模式 ====================
 
 /**
@@ -365,13 +398,15 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
         
         if (!MoveDirection.IsNearlyZero())
         {
-            // ✨ 核心 - 使用 AddMovementInput 驱动移动（包含避让偏移）
+            // ✨ 核心 - 使用 Steering 行为的移动方向，避免RVO
+            FVector2D DesiredDir = FVector2D(MoveDirection.X, MoveDirection.Y);
             if (bEnableCustomAvoidance)
             {
-                FVector AvoidOffset = ComputeAvoidanceOffset(CurrentPosition);
-                MoveDirection = (TargetPosition + AvoidOffset - CurrentPosition).GetSafeNormal2D();
+                FVector2D CurrentXY(CurrentPosition.X, CurrentPosition.Y);
+                FVector2D TargetXY(TargetPosition.X, TargetPosition.Y);
+                DesiredDir = ComputeSteeringDirection(CurrentXY, TargetXY, CurrentPosition);
             }
-            CharOwner->AddMovementInput(MoveDirection, 1.0f);
+            CharOwner->AddMovementInput(FVector(DesiredDir.X, DesiredDir.Y, 0.0f), 1.0f);
             
             // 平滑旋转
             if (bFollowRotation)
@@ -782,13 +817,12 @@ bool UXBSoldierFollowComponent::MoveTowardsTargetXY(const FVector& TargetPositio
         return true;
     }
     
-    // 🔧 修改 - 添加自定义避让偏移，减少士兵间碰撞拥挤
+    // 🔧 修改 - 使用 Steering 行为融合期望方向与避让方向
     if (bApplyAvoidance && bEnableCustomAvoidance)
     {
-        FVector AvoidOffset = ComputeAvoidanceOffset(CurrentPosition);
-        TargetXY += FVector2D(AvoidOffset.X, AvoidOffset.Y);
-        Direction = TargetXY - CurrentXY;
-        Distance = Direction.Size();
+        Direction = ComputeSteeringDirection(CurrentXY, TargetXY, CurrentPosition);
+        // 重新计算距离，确保移动距离准确
+        Distance = FVector2D::Distance(CurrentXY, TargetXY);
     }
 
     Direction.Normalize();

@@ -214,6 +214,9 @@ protected:
     // ✨ 新增 - 自定义邻兵避让
     FVector ComputeAvoidanceOffset(const FVector& CurrentPosition) const;
 
+    // ✨ 新增 - 计算转向后的移动方向（Steering Behavior）
+    FVector2D ComputeSteeringDirection(const FVector2D& CurrentXY, const FVector2D& TargetXY, const FVector& CurrentPosition) const;
+
 protected:
     // ==================== 引用 ====================
 
@@ -278,6 +281,10 @@ protected:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Avoidance", meta = (DisplayName = "避让强度", ClampMin = "0.0"))
     float CustomAvoidanceStrength = 1.5f;
+
+    // ✨ 新增 - 避让权重（与期望方向混合）
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Avoidance", meta = (DisplayName = "避让权重", ClampMin = "0.0"))
+    float CustomAvoidanceWeight = 1.0f;
 
     // ✨ 新增 - 追赶补偿配置
     /**
