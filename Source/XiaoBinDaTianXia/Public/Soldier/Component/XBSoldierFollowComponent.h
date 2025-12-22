@@ -214,12 +214,6 @@ protected:
     // ✨ 新增 - 自定义邻兵避让
     FVector ComputeAvoidanceOffset(const FVector& CurrentPosition) const;
 
-    // ✨ 新增 - 计算转向后的移动方向（Steering Behavior）
-    FVector2D ComputeSteeringDirection(const FVector2D& CurrentXY, const FVector2D& TargetXY, const FVector& CurrentPosition) const;
-
-    // ✨ 新增 - 上一帧转向方向，用于平滑
-    FVector2D LastSteeringDirection = FVector2D::ZeroVector;
-
     // ✨ 新增 - 是否已完成首次招募（用于避让启用条件）
     bool bHasCompletedFirstRecruit = false;
 
@@ -280,7 +274,7 @@ protected:
 
     // ✨ 新增 - 自定义避让配置（替代RVO）
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Avoidance", meta = (DisplayName = "启用自定义避让"))
-    bool bEnableCustomAvoidance = true;
+    bool bEnableCustomAvoidance = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Avoidance", meta = (DisplayName = "避让半径", ClampMin = "0.0"))
     float CustomAvoidanceRadius = 120.0f;
@@ -295,6 +289,10 @@ protected:
     // ✨ 新增 - 避让方向平滑插值速度（避免闪避抖动）
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Avoidance", meta = (DisplayName = "避让平滑速度", ClampMin = "0.0"))
     float AvoidanceSteeringLerpRate = 6.0f;
+
+    // ✨ 新增 - 使用RVO2避让（引擎内置）
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Avoidance", meta = (DisplayName = "启用RVO避让"))
+    bool bUseRVOAvoidance = true;
 
     // ✨ 新增 - 追赶补偿配置
     /**

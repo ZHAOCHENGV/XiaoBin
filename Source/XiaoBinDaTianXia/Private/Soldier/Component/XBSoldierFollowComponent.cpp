@@ -289,39 +289,6 @@ FVector UXBSoldierFollowComponent::ComputeAvoidanceOffset(const FVector& Current
     return Repulsion;
 }
 
-/**
- * @brief 计算转向后的移动方向（Steering Behavior）
- * @param CurrentXY 当前XY位置
- * @param TargetXY 目标XY位置
- * @param CurrentPosition 带Z的当前位置（用于避让检测）
- * @return 融合避让后的归一化方向
- */
-FVector2D UXBSoldierFollowComponent::ComputeSteeringDirection(const FVector2D& CurrentXY, const FVector2D& TargetXY, const FVector& CurrentPosition) const
-{
-    // 期望方向
-    FVector2D DesiredDir = (TargetXY - CurrentXY).GetSafeNormal();
-
-    // 避让方向
-    FVector AvoidOffset3D = ComputeAvoidanceOffset(CurrentPosition);
-    FVector2D AvoidDir(AvoidOffset3D.X, AvoidOffset3D.Y);
-
-    if (AvoidDir.IsNearlyZero())
-    {
-        return DesiredDir;
-    }
-
-    AvoidDir.Normalize();
-
-    // 🔧 修改 - Steering 混合：期望方向 + 避让方向 × 权重
-    FVector2D Steering = DesiredDir + AvoidDir * CustomAvoidanceWeight;
-    if (Steering.IsNearlyZero())
-    {
-        return DesiredDir;
-    }
-
-    return Steering.GetSafeNormal();
-}
-
 // ==================== 🔧 修改：锁定模式 ====================
 
 /**
@@ -402,14 +369,8 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
         if (!MoveDirection.IsNearlyZero())
         {
             // ✨ 核心 - 使用 Steering 行为的移动方向，避免RVO
-            FVector2D DesiredDir = FVector2D(MoveDirection.X, MoveDirection.Y);
-            if (bEnableCustomAvoidance && bHasCompletedFirstRecruit)
-            {
-                FVector2D CurrentXY(CurrentPosition.X, CurrentPosition.Y);
-                FVector2D TargetXY(TargetPosition.X, TargetPosition.Y);
-                DesiredDir = ComputeSteeringDirection(CurrentXY, TargetXY, CurrentPosition);
-            }
-            CharOwner->AddMovementInput(FVector(DesiredDir.X, DesiredDir.Y, 0.0f), 1.0f);
+            // RVO2: 直接用期望方向，让引擎RVO处理避让
+            CharOwner->AddMovementInput(MoveDirection, 1.0f);
             
             // 平滑旋转
             if (bFollowRotation)
@@ -616,8 +577,11 @@ void UXBSoldierFollowComponent::SetCombatState(bool bInCombat)
     
     bIsInCombat = bInCombat;
     
-    // 🔧 修改 - 禁用引擎RVO，改用自定义避让；战斗时保持碰撞开启
-    SetRVOAvoidanceEnabled(false);
+    // 🔧 修改 - 战斗模式允许RVO2（若开启），保持碰撞开启
+    if (bUseRVOAvoidance && bHasCompletedFirstRecruit)
+    {
+        SetRVOAvoidanceEnabled(true);
+    }
     if (bInCombat)
     {
         SetSoldierCollisionEnabled(true);
@@ -739,6 +703,12 @@ void UXBSoldierFollowComponent::StartRecruitTransition()
     
     // ✨ 新增 - 首次招募完成标记，用于开启避让
     bHasCompletedFirstRecruit = true;
+
+    // ✨ 新增 - 首次招募后启用 RVO2 避让（如果允许）
+    if (bUseRVOAvoidance)
+    {
+        SetRVOAvoidanceEnabled(true);
+    }
     
     if (UWorld* World = GetWorld())
     {
@@ -824,25 +794,7 @@ bool UXBSoldierFollowComponent::MoveTowardsTargetXY(const FVector& TargetPositio
     }
     
     // 🔧 修改 - 使用 Steering 行为融合期望方向与避让方向
-    if (bApplyAvoidance && bEnableCustomAvoidance && bHasCompletedFirstRecruit)
-    {
-        FVector2D DesiredSteering = ComputeSteeringDirection(CurrentXY, TargetXY, CurrentPosition);
-
-        // 🔧 修改 - 平滑转向，避免来回闪避
-        float LerpAlpha = FMath::Clamp(DeltaTime * AvoidanceSteeringLerpRate, 0.0f, 1.0f);
-        if (LastSteeringDirection.IsNearlyZero())
-        {
-            LastSteeringDirection = DesiredSteering;
-        }
-        else
-        {
-            LastSteeringDirection = FMath::Lerp(LastSteeringDirection, DesiredSteering, LerpAlpha);
-        }
-
-        Direction = LastSteeringDirection.GetSafeNormal();
-        Distance = FVector2D::Distance(CurrentXY, TargetXY);
-    }
-
+    // 保持直接朝向目标，不在此处使用自定义 Steering（RVO2 由引擎处理）
     Direction.Normalize();
     float MoveDistance = MoveSpeed * DeltaTime;
     
