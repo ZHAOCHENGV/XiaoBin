@@ -611,15 +611,42 @@ void UXBSoldierFollowComponent::TeleportToFormationPosition()
 
 /**
  * @brief 开始插值到编队位置
- * @note 🔧 兼容旧接口：由于现在使用实时锁定，直接传送并锁定
+ * @note 🔧 修改 - 使用招募过渡实现平滑插值，不再瞬移
  */
 void UXBSoldierFollowComponent::StartInterpolateToFormation()
 {
-    // 直接传送到槽位并锁定
-    TeleportToFormationPosition();
-    SetFollowMode(EXBFollowMode::Locked);
-    
-    UE_LOG(LogXBSoldier, Log, TEXT("跟随组件: StartInterpolateToFormation -> 直接锁定"));
+    // 复用招募过渡逻辑，保证物理与碰撞正确
+    SetCombatState(false);
+    SetFollowMode(EXBFollowMode::RecruitTransition);
+
+    if (UWorld* World = GetWorld())
+    {
+        RecruitTransitionStartTime = World->GetTimeSeconds();
+    }
+
+    if (AActor* Owner = GetOwner())
+    {
+        LastPositionForStuckCheck = Owner->GetActorLocation();
+    }
+    AccumulatedStuckTime = 0.0f;
+
+    // 确保移动组件配置正确
+    UCharacterMovementComponent* MoveComp = GetCachedMovementComponent();
+    if (MoveComp)
+    {
+        MoveComp->GravityScale = 1.0f;
+        MoveComp->SetComponentTickEnabled(true);
+        MoveComp->SetMovementMode(MOVE_Walking);
+    }
+
+    // 缓存将领状态，便于追赶
+    if (CachedLeaderCharacter.IsValid())
+    {
+        bLeaderIsSprinting = CachedLeaderCharacter->IsSprinting();
+        CachedLeaderSpeed = CachedLeaderCharacter->GetCurrentMoveSpeed();
+    }
+
+    UE_LOG(LogXBSoldier, Log, TEXT("跟随组件: StartInterpolateToFormation -> 进入平滑招募过渡"));
 }
 /**
  * @brief 开始招募过渡
