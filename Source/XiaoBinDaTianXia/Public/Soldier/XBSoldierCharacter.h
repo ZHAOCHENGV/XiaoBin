@@ -28,6 +28,7 @@ class UXBSoldierFollowComponent;
 class UXBSoldierDebugComponent;
 class UXBSoldierDataAccessor;
 class UXBSoldierBehaviorInterface;
+class UXBFormationComponent;
 class UBehaviorTree;
 class AAIController;
 class AXBSoldierAIController;
@@ -372,6 +373,26 @@ protected:
      * @note ✨ 新增 - 防止槽位变化时瞬移
      */
     void RequestRelocateToSlot(bool bForceRecruitTransition = false);
+
+    /**
+     * @brief 绑定将领编队事件
+     * @param Leader 将领指针
+     * @note 🔧 确保队形更新时触发平滑补位
+     */
+    void BindLeaderFormationEvents(AXBCharacterBase* Leader);
+
+    /**
+     * @brief 解除编队事件绑定
+     * @note 🔧 防止更换将领或销毁时遗留委托
+     */
+    void UnbindLeaderFormationEvents();
+
+    /**
+     * @brief 处理编队更新回调
+     * @note ✨ 槽位按序延迟插值，形成“蛇尾”式补位
+     */
+    UFUNCTION()
+    void HandleFormationUpdated();
     
     // ==================== 数据访问器组件 ====================
 
@@ -468,6 +489,13 @@ protected:
     UPROPERTY(BlueprintReadOnly, Category = "状态")
     bool bIsPooledSoldier = false;
 
+    // ✨ 新增 - 队形尾随配置
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Soldier|Formation", meta = (DisplayName = "启用编队尾随插值"))
+    bool bEnableFormationTailDelay = true;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Soldier|Formation", meta = (DisplayName = "尾随延迟/槽位", ClampMin = "0.0"))
+    float FormationTailDelayPerSlot = 0.05f;
+
     // ==================== AI配置 ====================
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI", meta = (DisplayName = "行为树"))
@@ -515,4 +543,10 @@ private:
     TObjectPtr<UAnimSequence> LoadedSleepingAnimation;
     UPROPERTY()
     TObjectPtr<UAnimSequence> LoadedStandingAnimation;
+
+    // ✨ 新增 - 编队事件绑定缓存
+    UPROPERTY()
+    TWeakObjectPtr<UXBFormationComponent> CachedLeaderFormation;
+
+    FTimerHandle FormationRealignTimerHandle;
 };
