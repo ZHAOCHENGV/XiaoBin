@@ -150,7 +150,7 @@ protected:
      * @brief 更新锁定模式
      * @note 🔧 核心：直接设置位置和旋转，完全实时同步
      */
-    void UpdateLockedMode(float DeltaTime);
+    void UpdateLockedMode(float DeltaTime, bool bSkipMoveThisFrame = false);
 
     /**
      * @brief 更新招募过渡模式
@@ -313,6 +313,18 @@ protected:
     UPROPERTY(BlueprintReadOnly, Category = "XB|Follow", meta = (DisplayName = "将领当前速度"))
     float CachedLeaderSpeed = 0.0f;
 
+    /** @brief 上一帧将领位置（用于旋转同步） */
+    UPROPERTY(BlueprintReadOnly, Category = "XB|Follow|Debug", meta = (DisplayName = "上一帧将领位置"))
+    FVector CachedLeaderLocation = FVector::ZeroVector;
+
+    /** @brief 上一帧将领旋转（用于旋转同步） */
+    UPROPERTY(BlueprintReadOnly, Category = "XB|Follow|Debug", meta = (DisplayName = "上一帧将领旋转"))
+    FRotator CachedLeaderRotation = FRotator::ZeroRotator;
+
+    /** @brief 是否已有将领姿态缓存 */
+    UPROPERTY(BlueprintReadOnly, Category = "XB|Follow|Debug", meta = (DisplayName = "已有姿态缓存"))
+    bool bHasLeaderPoseCache = false;
+
     // ==================== 状态 ====================
 
     FVector LastFrameLocation = FVector::ZeroVector;
@@ -327,4 +339,29 @@ protected:
     float RecruitTransitionStartTime = 0.0f;
     FVector LastPositionForStuckCheck = FVector::ZeroVector;
     float AccumulatedStuckTime = 0.0f;
+
+    /** @brief 是否启用将领旋转枢轴同步，避免旋转时士兵聚拢 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked", meta = (DisplayName = "启用枢轴旋转同步"))
+    bool bEnableLeaderPivotSync = true;
+
+    /** @brief 枢轴同步可接受的偏离距离（超出则不进行旋转套用） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked", meta = (DisplayName = "枢轴同步最大偏离"))
+    float PivotSyncMaxDistance = 200.0f;
+
+    /** @brief 枢轴同步移动速度倍率（基于锁定移动速度） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked", meta = (DisplayName = "枢轴同步速度倍率", ClampMin = "0.1"))
+    float PivotMoveSpeedMultiplier = 1.0f;
+
+private:
+    /**
+     * @brief 将领旋转时，士兵围绕将领进行枢轴旋转，避免追逐导致重叠
+     * @param LeaderLocation 将领位置
+     * @param LeaderRotation 将领旋转
+     * @param DeltaTime 帧间隔
+     * @note   使用上一帧的将领姿态计算 DeltaYaw，只有士兵已接近槽位时才应用，防止远距离拉扯
+     */
+    void ApplyLeaderPivotRotation(const FVector& LeaderLocation, const FRotator& LeaderRotation, float DeltaTime);
+
+    /** @brief 本帧是否已由枢轴同步驱动过移动，避免与锁定移动叠加 */
+    bool bPivotMovedThisFrame = false;
 };
