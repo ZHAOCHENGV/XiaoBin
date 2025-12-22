@@ -24,6 +24,7 @@
 #include "Components/CapsuleComponent.h"
 #include "Engine/World.h"
 #include "Engine/EngineTypes.h"
+#include "Engine/OverlapResult.h"
 
 UXBSoldierFollowComponent::UXBSoldierFollowComponent()
 {
@@ -402,7 +403,7 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
         {
             // ✨ 核心 - 使用 Steering 行为的移动方向，避免RVO
             FVector2D DesiredDir = FVector2D(MoveDirection.X, MoveDirection.Y);
-            if (bEnableCustomAvoidance)
+            if (bEnableCustomAvoidance && bHasCompletedFirstRecruit)
             {
                 FVector2D CurrentXY(CurrentPosition.X, CurrentPosition.Y);
                 FVector2D TargetXY(TargetPosition.X, TargetPosition.Y);
@@ -736,6 +737,9 @@ void UXBSoldierFollowComponent::StartRecruitTransition()
     SetCombatState(false);
     SetFollowMode(EXBFollowMode::RecruitTransition);
     
+    // ✨ 新增 - 首次招募完成标记，用于开启避让
+    bHasCompletedFirstRecruit = true;
+    
     if (UWorld* World = GetWorld())
     {
         RecruitTransitionStartTime = World->GetTimeSeconds();
@@ -820,7 +824,7 @@ bool UXBSoldierFollowComponent::MoveTowardsTargetXY(const FVector& TargetPositio
     }
     
     // 🔧 修改 - 使用 Steering 行为融合期望方向与避让方向
-    if (bApplyAvoidance && bEnableCustomAvoidance)
+    if (bApplyAvoidance && bEnableCustomAvoidance && bHasCompletedFirstRecruit)
     {
         FVector2D DesiredSteering = ComputeSteeringDirection(CurrentXY, TargetXY, CurrentPosition);
 

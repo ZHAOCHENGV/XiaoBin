@@ -220,6 +220,9 @@ protected:
     // ✨ 新增 - 上一帧转向方向，用于平滑
     FVector2D LastSteeringDirection = FVector2D::ZeroVector;
 
+    // ✨ 新增 - 是否已完成首次招募（用于避让启用条件）
+    bool bHasCompletedFirstRecruit = false;
+
 protected:
     // ==================== 引用 ====================
 
