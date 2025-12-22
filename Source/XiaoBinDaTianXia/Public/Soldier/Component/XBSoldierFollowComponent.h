@@ -165,6 +165,12 @@ protected:
     void UpdateGhostTarget(float DeltaTime);
 
     /**
+     * @brief 获取当前平滑后的编队目标位置
+     * @note ✨ 优先使用幽灵目标对应的槽位位置，避免直接依赖将领位置导致堆叠
+     */
+    FVector GetSmoothedFormationTarget() const;
+
+    /**
      * @brief 计算编队世界位置
      */
     FVector CalculateFormationWorldPosition() const;
@@ -338,6 +344,9 @@ protected:
     UPROPERTY(BlueprintReadOnly, Category = "XB|Follow", meta = (DisplayName = "当前移动速度"))
     float CurrentMoveSpeed = 0.0f;
 
+    // ✨ 新增 - 首次入列跳过RVO
+    bool bSkipRVOForFirstJoin = false;
+
     ECollisionResponse OriginalPawnResponse = ECR_Block;
     bool bCollisionModified = false;
 
@@ -350,4 +359,5 @@ protected:
     FVector GhostTargetLocation = FVector::ZeroVector;
     FRotator GhostTargetRotation = FRotator::ZeroRotator;
     bool bGhostInitialized = false;
+    FVector GhostSlotTargetLocation = FVector::ZeroVector;
 };

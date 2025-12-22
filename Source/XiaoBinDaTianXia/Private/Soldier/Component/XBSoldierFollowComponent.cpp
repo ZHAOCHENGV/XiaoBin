@@ -45,6 +45,7 @@ void UXBSoldierFollowComponent::BeginPlay()
     SetMovementMode(true);
     // 🔧 修改 - 初始即启用RVO以减少重叠
     SetRVOAvoidanceEnabled(bEnableRVOWhileFollowing);
+    bSkipRVOForFirstJoin = true;
 
     UE_LOG(LogXBSoldier, Log, TEXT("跟随组件初始化 - 实时锁定槽位模式，追赶补偿倍率: %.2f"), CatchUpSpeedMultiplier);
 }
@@ -239,7 +240,7 @@ void UXBSoldierFollowComponent::UpdateLockedMode(float DeltaTime)
         return;
     }
     
-    FVector TargetPosition = CalculateFormationWorldPosition();
+    FVector TargetPosition = GetSmoothedFormationTarget();
     FVector CurrentPosition = Owner->GetActorLocation();
     
     // 🔧 修改 - 使用可调速度平滑移动到槽位，避免瞬移
@@ -280,7 +281,7 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
         return;
     }
     
-    FVector TargetPosition = CalculateFormationWorldPosition();
+    FVector TargetPosition = GetSmoothedFormationTarget();
     FVector CurrentPosition = Owner->GetActorLocation();
     
     float Distance = FVector::Dist2D(CurrentPosition, TargetPosition);
@@ -344,6 +345,12 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
         
         bLeaderIsSprinting = false;
         CachedLeaderSpeed = 0.0f;
+
+        if (bSkipRVOForFirstJoin)
+        {
+            bSkipRVOForFirstJoin = false;
+            SetRVOAvoidanceEnabled(bEnableRVOWhileFollowing);
+        }
         
         if (bFollowRotation)
         {
@@ -368,6 +375,7 @@ void UXBSoldierFollowComponent::UpdateGhostTarget(float DeltaTime)
     if (!Leader || !IsValid(Leader))
     {
         bGhostInitialized = false;
+        GhostSlotTargetLocation = FVector::ZeroVector;
         return;
     }
 
@@ -396,6 +404,26 @@ void UXBSoldierFollowComponent::UpdateGhostTarget(float DeltaTime)
         DeltaTime,
         GhostRotationInterpSpeed
     );
+
+    // ✨ 新增 - 直接缓存幽灵槽位世界坐标，供插值使用
+    FVector2D SlotOffset = GetSlotLocalOffset();
+    FVector LocalOffset3D(SlotOffset.X, SlotOffset.Y, 0.0f);
+    FVector WorldOffset = GhostTargetRotation.RotateVector(LocalOffset3D);
+    GhostSlotTargetLocation = GhostTargetLocation + WorldOffset;
+}
+
+/**
+ * @brief 获取当前平滑后的编队目标位置
+ * @note 优先返回幽灵槽位位置，失败时回退到即时计算
+ */
+FVector UXBSoldierFollowComponent::GetSmoothedFormationTarget() const
+{
+    if (bGhostInitialized && !GhostSlotTargetLocation.IsZero())
+    {
+        return GhostSlotTargetLocation;
+    }
+
+    return CalculateFormationWorldPosition();
 }
 
 // ==================== 目标设置 ====================
@@ -425,6 +453,11 @@ void UXBSoldierFollowComponent::SetFollowTarget(AActor* NewTarget)
         GhostTargetLocation = NewTarget->GetActorLocation();
         GhostTargetRotation = NewTarget->GetActorRotation();
         bGhostInitialized = true;
+        FVector2D SlotOffset = GetSlotLocalOffset();
+        GhostSlotTargetLocation = GhostTargetLocation + GhostTargetRotation.RotateVector(FVector(SlotOffset.X, SlotOffset.Y, 0.0f));
+
+        // ✨ 新增 - 首次入列不进行RVO避让
+        bSkipRVOForFirstJoin = true;
     }
     else
     {
@@ -434,6 +467,8 @@ void UXBSoldierFollowComponent::SetFollowTarget(AActor* NewTarget)
         CachedLeaderSpeed = 0.0f;
 
         bGhostInitialized = false;
+        GhostSlotTargetLocation = FVector::ZeroVector;
+        bSkipRVOForFirstJoin = false;
     }
 }
 
@@ -721,6 +756,12 @@ void UXBSoldierFollowComponent::StartRecruitTransition()
 {
     SetCombatState(false);
     SetFollowMode(EXBFollowMode::RecruitTransition);
+
+    // ✨ 新增 - 首次入列关闭RVO避免撞车
+    if (bSkipRVOForFirstJoin)
+    {
+        SetRVOAvoidanceEnabled(false);
+    }
     
     if (UWorld* World = GetWorld())
     {

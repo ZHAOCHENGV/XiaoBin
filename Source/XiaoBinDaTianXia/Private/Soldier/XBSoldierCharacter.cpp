@@ -1917,7 +1917,8 @@ void AXBSoldierCharacter::HandleDeath()
     );
 
     UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 死亡，%.1f秒后回收"), *GetName(), DeathAnimDuration + 0.5f);
-}  // 关闭 HandleDeath
+    // 🔧 修改 - 死亡流程结束，函数正常闭合
+}
 
 // ==================== 编队事件绑定 ====================
 
@@ -1976,7 +1977,7 @@ void AXBSoldierCharacter::UnbindLeaderFormationEvents()
 
 /**
  * @brief 编队更新时触发平滑补位
- * @note ✨ 通过槽位序号叠加延迟，实现"蛇尾"式旋转/扩列补位
+ * @note ✨ 通过槽位序号叠加延迟，实现“蛇尾”式旋转/扩列补位
  */
 void AXBSoldierCharacter::HandleFormationUpdated()
 {
