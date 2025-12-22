@@ -219,6 +219,73 @@ float UXBSoldierFollowComponent::CalculateRecruitTransitionSpeed(float DistanceT
     return FinalSpeed;
 }
 
+/**
+ * @brief 计算自定义避让偏移
+ * @param CurrentPosition 当前士兵位置
+ * @return 避让偏移（仅XY）
+ * @note ✨ 新增 - 替代RVO，避免士兵拥挤穿插
+ */
+FVector UXBSoldierFollowComponent::ComputeAvoidanceOffset(const FVector& CurrentPosition) const
+{
+    if (!bEnableCustomAvoidance || CustomAvoidanceRadius <= KINDA_SMALL_NUMBER)
+    {
+        return FVector::ZeroVector;
+    }
+
+    UWorld* World = GetWorld();
+    if (!World)
+    {
+        return FVector::ZeroVector;
+    }
+
+    TArray<FOverlapResult> Overlaps;
+    FCollisionQueryParams Params(SCENE_QUERY_STAT(ComputeAvoidanceOffset), false);
+    Params.AddIgnoredActor(GetOwner());
+    if (FollowTargetRef.IsValid())
+    {
+        Params.AddIgnoredActor(FollowTargetRef.Get());
+    }
+
+    bool bHit = World->OverlapMultiByObjectType(
+        Overlaps,
+        CurrentPosition,
+        FQuat::Identity,
+        FCollisionObjectQueryParams(ECC_Pawn),
+        FCollisionShape::MakeSphere(CustomAvoidanceRadius),
+        Params
+    );
+
+    if (!bHit)
+    {
+        return FVector::ZeroVector;
+    }
+
+    FVector Repulsion = FVector::ZeroVector;
+    for (const FOverlapResult& Result : Overlaps)
+    {
+        AActor* Other = Result.GetActor();
+        if (!Other || Other == GetOwner())
+        {
+            continue;
+        }
+
+        FVector Delta = CurrentPosition - Other->GetActorLocation();
+        Delta.Z = 0.0f;
+        float Distance = Delta.Size();
+
+        if (Distance < KINDA_SMALL_NUMBER || Distance > CustomAvoidanceRadius)
+        {
+            continue;
+        }
+
+        // 越近推力越大，确保快速分离
+        float Strength = (1.0f - (Distance / CustomAvoidanceRadius)) * CustomAvoidanceStrength;
+        Repulsion += Delta.GetSafeNormal() * Strength;
+    }
+
+    return Repulsion;
+}
+
 // ==================== 🔧 修改：锁定模式 ====================
 
 /**
@@ -239,7 +306,7 @@ void UXBSoldierFollowComponent::UpdateLockedMode(float DeltaTime)
     FVector CurrentPosition = Owner->GetActorLocation();
     
     // 🔧 修改 - 使用可调速度平滑移动到槽位，避免瞬移
-    MoveTowardsTargetXY(TargetPosition, DeltaTime, LockedFollowMoveSpeed);
+    MoveTowardsTargetXY(TargetPosition, DeltaTime, LockedFollowMoveSpeed, true);
     
     if (bFollowRotation)
     {
@@ -298,7 +365,12 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
         
         if (!MoveDirection.IsNearlyZero())
         {
-            // ✨ 核心 - 使用 AddMovementInput 驱动移动
+            // ✨ 核心 - 使用 AddMovementInput 驱动移动（包含避让偏移）
+            if (bEnableCustomAvoidance)
+            {
+                FVector AvoidOffset = ComputeAvoidanceOffset(CurrentPosition);
+                MoveDirection = (TargetPosition + AvoidOffset - CurrentPosition).GetSafeNormal2D();
+            }
             CharOwner->AddMovementInput(MoveDirection, 1.0f);
             
             // 平滑旋转
@@ -506,14 +578,11 @@ void UXBSoldierFollowComponent::SetCombatState(bool bInCombat)
     
     bIsInCombat = bInCombat;
     
+    // 🔧 修改 - 禁用引擎RVO，改用自定义避让；战斗时保持碰撞开启
+    SetRVOAvoidanceEnabled(false);
     if (bInCombat)
     {
-        SetRVOAvoidanceEnabled(true);
         SetSoldierCollisionEnabled(true);
-    }
-    else
-    {
-        SetRVOAvoidanceEnabled(false);
     }
     
     SetMovementMode(true);
@@ -690,7 +759,7 @@ float UXBSoldierFollowComponent::GetDistanceToFormation() const
  * @brief 移动到目标位置（只控制XY，Z保持当前值）
  * @note 🔧 修改 - 明确只修改XY，Z由物理引擎通过重力控制
  */
-bool UXBSoldierFollowComponent::MoveTowardsTargetXY(const FVector& TargetPosition, float DeltaTime, float MoveSpeed)
+bool UXBSoldierFollowComponent::MoveTowardsTargetXY(const FVector& TargetPosition, float DeltaTime, float MoveSpeed, bool bApplyAvoidance)
 {
     AActor* Owner = GetOwner();
     if (!Owner || DeltaTime <= KINDA_SMALL_NUMBER)
@@ -713,6 +782,15 @@ bool UXBSoldierFollowComponent::MoveTowardsTargetXY(const FVector& TargetPositio
         return true;
     }
     
+    // 🔧 修改 - 添加自定义避让偏移，减少士兵间碰撞拥挤
+    if (bApplyAvoidance && bEnableCustomAvoidance)
+    {
+        FVector AvoidOffset = ComputeAvoidanceOffset(CurrentPosition);
+        TargetXY += FVector2D(AvoidOffset.X, AvoidOffset.Y);
+        Direction = TargetXY - CurrentXY;
+        Distance = Direction.Size();
+    }
+
     Direction.Normalize();
     float MoveDistance = MoveSpeed * DeltaTime;
     
