@@ -223,8 +223,7 @@ float UXBSoldierFollowComponent::CalculateRecruitTransitionSpeed(float DistanceT
 
 /**
  * @brief 更新锁定模式
- * @note 🔧 核心逻辑：每帧直接将士兵位置设置到槽位位置
- *       无论将领移动多快、旋转多快，士兵都实时跟随
+ * @note 🔧 核心逻辑：使用可调速度与转向插值平滑贴合槽位，避免瞬移/瞬转
  */
 void UXBSoldierFollowComponent::UpdateLockedMode(float DeltaTime)
 {
@@ -239,13 +238,20 @@ void UXBSoldierFollowComponent::UpdateLockedMode(float DeltaTime)
     FVector TargetPosition = CalculateFormationWorldPosition();
     FVector CurrentPosition = Owner->GetActorLocation();
     
-    // 🔧 修改 - 保持士兵自身的Z坐标（由物理引擎控制贴地）
-    Owner->SetActorLocation(FVector(TargetPosition.X, TargetPosition.Y, CurrentPosition.Z));
+    // 🔧 修改 - 使用可调速度平滑移动到槽位，避免瞬移
+    MoveTowardsTargetXY(TargetPosition, DeltaTime, LockedFollowMoveSpeed);
     
     if (bFollowRotation)
     {
         FRotator TargetRotation = CalculateFormationWorldRotation();
-        Owner->SetActorRotation(TargetRotation);
+        // 🔧 修改 - 使用可调转向速度插值，避免瞬转
+        FRotator NewRotation = FMath::RInterpTo(
+            Owner->GetActorRotation(),
+            TargetRotation,
+            DeltaTime,
+            LockedRotationInterpSpeed
+        );
+        Owner->SetActorRotation(FRotator(0.0f, NewRotation.Yaw, 0.0f));
     }
 }
 
@@ -300,7 +306,7 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
             {
                 FRotator CurrentRotation = Owner->GetActorRotation();
                 FRotator TargetRotation = MoveDirection.Rotation();
-                FRotator NewRotation = FMath::RInterpTo(CurrentRotation, TargetRotation, DeltaTime, 10.0f);
+                FRotator NewRotation = FMath::RInterpTo(CurrentRotation, TargetRotation, DeltaTime, RecruitRotationInterpSpeed);
                 Owner->SetActorRotation(FRotator(0.0f, NewRotation.Yaw, 0.0f));
             }
         }

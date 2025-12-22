@@ -254,6 +254,18 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "最大过渡速度", ClampMin = "500.0"))
     float MaxTransitionSpeed = 8000.0f;
 
+    // ✨ 新增 - 招募转向速度（可蓝图调节）
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "转向插槽速度", ClampMin = "0.1"))
+    float RecruitRotationInterpSpeed = 10.0f;
+
+    // ✨ 新增 - 锁定模式移动速度（可蓝图调节，防止瞬移）
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked", meta = (DisplayName = "锁定移动速度", ClampMin = "0.0"))
+    float LockedFollowMoveSpeed = 600.0f;
+
+    // ✨ 新增 - 锁定模式转向速度
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked", meta = (DisplayName = "锁定转向速度", ClampMin = "0.1"))
+    float LockedRotationInterpSpeed = 8.0f;
+
     // ✨ 新增 - 追赶补偿配置
     /**
      * @brief 追赶速度补偿倍率

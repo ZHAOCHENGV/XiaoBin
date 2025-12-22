@@ -141,6 +141,15 @@ public:
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|Drop", meta = (DisplayName = "获取掉落进度"))
     float GetDropProgress() const;
 
+    /**
+     * @brief 绘制掉落抛物线用于调试
+     * @param DurationOverride 调试持续时间（<0 使用配置）
+     * @param SegmentOverride 采样段数（<=0 使用配置）
+     * @note ✨ 新增 - 便于在蓝图中可视化掉落轨迹
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Soldier|Drop", meta = (DisplayName = "绘制掉落抛物线"))
+    void DrawDropDebugArc(float DurationOverride = -1.0f, int32 SegmentOverride = -1) const;
+
     // ==================== 配置属性访问方法 ====================
 
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|Data", meta = (DisplayName = "获取士兵类型"))
@@ -356,6 +365,13 @@ protected:
      * @param SlotIndex 槽位索引
      */
     void SetupFollowingAndStartMoving(AXBCharacterBase* Leader, int32 SlotIndex);
+
+    /**
+     * @brief 当槽位变化时触发补位移动
+     * @param bForceRecruitTransition 是否强制使用招募过渡模式
+     * @note ✨ 新增 - 防止槽位变化时瞬移
+     */
+    void RequestRelocateToSlot(bool bForceRecruitTransition = false);
     
     // ==================== 数据访问器组件 ====================
 
@@ -409,6 +425,10 @@ protected:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Soldier|Drop", meta = (DisplayName = "落地特效"))
     TSoftObjectPtr<UNiagaraSystem> DropLandingEffectAsset;
+
+    // ✨ 新增 - 当前抛物线配置（用于蓝图调试）
+    UPROPERTY(BlueprintReadOnly, Category = "XB|Soldier|Drop", meta = (DisplayName = "当前抛物线配置"))
+    FXBDropArcConfig ActiveDropArcConfig;
 
     // ==================== 运行时状态 ====================
 
@@ -477,6 +497,7 @@ protected:
     FVector CalculateArcPosition(float Progress) const;
     void OnDropLanded();
     void PlayLandingEffect();
+    FVector ComputeGroundSnappedLocation(const FVector& DesiredLocation, const FXBDropArcConfig& ArcConfig) const;
 
     // ✨ 新增 - 落地后自动入列
     /**
