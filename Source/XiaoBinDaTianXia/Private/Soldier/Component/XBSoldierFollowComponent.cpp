@@ -195,8 +195,10 @@ float UXBSoldierFollowComponent::GetLeaderCurrentSpeed() const
  */
 float UXBSoldierFollowComponent::CalculateRecruitTransitionSpeed(float DistanceToTarget) const
 {
-    // Step 1: 基础速度 + 距离加速
-    float DistanceMultiplier = 1.0f + (DistanceToTarget / 100.0f) * (DistanceSpeedMultiplier - 1.0f);
+    // Step 1: 基础速度 + 距离加速（距离越大，速度提升越明显，强化追赶能力）
+    const float NormalizedDistance = FMath::Clamp(DistanceToTarget / 200.0f, 0.0f, 10.0f);
+    float DistanceMultiplier = 1.0f + NormalizedDistance * DistanceSpeedMultiplier;
+    DistanceMultiplier = FMath::Max(DistanceMultiplier, 1.0f);
     float DistanceBasedSpeed = RecruitTransitionSpeed * DistanceMultiplier;
 
     // Step 2: 将领速度补偿
@@ -661,10 +663,10 @@ void UXBSoldierFollowComponent::EnterCombatMode()
 void UXBSoldierFollowComponent::ExitCombatMode()
 {
     SetCombatState(false);
-    
-    // 退出战斗后直接传送到槽位，然后锁定
-    TeleportToFormationPosition();
-    SetFollowMode(EXBFollowMode::Locked);
+
+    // 🔧 修改 - 改为招募过渡移动回槽位，避免瞬移闪现
+    SetFollowMode(EXBFollowMode::RecruitTransition);
+    StartRecruitTransition();
 }
 
 /**
@@ -797,7 +799,7 @@ void UXBSoldierFollowComponent::StartRecruitTransition()
 
 FVector UXBSoldierFollowComponent::GetTargetPosition() const
 {
-    return CalculateFormationWorldPosition();
+    return GetSmoothedFormationTarget();
 }
 
 bool UXBSoldierFollowComponent::IsAtFormationPosition() const
