@@ -98,7 +98,7 @@ void UXBSoldierFollowComponent::TickComponent(float DeltaTime, ELevelTick TickTy
 
     if (bEnableLeaderPivotSync && CurrentMode == EXBFollowMode::Locked)
     {
-        ApplyLeaderPivotRotation(LeaderLocation, LeaderRotation);
+        ApplyLeaderPivotRotation(LeaderLocation, LeaderRotation, DeltaTime);
     }
 
     // ✨ 新增 - 每帧更新将领速度缓存（用于招募过渡模式）
@@ -713,7 +713,7 @@ float UXBSoldierFollowComponent::GetDistanceToFormation() const
  * @param LeaderRotation 将领旋转
  * @note   计算上一帧与当前帧的 DeltaYaw，并在士兵接近槽位时绕将领旋转同样的角度，实现“被摆过去”的视觉效果
  */
-void UXBSoldierFollowComponent::ApplyLeaderPivotRotation(const FVector& LeaderLocation, const FRotator& LeaderRotation)
+void UXBSoldierFollowComponent::ApplyLeaderPivotRotation(const FVector& LeaderLocation, const FRotator& LeaderRotation, float DeltaTime)
 {
     AActor* Owner = GetOwner();
     if (!Owner)
@@ -760,19 +760,46 @@ void UXBSoldierFollowComponent::ApplyLeaderPivotRotation(const FVector& LeaderLo
         return;
     }
 
-    // ✨ 新增 - 绕将领枢轴按 DeltaYaw 旋转相对向量
+    // ✨ 新增 - 绕将领枢轴按 DeltaYaw 计算目标位置
     const FQuat DeltaQuat(FVector::UpVector, FMath::DegreesToRadians(DeltaYaw));
     FVector RotatedRelative = DeltaQuat.RotateVector(Relative);
-    FVector NewWorldLocation = LeaderLocation + RotatedRelative;
+    FVector TargetWorldLocation = LeaderLocation + RotatedRelative;
+
+    // 🔧 修改 - 计算本帧可移动距离，保持“被摆过去”的移动感
+    FVector2D CurrentXY(OwnerLocation.X, OwnerLocation.Y);
+    FVector2D TargetXY(TargetWorldLocation.X, TargetWorldLocation.Y);
+    FVector2D DeltaXY = TargetXY - CurrentXY;
+    float DesiredDistance = DeltaXY.Size();
+
+    // 允许的移动速度：锁定移动速度 * 枢轴倍率，与将领角速度换算的线速度取较大值
+    float BaseSpeed = LockedFollowMoveSpeed * PivotMoveSpeedMultiplier;
+    float Radius = Relative.Size2D();
+    float AngularSpeedDeg = (DeltaTime > KINDA_SMALL_NUMBER) ? FMath::Abs(DeltaYaw) / DeltaTime : 0.0f;
+    float AngularSpeedRad = FMath::DegreesToRadians(AngularSpeedDeg);
+    float AngularLinearSpeed = Radius * AngularSpeedRad;
+    float MoveSpeed = FMath::Max(BaseSpeed, AngularLinearSpeed);
+
+    float MaxMoveDistance = MoveSpeed * DeltaTime;
+    float AppliedDistance = DesiredDistance;
+    FVector2D NewXY = CurrentXY;
+
+    if (DesiredDistance > KINDA_SMALL_NUMBER)
+    {
+        FVector2D Dir = DeltaXY.GetSafeNormal();
+        AppliedDistance = FMath::Min(DesiredDistance, MaxMoveDistance);
+        NewXY = CurrentXY + Dir * AppliedDistance;
+    }
 
     // 🔧 修改 - 仅调整平面位置，保持当前高度由物理控制
-    Owner->SetActorLocation(FVector(NewWorldLocation.X, NewWorldLocation.Y, OwnerLocation.Z));
+    Owner->SetActorLocation(FVector(NewXY.X, NewXY.Y, OwnerLocation.Z));
 
-    // 🔧 修改 - 同步士兵朝向，让队列整体被摆过去
-    if (bFollowRotation)
+    // 🔧 修改 - 同步士兵朝向，按移动比例套用 DeltaYaw，避免瞬转
+    if (bFollowRotation && DesiredDistance > KINDA_SMALL_NUMBER)
     {
+        float YawRatio = FMath::Clamp(AppliedDistance / DesiredDistance, 0.0f, 1.0f);
+        float AppliedYaw = DeltaYaw * YawRatio;
         FRotator SoldierRot = Owner->GetActorRotation();
-        SoldierRot.Yaw += DeltaYaw;
+        SoldierRot.Yaw += AppliedYaw;
         Owner->SetActorRotation(FRotator(0.0f, SoldierRot.Yaw, 0.0f));
     }
 

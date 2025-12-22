@@ -348,12 +348,17 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked", meta = (DisplayName = "枢轴同步最大偏离"))
     float PivotSyncMaxDistance = 200.0f;
 
+    /** @brief 枢轴同步移动速度倍率（基于锁定移动速度） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked", meta = (DisplayName = "枢轴同步速度倍率", ClampMin = "0.1"))
+    float PivotMoveSpeedMultiplier = 1.0f;
+
 private:
     /**
      * @brief 将领旋转时，士兵围绕将领进行枢轴旋转，避免追逐导致重叠
      * @param LeaderLocation 将领位置
      * @param LeaderRotation 将领旋转
+     * @param DeltaTime 帧间隔
      * @note   使用上一帧的将领姿态计算 DeltaYaw，只有士兵已接近槽位时才应用，防止远距离拉扯
      */
-    void ApplyLeaderPivotRotation(const FVector& LeaderLocation, const FRotator& LeaderRotation);
+    void ApplyLeaderPivotRotation(const FVector& LeaderLocation, const FRotator& LeaderRotation, float DeltaTime);
 };
