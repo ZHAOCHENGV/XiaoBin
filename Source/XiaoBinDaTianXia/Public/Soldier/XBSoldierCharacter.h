@@ -489,6 +489,13 @@ protected:
     UPROPERTY(BlueprintReadOnly, Category = "状态")
     bool bIsPooledSoldier = false;
 
+    // ✨ 新增 - 队形尾随配置
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Soldier|Formation", meta = (DisplayName = "启用编队尾随插值"))
+    bool bEnableFormationTailDelay = true;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Soldier|Formation", meta = (DisplayName = "尾随延迟/槽位", ClampMin = "0.0"))
+    float FormationTailDelayPerSlot = 0.05f;
+
     // ==================== AI配置 ====================
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI", meta = (DisplayName = "行为树"))
@@ -542,11 +549,4 @@ private:
     TWeakObjectPtr<UXBFormationComponent> CachedLeaderFormation;
 
     FTimerHandle FormationRealignTimerHandle;
-
-    // ✨ 新增 - 队形尾随配置
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Soldier|Formation", meta = (DisplayName = "启用编队尾随插值"))
-    bool bEnableFormationTailDelay = true;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Soldier|Formation", meta = (DisplayName = "尾随延迟/槽位", ClampMin = "0.0"))
-    float FormationTailDelayPerSlot = 0.05f;
 };
