@@ -91,6 +91,16 @@ void UXBSoldierFollowComponent::TickComponent(float DeltaTime, ELevelTick TickTy
         return;
     }
 
+    // ✨ 新增 - 缓存将领姿态，并在锁定模式下执行枢轴旋转同步，避免旋转时士兵聚拢
+    AActor* LeaderActor = FollowTargetRef.Get();
+    FVector LeaderLocation = LeaderActor ? LeaderActor->GetActorLocation() : FVector::ZeroVector;
+    FRotator LeaderRotation = LeaderActor ? LeaderActor->GetActorRotation() : FRotator::ZeroRotator;
+
+    if (bEnableLeaderPivotSync && CurrentMode == EXBFollowMode::Locked)
+    {
+        ApplyLeaderPivotRotation(LeaderLocation, LeaderRotation);
+    }
+
     // ✨ 新增 - 每帧更新将领速度缓存（用于招募过渡模式）
     if (bSyncLeaderSprint && CurrentMode == EXBFollowMode::RecruitTransition)
     {
@@ -130,6 +140,11 @@ void UXBSoldierFollowComponent::TickComponent(float DeltaTime, ELevelTick TickTy
     }
 
     LastFrameLocation = Owner->GetActorLocation();
+
+    // ✨ 新增 - 更新将领姿态缓存，供下一帧枢轴同步使用
+    CachedLeaderLocation = LeaderLocation;
+    CachedLeaderRotation = LeaderRotation;
+    bHasLeaderPoseCache = FollowTargetRef.IsValid();
 }
 
 // ==================== ✨ 新增：将领速度感知方法 ====================
@@ -357,7 +372,7 @@ void UXBSoldierFollowComponent::SetFollowTarget(AActor* NewTarget)
 {
     FollowTargetRef = NewTarget;
     CachedLeaderCharacter = Cast<AXBCharacterBase>(NewTarget);
-    
+
     if (NewTarget)
     {
         if (AXBCharacterBase* CharTarget = Cast<AXBCharacterBase>(NewTarget))
@@ -373,6 +388,11 @@ void UXBSoldierFollowComponent::SetFollowTarget(AActor* NewTarget)
             *NewTarget->GetName(),
             bLeaderIsSprinting ? TEXT("是") : TEXT("否"),
             CachedLeaderSpeed);
+
+        // ✨ 新增 - 初始化姿态缓存，避免首帧枢轴旋转跳变
+        CachedLeaderLocation = NewTarget->GetActorLocation();
+        CachedLeaderRotation = NewTarget->GetActorRotation();
+        bHasLeaderPoseCache = true;
     }
     else
     {
@@ -380,6 +400,7 @@ void UXBSoldierFollowComponent::SetFollowTarget(AActor* NewTarget)
         CachedLeaderCharacter = nullptr;
         bLeaderIsSprinting = false;
         CachedLeaderSpeed = 0.0f;
+        bHasLeaderPoseCache = false;
     }
 }
 
@@ -685,6 +706,80 @@ float UXBSoldierFollowComponent::GetDistanceToFormation() const
 }
 
 // ==================== 移动实现 ====================
+
+/**
+ * @brief 将领旋转时，士兵围绕将领进行枢轴旋转，避免旋转追逐导致重叠
+ * @param LeaderLocation 将领位置
+ * @param LeaderRotation 将领旋转
+ * @note   计算上一帧与当前帧的 DeltaYaw，并在士兵接近槽位时绕将领旋转同样的角度，实现“被摆过去”的视觉效果
+ */
+void UXBSoldierFollowComponent::ApplyLeaderPivotRotation(const FVector& LeaderLocation, const FRotator& LeaderRotation)
+{
+    AActor* Owner = GetOwner();
+    if (!Owner)
+    {
+        return;
+    }
+
+    // 🔧 修改 - 首帧只缓存，将领姿态无历史不做旋转
+    if (!bHasLeaderPoseCache)
+    {
+        CachedLeaderLocation = LeaderLocation;
+        CachedLeaderRotation = LeaderRotation;
+        bHasLeaderPoseCache = true;
+        return;
+    }
+
+    // 🔧 修改 - 计算将领的旋转变化量
+    float DeltaYaw = FMath::FindDeltaAngleDegrees(CachedLeaderRotation.Yaw, LeaderRotation.Yaw);
+    if (FMath::IsNearlyZero(DeltaYaw, 0.01f))
+    {
+        CachedLeaderLocation = LeaderLocation;
+        CachedLeaderRotation = LeaderRotation;
+        return;
+    }
+
+    FVector OwnerLocation = Owner->GetActorLocation();
+
+    // 🔧 修改 - 仅在士兵接近目标槽位时应用枢轴旋转，防止远距离追赶时被强拉
+    float DistanceToTarget = FVector::Dist2D(OwnerLocation, CalculateFormationWorldPosition());
+    if (DistanceToTarget > PivotSyncMaxDistance)
+    {
+        CachedLeaderLocation = LeaderLocation;
+        CachedLeaderRotation = LeaderRotation;
+        return;
+    }
+
+    // 🔧 修改 - 基于将领为枢轴计算相对向量
+    FVector Relative = OwnerLocation - LeaderLocation;
+    Relative.Z = 0.0f;
+    if (Relative.IsNearlyZero())
+    {
+        CachedLeaderLocation = LeaderLocation;
+        CachedLeaderRotation = LeaderRotation;
+        return;
+    }
+
+    // ✨ 新增 - 绕将领枢轴按 DeltaYaw 旋转相对向量
+    const FQuat DeltaQuat(FVector::UpVector, FMath::DegreesToRadians(DeltaYaw));
+    FVector RotatedRelative = DeltaQuat.RotateVector(Relative);
+    FVector NewWorldLocation = LeaderLocation + RotatedRelative;
+
+    // 🔧 修改 - 仅调整平面位置，保持当前高度由物理控制
+    Owner->SetActorLocation(FVector(NewWorldLocation.X, NewWorldLocation.Y, OwnerLocation.Z));
+
+    // 🔧 修改 - 同步士兵朝向，让队列整体被摆过去
+    if (bFollowRotation)
+    {
+        FRotator SoldierRot = Owner->GetActorRotation();
+        SoldierRot.Yaw += DeltaYaw;
+        Owner->SetActorRotation(FRotator(0.0f, SoldierRot.Yaw, 0.0f));
+    }
+
+    // 🔧 修改 - 更新缓存供下一帧使用
+    CachedLeaderLocation = LeaderLocation;
+    CachedLeaderRotation = LeaderRotation;
+}
 
 /**
  * @brief 移动到目标位置（只控制XY，Z保持当前值）
