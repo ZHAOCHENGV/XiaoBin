@@ -1988,6 +1988,7 @@ void AXBSoldierCharacter::HandleFormationUpdated()
     UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 编队更新排队补位，延迟 %.2fs"), *GetName(), Delay);
 }
 
+    // 🔧 修改 - 根据死亡动画时长安排回收
     FTimerHandle RecycleTimerHandle;
     GetWorldTimerManager().SetTimer(
         RecycleTimerHandle,
@@ -2017,6 +2018,108 @@ void AXBSoldierCharacter::HandleFormationUpdated()
     );
 
     UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 死亡，%.1f秒后回收"), *GetName(), DeathAnimDuration + 0.5f);
+}
+
+// ==================== 编队事件绑定 ====================
+
+/**
+ * @brief 绑定将领编队事件
+ * @param Leader 将领指针
+ * @note 🔧 确保队形更新时士兵使用插值方式补位
+ */
+void AXBSoldierCharacter::BindLeaderFormationEvents(AXBCharacterBase* Leader)
+{
+    if (!Leader)
+    {
+        return;
+    }
+
+    UXBFormationComponent* FormationComp = Leader->GetFormationComponent();
+    if (!FormationComp)
+    {
+        return;
+    }
+
+    // 如果已绑定到相同组件则无需重复绑定
+    if (CachedLeaderFormation.Get() == FormationComp)
+    {
+        return;
+    }
+
+    UnbindLeaderFormationEvents();
+
+    CachedLeaderFormation = FormationComp;
+
+    FormationComp->OnFormationUpdated.AddUniqueDynamic(this, &AXBSoldierCharacter::HandleFormationUpdated);
+
+    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 绑定编队事件到 %s"), *GetName(), *FormationComp->GetName());
+}
+
+/**
+ * @brief 解除编队事件绑定
+ * @note 🔧 防止更换将领或销毁时遗留委托
+ */
+void AXBSoldierCharacter::UnbindLeaderFormationEvents()
+{
+    if (CachedLeaderFormation.IsValid())
+    {
+        CachedLeaderFormation->OnFormationUpdated.RemoveDynamic(this, &AXBSoldierCharacter::HandleFormationUpdated);
+        UE_LOG(LogXBSoldier, Verbose, TEXT("士兵 %s: 解除编队事件绑定"), *GetName());
+    }
+
+    CachedLeaderFormation.Reset();
+
+    if (FormationRealignTimerHandle.IsValid())
+    {
+        GetWorldTimerManager().ClearTimer(FormationRealignTimerHandle);
+    }
+}
+
+/**
+ * @brief 编队更新时触发平滑补位
+ * @note ✨ 通过槽位序号叠加延迟，实现“蛇尾”式旋转/扩列补位
+ */
+void AXBSoldierCharacter::HandleFormationUpdated()
+{
+    if (!FollowComponent || !FollowTarget.IsValid())
+    {
+        return;
+    }
+
+    if (CurrentState == EXBSoldierState::Dormant || CurrentState == EXBSoldierState::Dropping)
+    {
+        return;
+    }
+
+    const int32 SafeSlotIndex = FMath::Max(FormationSlotIndex, 0);
+    const float Delay = bEnableFormationTailDelay ? FormationTailDelayPerSlot * SafeSlotIndex : 0.0f;
+
+    if (FormationRealignTimerHandle.IsValid())
+    {
+        GetWorldTimerManager().ClearTimer(FormationRealignTimerHandle);
+    }
+
+    if (Delay <= KINDA_SMALL_NUMBER)
+    {
+        FollowComponent->StartInterpolateToFormation();
+        UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 编队更新立即补位，槽位 %d"), *GetName(), FormationSlotIndex);
+        return;
+    }
+
+    // ✨ 槽位越靠后延迟越久，形成蛇尾效果
+    FTimerDelegate DelayDelegate;
+    DelayDelegate.BindLambda([this]()
+    {
+        if (FollowComponent && FollowTarget.IsValid())
+        {
+            FollowComponent->StartInterpolateToFormation();
+            UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 编队更新延迟补位完成"), *GetName());
+        }
+    });
+
+    GetWorldTimerManager().SetTimer(FormationRealignTimerHandle, DelayDelegate, Delay, false);
+
+    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 编队更新排队补位，延迟 %.2fs"), *GetName(), Delay);
 }
 
 void AXBSoldierCharacter::FaceTarget(AActor* Target, float DeltaTime)
