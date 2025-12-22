@@ -476,6 +476,14 @@ void UXBCombatComponent::OnMontageEnded(UAnimMontage* Montage, bool bInterrupted
         Montage ? *Montage->GetName() : TEXT("null"),
         bInterrupted ? TEXT("是") : TEXT("否"));
 
+    // 🔧 修改 - 若仍有其他攻击蒙太奇在播放（例如普攻被技能打断），避免过早清空攻击上下文
+    if (IsAnyAttackMontagePlayingInternal())
+    {
+        UE_LOG(LogTemp, Verbose, TEXT("蒙太奇结束但仍有攻击蒙太奇在播放，保持当前攻击状态"));
+        return;
+    }
+
+    // 🔧 修改 - 所有攻击蒙太奇均已结束，安全重置状态
     ResetAttackState();
 }
 

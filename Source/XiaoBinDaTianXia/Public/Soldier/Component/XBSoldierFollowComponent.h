@@ -183,7 +183,7 @@ protected:
     /**
      * @brief 移动到目标位置（只控制XY）
      */
-    bool MoveTowardsTargetXY(const FVector& TargetPosition, float DeltaTime, float MoveSpeed);
+    bool MoveTowardsTargetXY(const FVector& TargetPosition, float DeltaTime, float MoveSpeed, bool bApplyAvoidance = true);
 
     UCharacterMovementComponent* GetCachedMovementComponent();
     UCapsuleComponent* GetCachedCapsuleComponent();
@@ -210,6 +210,9 @@ protected:
      * @return 将领速度，如果无法获取则返回0
      */
     float GetLeaderCurrentSpeed() const;
+
+    // ✨ 新增 - 自定义邻兵避让
+    FVector ComputeAvoidanceOffset(const FVector& CurrentPosition) const;
 
 protected:
     // ==================== 引用 ====================
@@ -253,6 +256,28 @@ protected:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "最大过渡速度", ClampMin = "500.0"))
     float MaxTransitionSpeed = 8000.0f;
+
+    // ✨ 新增 - 招募转向速度（可蓝图调节）
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "转向插槽速度", ClampMin = "0.1"))
+    float RecruitRotationInterpSpeed = 10.0f;
+
+    // ✨ 新增 - 锁定模式移动速度（可蓝图调节，防止瞬移）
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked", meta = (DisplayName = "锁定移动速度", ClampMin = "0.0"))
+    float LockedFollowMoveSpeed = 600.0f;
+
+    // ✨ 新增 - 锁定模式转向速度
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked", meta = (DisplayName = "锁定转向速度", ClampMin = "0.1"))
+    float LockedRotationInterpSpeed = 8.0f;
+
+    // ✨ 新增 - 自定义避让配置（替代RVO）
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Avoidance", meta = (DisplayName = "启用自定义避让"))
+    bool bEnableCustomAvoidance = true;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Avoidance", meta = (DisplayName = "避让半径", ClampMin = "0.0"))
+    float CustomAvoidanceRadius = 120.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Avoidance", meta = (DisplayName = "避让强度", ClampMin = "0.0"))
+    float CustomAvoidanceStrength = 1.5f;
 
     // ✨ 新增 - 追赶补偿配置
     /**
