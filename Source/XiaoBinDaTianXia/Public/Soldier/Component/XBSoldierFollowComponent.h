@@ -183,7 +183,7 @@ protected:
     /**
      * @brief 移动到目标位置（只控制XY）
      */
-    bool MoveTowardsTargetXY(const FVector& TargetPosition, float DeltaTime, float MoveSpeed);
+    bool MoveTowardsTargetXY(const FVector& TargetPosition, float DeltaTime, float MoveSpeed, bool bApplyAvoidance = true);
 
     UCharacterMovementComponent* GetCachedMovementComponent();
     UCapsuleComponent* GetCachedCapsuleComponent();
@@ -210,6 +210,21 @@ protected:
      * @return 将领速度，如果无法获取则返回0
      */
     float GetLeaderCurrentSpeed() const;
+
+    // ✨ 新增 - 自定义邻兵避让
+    FVector ComputeAvoidanceOffset(const FVector& CurrentPosition) const;
+
+    // ✨ 新增 - 计算转向后的移动方向（Steering Behavior）
+    FVector2D ComputeSteeringDirection(const FVector2D& CurrentXY, const FVector2D& TargetXY, const FVector& CurrentPosition) const;
+
+    // ✨ 新增 - 上一帧转向方向，用于平滑
+    FVector2D LastSteeringDirection = FVector2D::ZeroVector;
+
+    // ✨ 新增 - 是否已完成首次招募（用于避让启用条件）
+    bool bHasCompletedFirstRecruit = false;
+
+    // ✨ 新增 - 是否已首次到达槽位（到达后才启用避让）
+    bool bHasReachedFirstSlot = false;
 
 protected:
     // ==================== 引用 ====================
@@ -253,6 +268,51 @@ protected:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "最大过渡速度", ClampMin = "500.0"))
     float MaxTransitionSpeed = 8000.0f;
+
+    // ✨ 新增 - 招募转向速度（可蓝图调节）
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "转向插槽速度", ClampMin = "0.1"))
+    float RecruitRotationInterpSpeed = 10.0f;
+
+    // ✨ 新增 - 锁定模式移动速度（可蓝图调节，防止瞬移）
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked", meta = (DisplayName = "锁定移动速度", ClampMin = "0.0"))
+    float LockedFollowMoveSpeed = 600.0f;
+
+    // ✨ 新增 - 锁定模式转向速度
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked", meta = (DisplayName = "锁定转向速度", ClampMin = "0.1"))
+    float LockedRotationInterpSpeed = 8.0f;
+
+    // ✨ 新增 - 自定义避让配置（Steering）
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Avoidance", meta = (DisplayName = "启用自定义避让"))
+    bool bEnableCustomAvoidance = true;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Avoidance", meta = (DisplayName = "避让半径", ClampMin = "0.0"))
+    float CustomAvoidanceRadius = 120.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Avoidance", meta = (DisplayName = "避让强度", ClampMin = "0.0"))
+    float CustomAvoidanceStrength = 1.5f;
+
+    // ✨ 新增 - 避让权重（与期望方向混合）
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Avoidance", meta = (DisplayName = "避让权重", ClampMin = "0.0"))
+    float CustomAvoidanceWeight = 1.0f;
+
+    // ✨ 新增 - 避让方向平滑插值速度（避免闪避抖动）
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Avoidance", meta = (DisplayName = "避让平滑速度", ClampMin = "0.0"))
+    float AvoidanceSteeringLerpRate = 6.0f;
+
+    // ✨ 新增 - 贴近目标时降低避让权重，避免绕圈
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Avoidance", meta = (DisplayName = "贴近目标距离", ClampMin = "0.0"))
+    float AvoidanceNearDistance = 300.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Avoidance", meta = (DisplayName = "贴近目标避让权重系数", ClampMin = "0.0"))
+    float AvoidanceNearWeightScale = 0.2f;
+
+    // ✨ 新增 - 避让偏转角限制，避免大角度绕行
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Avoidance", meta = (DisplayName = "最大偏转角(度)", ClampMin = "0.0", ClampMax = "180.0"))
+    float AvoidanceMaxDeviationDeg = 45.0f;
+
+    // ✨ 新增 - 靠近目标的避让禁用距离（距离小于此值时关闭避让）
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Avoidance", meta = (DisplayName = "禁用避让距离", ClampMin = "0.0"))
+    float AvoidanceDisableDistance = 120.0f;
 
     // ✨ 新增 - 追赶补偿配置
     /**
