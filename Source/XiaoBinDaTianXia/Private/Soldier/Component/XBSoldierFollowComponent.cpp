@@ -301,6 +301,13 @@ FVector2D UXBSoldierFollowComponent::ComputeSteeringDirection(const FVector2D& C
     // 期望方向
     FVector2D DesiredDir = (TargetXY - CurrentXY).GetSafeNormal();
 
+    // 距离过近时直接返回期望方向，避免绕圈
+    const float DistanceToTarget = FVector2D::Distance(CurrentXY, TargetXY);
+    if (DistanceToTarget <= AvoidanceDisableDistance || DistanceToTarget <= ArrivalThreshold * 1.5f)
+    {
+        return DesiredDir;
+    }
+
     // 避让方向
     FVector AvoidOffset3D = ComputeAvoidanceOffset(CurrentPosition);
     FVector2D AvoidDir(AvoidOffset3D.X, AvoidOffset3D.Y);
@@ -313,7 +320,6 @@ FVector2D UXBSoldierFollowComponent::ComputeSteeringDirection(const FVector2D& C
     AvoidDir.Normalize();
 
     // 根据与目标距离缩放避让权重，靠近目标时降低避让防止绕圈
-    float DistanceToTarget = FVector2D::Distance(CurrentXY, TargetXY);
     float WeightScale = 1.0f;
     if (AvoidanceNearDistance > KINDA_SMALL_NUMBER)
     {

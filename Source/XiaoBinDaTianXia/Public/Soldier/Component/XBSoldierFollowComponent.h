@@ -310,6 +310,10 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Avoidance", meta = (DisplayName = "最大偏转角(度)", ClampMin = "0.0", ClampMax = "180.0"))
     float AvoidanceMaxDeviationDeg = 45.0f;
 
+    // ✨ 新增 - 靠近目标的避让禁用距离（距离小于此值时关闭避让）
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Avoidance", meta = (DisplayName = "禁用避让距离", ClampMin = "0.0"))
+    float AvoidanceDisableDistance = 120.0f;
+
     // ✨ 新增 - 追赶补偿配置
     /**
      * @brief 追赶速度补偿倍率
