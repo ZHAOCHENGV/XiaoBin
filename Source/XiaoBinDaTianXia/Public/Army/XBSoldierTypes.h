@@ -152,6 +152,18 @@ struct FXBDropArcConfig
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "抛物线", meta = (DisplayName = "飞行时间", ClampMin = "0.2"))
     float FlightDuration = 0.6f;
 
+    /** @brief 地面检测向上距离 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "抛物线", meta = (DisplayName = "地面检测向上距离", ClampMin = "0.0"))
+    float GroundTraceUpDistance = 500.0f;
+
+    /** @brief 地面检测向下距离 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "抛物线", meta = (DisplayName = "地面检测向下距离", ClampMin = "0.0"))
+    float GroundTraceDownDistance = 1200.0f;
+
+    /** @brief 落地点额外Z偏移 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "抛物线", meta = (DisplayName = "落地点额外Z偏移"))
+    float LandingExtraZOffset = 0.0f;
+
     /** @brief 是否播放落地特效 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "抛物线", meta = (DisplayName = "播放落地特效"))
     bool bPlayLandingEffect = true;
@@ -164,6 +176,26 @@ struct FXBDropArcConfig
     /** @brief 落地后是否自动入列 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "抛物线", meta = (DisplayName = "落地自动入列"))
     bool bAutoRecruitOnLanding = true;
+
+    /** @brief 启用抛物线调试绘制 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "抛物线", meta = (DisplayName = "启用调试绘制"))
+    bool bEnableDebugDraw = false;
+
+    /** @brief 抛物线调试段数 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "抛物线", meta = (DisplayName = "调试段数", ClampMin = "2"))
+    int32 DebugArcSegments = 16;
+
+    /** @brief 抛物线调试持续时间 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "抛物线", meta = (DisplayName = "调试持续时间", ClampMin = "0.0"))
+    float DebugDrawDuration = 2.0f;
+
+    /** @brief 抛物线调试颜色 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "抛物线", meta = (DisplayName = "调试颜色"))
+    FLinearColor DebugArcColor = FLinearColor::Green;
+
+    /** @brief 调试点尺寸 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "抛物线", meta = (DisplayName = "调试点尺寸", ClampMin = "0.0"))
+    float DebugPointSize = 8.0f;
 };
 
 // ============================================
