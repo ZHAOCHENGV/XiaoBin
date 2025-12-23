@@ -288,6 +288,9 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "招募启动延迟(秒)", ClampMin = "0.0", ToolTip = "士兵开始奔向槽位前的延迟，默认0立即移动。"))
     float RecruitStartDelay = 0.0f;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "招募允许传送", ToolTip = "关闭后招募/补位过程绝不传送，始终走路过去。"))
+    bool bAllowTeleportDuringRecruit = false;
+
     // ✨ 新增 - 招募转向速度（可蓝图调节）
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "转向槽位插值速度", ClampMin = "0.1", ToolTip = "追赶过程中旋转对齐槽位的速度，越大越快朝向队列方向。"))
     float RecruitRotationInterpSpeed = 10.0f;
@@ -371,6 +374,7 @@ protected:
     float RecruitTransitionStartTime = 0.0f;
     FVector LastPositionForStuckCheck = FVector::ZeroVector;
     float AccumulatedStuckTime = 0.0f;
+    bool bRecruitMovementActive = false;
 
     // ✨ 新增 - 幽灵目标状态
     FVector GhostTargetLocation = FVector::ZeroVector;

@@ -293,10 +293,9 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
         return;
     }
     
-    // 检查是否需要强制传送
-    if (ShouldForceTeleport())
+    // 🔧 修改 - 若未到达启动时间则不移动（支持招募延迟）
+    if (!bRecruitMovementActive)
     {
-        PerformForceTeleport();
         return;
     }
     
@@ -776,6 +775,8 @@ void UXBSoldierFollowComponent::StartRecruitTransition()
         GetWorld()->GetTimerManager().ClearTimer(DelayedRecruitStartHandle);
     }
 
+    bRecruitMovementActive = false;
+
     if (RecruitStartDelay > 0.0f)
     {
         GetWorld()->GetTimerManager().SetTimer(
@@ -810,6 +811,7 @@ void UXBSoldierFollowComponent::StartRecruitTransition_Internal()
         MoveComp->GravityScale = 1.0f;
         MoveComp->SetComponentTickEnabled(true);
         MoveComp->SetMovementMode(MOVE_Walking);
+        SmoothedSpeedCache = MoveComp->MaxWalkSpeed;
     }
 
     if (CachedLeaderCharacter.IsValid())
@@ -817,6 +819,9 @@ void UXBSoldierFollowComponent::StartRecruitTransition_Internal()
         bLeaderIsSprinting = CachedLeaderCharacter->IsSprinting();
         CachedLeaderSpeed = CachedLeaderCharacter->GetCurrentMoveSpeed();
     }
+
+    // 🔧 开始真实移动
+    bRecruitMovementActive = true;
 
     UE_LOG(LogXBSoldier, Log, TEXT("跟随组件: 开始招募过渡 (延迟 %.2fs 已处理)"), RecruitStartDelay);
 }
@@ -900,7 +905,7 @@ bool UXBSoldierFollowComponent::ShouldForceTeleport() const
     AActor* Owner = GetOwner();
     UWorld* World = GetWorld();
     
-    if (!Owner || !World)
+    if (!Owner || !World || !bAllowTeleportDuringRecruit)
     {
         return false;
     }
