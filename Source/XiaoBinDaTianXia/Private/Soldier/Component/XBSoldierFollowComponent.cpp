@@ -291,6 +291,8 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
     
     // 计算动态速度
     float ActualSpeed = CalculateRecruitTransitionSpeed(Distance);
+    // 🔧 确保速度在可控范围内
+    ActualSpeed = FMath::Clamp(ActualSpeed, MinTransitionSpeed, MaxTransitionSpeed);
     
     // 🔧 修改 - 使用移动组件进行移动
     UCharacterMovementComponent* MoveComp = GetCachedMovementComponent();
@@ -742,24 +744,40 @@ void UXBSoldierFollowComponent::StartRecruitTransition()
     SetCombatState(false);
     SetFollowMode(EXBFollowMode::RecruitTransition);
 
-    // ✨ 新增 - 首次入列关闭RVO避免撞车
-    if (bSkipRVOForFirstJoin)
+    // ✨ 新增 - 支持可配置启动延迟
+    if (DelayedRecruitStartHandle.IsValid())
     {
-        SetRVOAvoidanceEnabled(false);
+        GetWorld()->GetTimerManager().ClearTimer(DelayedRecruitStartHandle);
     }
-    
+
+    if (RecruitStartDelay > 0.0f)
+    {
+        GetWorld()->GetTimerManager().SetTimer(
+            DelayedRecruitStartHandle,
+            this,
+            &UXBSoldierFollowComponent::StartRecruitTransition_Internal,
+            RecruitStartDelay,
+            false
+        );
+        return;
+    }
+
+    StartRecruitTransition_Internal();
+}
+
+void UXBSoldierFollowComponent::StartRecruitTransition_Internal()
+{
     if (UWorld* World = GetWorld())
     {
         RecruitTransitionStartTime = World->GetTimeSeconds();
     }
-    
+
     if (AActor* Owner = GetOwner())
     {
         LastPositionForStuckCheck = Owner->GetActorLocation();
     }
     AccumulatedStuckTime = 0.0f;
-    
-    // 确保移动组件正确配置
+
     UCharacterMovementComponent* MoveComp = GetCachedMovementComponent();
     if (MoveComp)
     {
@@ -767,15 +785,14 @@ void UXBSoldierFollowComponent::StartRecruitTransition()
         MoveComp->SetComponentTickEnabled(true);
         MoveComp->SetMovementMode(MOVE_Walking);
     }
-    
-    // 获取将领状态
+
     if (CachedLeaderCharacter.IsValid())
     {
         bLeaderIsSprinting = CachedLeaderCharacter->IsSprinting();
         CachedLeaderSpeed = CachedLeaderCharacter->GetCurrentMoveSpeed();
     }
-    
-    UE_LOG(LogXBSoldier, Log, TEXT("跟随组件: 开始招募过渡"));
+
+    UE_LOG(LogXBSoldier, Log, TEXT("跟随组件: 开始招募过渡 (延迟 %.2fs 已处理)"), RecruitStartDelay);
 }
 
 // ==================== 状态查询 ====================
