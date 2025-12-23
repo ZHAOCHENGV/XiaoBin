@@ -1192,6 +1192,7 @@ float AXBSoldierCharacter::GetAvoidanceWeight() const
 }
 
 // ==================== 招募系统 ====================
+
 /**
  * @brief 检查士兵是否可以被招募
  * @return 是否可招募
@@ -1882,9 +1883,9 @@ void AXBSoldierCharacter::HandleDeath()
                     bMontageStarted = true;
                     DeathAnimDuration = Duration;
                 }
-            }
-        }
-    }
+            }  // 关闭 if (AnimInstance)
+        }      // 关闭 if (DeathMontage)
+    }          // 关闭 if (IsDataAccessorValid())
 
     // 🔧 修改 - 根据死亡动画时长安排回收
     FTimerHandle RecycleTimerHandle;
