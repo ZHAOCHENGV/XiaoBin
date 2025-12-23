@@ -92,8 +92,14 @@ public:
     UFUNCTION(BlueprintCallable, Category = "XB|Follow", meta = (DisplayName = "插值到编队位置"))
     void StartInterpolateToFormation();
 
-    UFUNCTION(BlueprintCallable, Category = "XB|Follow", meta = (DisplayName = "开始招募过渡"))
+    UFUNCTION(BlueprintCallable, Category = "XB|Follow", meta = (DisplayName = "开始招募过渡", ToolTip = "开始以招募模式跟随：可选延迟、使用冲刺/加速配置，避免瞬移。"))
     void StartRecruitTransition();
+
+    /**
+     * @brief 内部启动招募过渡
+     * @note 内部使用，处理延迟后真正开始移动
+     */
+    void StartRecruitTransition_Internal();
 
     // ==================== 战斗状态控制 ====================
 
@@ -156,6 +162,19 @@ protected:
      * @brief 更新招募过渡模式
      */
     void UpdateRecruitTransitionMode(float DeltaTime);
+
+    /**
+     * @brief 更新幽灵目标（位置与旋转插值）
+     * @param DeltaTime 帧间隔
+     * @note 🔧 使用插值后的幽灵位置/朝向计算槽位，避免瞬间转向导致摆尾过猛
+     */
+    void UpdateGhostTarget(float DeltaTime);
+
+    /**
+     * @brief 获取当前平滑后的编队目标位置
+     * @note ✨ 优先使用幽灵目标对应的槽位位置，避免直接依赖将领位置导致堆叠
+     */
+    FVector GetSmoothedFormationTarget() const;
 
     /**
      * @brief 计算编队世界位置
@@ -245,26 +264,48 @@ protected:
 
     // ==================== 招募过渡配置 ====================
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "招募过渡基础速度", ClampMin = "100.0"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "招募移动基础速度", ClampMin = "100.0", ToolTip = "士兵开始追赶时的基础速度，过低会导致跟不上主将。"))
     float RecruitTransitionSpeed = 2000.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "距离加速倍率", ClampMin = "1.0", ClampMax = "5.0"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "距离加速倍率", ClampMin = "1.0", ClampMax = "8.0", ToolTip = "与主将距离越远速度越快，倍率越大加速越明显。"))
     float DistanceSpeedMultiplier = 2.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "最大过渡速度", ClampMin = "500.0"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "最大追赶速度", ClampMin = "500.0", ToolTip = "士兵追赶时的速度上限，避免过快穿透。"))
     float MaxTransitionSpeed = 8000.0f;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "最小追赶速度", ClampMin = "0.0", ToolTip = "保证追赶时不低于此速度，避免调小基础速度后走得过慢。"))
+    float MinTransitionSpeed = 600.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "靠近减速距离", ClampMin = "0.0", ToolTip = "距离槽位小于该值时逐步降速，避免冲过槽位。"))
+    float CloseSlowdownDistance = 300.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "启用速度平滑", ToolTip = "开启后追赶速度会用插值平滑，减少忽快忽慢。"))
+    bool bUseSpeedSmoothing = true;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "速度平滑插值率", ClampMin = "0.0", ToolTip = "追赶速度变化的平滑强度，越大越快贴近目标速度，0表示完全不平滑。"))
+    float SpeedSmoothingRate = 8.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "招募启动延迟(秒)", ClampMin = "0.0", ToolTip = "士兵开始奔向槽位前的延迟，默认0立即移动。"))
+    float RecruitStartDelay = 0.0f;
+
     // ✨ 新增 - 招募转向速度（可蓝图调节）
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "转向插槽速度", ClampMin = "0.1"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "转向槽位插值速度", ClampMin = "0.1", ToolTip = "追赶过程中旋转对齐槽位的速度，越大越快朝向队列方向。"))
     float RecruitRotationInterpSpeed = 10.0f;
 
     // ✨ 新增 - 锁定模式移动速度（可蓝图调节，防止瞬移）
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked", meta = (DisplayName = "锁定移动速度", ClampMin = "0.0"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked", meta = (DisplayName = "锁定移动速度", ClampMin = "0.0", ToolTip = "锁定模式下的平移速度，过大可能导致抖动。"))
     float LockedFollowMoveSpeed = 600.0f;
 
     // ✨ 新增 - 锁定模式转向速度
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked", meta = (DisplayName = "锁定转向速度", ClampMin = "0.1"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked", meta = (DisplayName = "锁定转向速度", ClampMin = "0.1", ToolTip = "锁定模式朝向槽位的旋转速度，越大越快面对队列方向。"))
     float LockedRotationInterpSpeed = 8.0f;
+
+    // ✨ 新增 - 幽灵目标插值配置
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Ghost", meta = (DisplayName = "幽灵位置插值速度", ClampMin = "0.1"))
+    float GhostLocationInterpSpeed = 6.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Ghost", meta = (DisplayName = "幽灵旋转插值速度", ClampMin = "0.1"))
+    float GhostRotationInterpSpeed = 8.0f;
 
     // ✨ 新增 - 追赶补偿配置
     /**
@@ -272,7 +313,7 @@ protected:
      * @note 当将领移动时，士兵需要额外的速度来追赶
      *       公式：实际速度 = 基础速度 + 将领速度 × 补偿倍率
      */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "追赶补偿倍率", ClampMin = "1.0", ClampMax = "3.0"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "追赶主将速度倍率", ClampMin = "1.0", ClampMax = "5.0", ToolTip = "士兵追赶时会叠加主将当前速度×该倍率，倍率越大越容易追上冲刺中的主将。"))
     float CatchUpSpeedMultiplier = 1.5f;
 
     // ✨ 新增 - 冲刺同步配置
@@ -280,22 +321,22 @@ protected:
      * @brief 是否同步将领冲刺状态
      * @note 启用后，招募过渡时会检测将领是否冲刺并同步速度
      */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "同步将领冲刺"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "同步主将冲刺", ToolTip = "开启后，士兵追赶时会读取主将的冲刺状态与速度，自动提速。"))
     bool bSyncLeaderSprint = true;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "过渡时禁用碰撞"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "追赶时禁用碰撞", ToolTip = "开启可减少追赶过程卡住，但可能穿模；关闭更物理真实。"))
     bool bDisableCollisionDuringTransition = true;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "强制传送距离", ClampMin = "500.0"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "强制传送距离", ClampMin = "500.0", ToolTip = "距离超过此值会直接传送回队列，过小可能产生瞬移感。"))
     float ForceTeleportDistance = 5000.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "过渡超时时间", ClampMin = "1.0"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "追赶超时时间", ClampMin = "0.0", ToolTip = "超过该时间仍未到位会触发传送，设为0可关闭超时传送。"))
     float RecruitTransitionTimeout = 5.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "卡住检测时间", ClampMin = "0.5"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "卡住检测时间", ClampMin = "0.0", ToolTip = "连续低速超过该时间视为卡住，会触发传送或重新定位。"))
     float StuckDetectionTime = 1.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "卡住速度阈值", ClampMin = "1.0"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "卡住速度阈值", ClampMin = "0.0", ToolTip = "低于该速度会累计卡住时间，设为0关闭卡住检测。"))
     float StuckSpeedThreshold = 50.0f;
 
     // ==================== 战斗状态 ====================
@@ -320,6 +361,9 @@ protected:
     UPROPERTY(BlueprintReadOnly, Category = "XB|Follow", meta = (DisplayName = "当前移动速度"))
     float CurrentMoveSpeed = 0.0f;
 
+    // 速度平滑缓存（不暴露蓝图）
+    float SmoothedSpeedCache = 0.0f;
+
     ECollisionResponse OriginalPawnResponse = ECR_Block;
     bool bCollisionModified = false;
 
@@ -327,4 +371,12 @@ protected:
     float RecruitTransitionStartTime = 0.0f;
     FVector LastPositionForStuckCheck = FVector::ZeroVector;
     float AccumulatedStuckTime = 0.0f;
+
+    // ✨ 新增 - 幽灵目标状态
+    FVector GhostTargetLocation = FVector::ZeroVector;
+    FRotator GhostTargetRotation = FRotator::ZeroRotator;
+    bool bGhostInitialized = false;
+    FVector GhostSlotTargetLocation = FVector::ZeroVector;
+
+    FTimerHandle DelayedRecruitStartHandle;
 };
