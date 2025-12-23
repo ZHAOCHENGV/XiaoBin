@@ -193,8 +193,8 @@ float UXBSoldierFollowComponent::GetLeaderCurrentSpeed() const
  */
 float UXBSoldierFollowComponent::CalculateRecruitTransitionSpeed(float DistanceToTarget) const
 {
-    // Step 1: 基础速度 + 距离加速（距离越大，速度提升越明显，强化追赶能力）
-    const float NormalizedDistance = FMath::Clamp(DistanceToTarget / 200.0f, 0.0f, 10.0f);
+    // Step 1: 基础速度 + 距离加速（距离越大速度越快，距离越小则平缓靠拢）
+    const float NormalizedDistance = FMath::Clamp(DistanceToTarget / FMath::Max(ArrivalThreshold, 1.0f), 0.0f, 10.0f);
     float DistanceMultiplier = 1.0f + NormalizedDistance * DistanceSpeedMultiplier;
     DistanceMultiplier = FMath::Max(DistanceMultiplier, 1.0f);
     float DistanceBasedSpeed = RecruitTransitionSpeed * DistanceMultiplier;
@@ -240,6 +240,9 @@ void UXBSoldierFollowComponent::UpdateLockedMode(float DeltaTime)
         return;
     }
     
+    // 🔧 修改 - 计算编队旋转，确保全队尾随转向
+    FRotator FormationRotation = CalculateFormationWorldRotation();
+    
     FVector TargetPosition = GetSmoothedFormationTarget();
     FVector CurrentPosition = Owner->GetActorLocation();
     
@@ -248,7 +251,7 @@ void UXBSoldierFollowComponent::UpdateLockedMode(float DeltaTime)
     
     if (bFollowRotation)
     {
-        FRotator TargetRotation = CalculateFormationWorldRotation();
+        FRotator TargetRotation = FormationRotation;
         // 🔧 修改 - 使用可调转向速度插值，避免瞬转
         FRotator NewRotation = FMath::RInterpTo(
             Owner->GetActorRotation(),
@@ -310,7 +313,8 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
             if (bFollowRotation)
             {
                 FRotator CurrentRotation = Owner->GetActorRotation();
-                FRotator TargetRotation = MoveDirection.Rotation();
+                // 🔧 修改 - 直接面向槽位的编队旋转，保证“蛇尾”对齐
+                FRotator TargetRotation = CalculateFormationWorldRotation();
                 FRotator NewRotation = FMath::RInterpTo(CurrentRotation, TargetRotation, DeltaTime, RecruitRotationInterpSpeed);
                 Owner->SetActorRotation(FRotator(0.0f, NewRotation.Yaw, 0.0f));
             }
