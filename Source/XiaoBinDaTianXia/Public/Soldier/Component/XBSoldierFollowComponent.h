@@ -10,6 +10,7 @@
  *       2. ❌ 删除 不必要的速度计算
  *       3. 🔧 简化 只保留必要的配置
  *       4. ✨ 新增 将领速度感知，招募过渡时同步将领移动速度
+ *       5. ✨ 新增 招募过渡时先朝向槽位移动，到达后再转向队伍前方
  */
 
 #pragma once
@@ -34,6 +35,18 @@ enum class EXBFollowMode : uint8
     RecruitTransition   UMETA(DisplayName = "招募过渡")
 };
 
+// ✨ 新增 - 招募过渡子阶段枚举
+/**
+ * @brief 招募过渡阶段枚举
+ * @note 用于区分追赶和对齐两个阶段
+ */
+UENUM(BlueprintType)
+enum class EXBRecruitTransitionPhase : uint8
+{
+    Moving      UMETA(DisplayName = "移动中"),      // 正在向槽位移动
+    Aligning    UMETA(DisplayName = "对齐中")       // 已到达，正在转向队伍前方
+};
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCombatStateChangedDelegate, bool, bInCombat);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnRecruitTransitionCompleted);
 
@@ -43,6 +56,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnRecruitTransitionCompleted);
  *       - 锁定模式：每帧直接设置位置到槽位，完全实时同步
  *       - 自由模式：战斗时脱离编队
  *       - 招募过渡：快速追赶到槽位，同步将领移动速度
+ *       - ✨ 新增：招募时先朝向移动方向，到达后再对齐队伍朝向
  */
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent, DisplayName = "XB Soldier Follow"))
 class XIAOBINDATIANXIA_API UXBSoldierFollowComponent : public UActorComponent
@@ -126,6 +140,10 @@ public:
     UFUNCTION(BlueprintPure, Category = "XB|Follow", meta = (DisplayName = "获取当前移动速度"))
     float GetCurrentMoveSpeed() const { return CurrentMoveSpeed; }
 
+    // ✨ 新增 - 获取招募过渡阶段
+    UFUNCTION(BlueprintPure, Category = "XB|Follow", meta = (DisplayName = "获取招募过渡阶段"))
+    EXBRecruitTransitionPhase GetRecruitTransitionPhase() const { return CurrentRecruitPhase; }
+
     // ==================== 速度设置 ====================
 
     UFUNCTION(BlueprintCallable, Category = "XB|Follow")
@@ -160,8 +178,17 @@ protected:
 
     /**
      * @brief 更新招募过渡模式
+     * @note 🔧 修改 - 分为移动阶段和对齐阶段
      */
     void UpdateRecruitTransitionMode(float DeltaTime);
+
+    // ✨ 新增 - 更新对齐阶段（到达槽位后转向队伍前方）
+    /**
+     * @brief 更新对齐阶段
+     * @param DeltaTime 帧间隔
+     * @note 到达槽位后，平滑转向队伍前方（将领朝向）
+     */
+    void UpdateAlignmentPhase(float DeltaTime);
 
     /**
      * @brief 更新幽灵目标（位置与旋转插值）
@@ -230,6 +257,15 @@ protected:
      */
     float GetLeaderCurrentSpeed() const;
 
+    // ✨ 新增 - 检查旋转是否已对齐
+    /**
+     * @brief 检查当前朝向是否已对齐目标朝向
+     * @param TargetRotation 目标朝向
+     * @param ToleranceDegrees 容差角度
+     * @return 是否已对齐
+     */
+    bool IsRotationAligned(const FRotator& TargetRotation, float ToleranceDegrees = 5.0f) const;
+
 protected:
     // ==================== 引用 ====================
 
@@ -291,9 +327,17 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "招募允许传送", ToolTip = "关闭后招募/补位过程绝不传送，始终走路过去。"))
     bool bAllowTeleportDuringRecruit = false;
 
-    // ✨ 新增 - 招募转向速度（可蓝图调节）
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "转向槽位插值速度", ClampMin = "0.1", ToolTip = "追赶过程中旋转对齐槽位的速度，越大越快朝向队列方向。"))
-    float RecruitRotationInterpSpeed = 10.0f;
+    // ✨ 新增 - 移动时朝向移动方向的转向速度
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "移动时转向速度", ClampMin = "0.1", ToolTip = "追赶过程中朝向移动方向的旋转速度，越大越快朝向目标槽位。"))
+    float MoveDirectionRotationSpeed = 15.0f;
+
+    // 🔧 修改 - 重命名原有变量，用于对齐阶段
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "对齐阶段转向速度", ClampMin = "0.1", ToolTip = "到达槽位后，转向队伍前方的旋转速度。"))
+    float AlignmentRotationSpeed = 10.0f;
+
+    // ✨ 新增 - 对齐容差角度
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "对齐容差角度", ClampMin = "1.0", ClampMax = "30.0", ToolTip = "朝向与队伍前方的角度差小于此值时，视为对齐完成。"))
+    float AlignmentToleranceDegrees = 5.0f;
 
     // ✨ 新增 - 锁定模式移动速度（可蓝图调节，防止瞬移）
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked", meta = (DisplayName = "锁定移动速度", ClampMin = "0.0", ToolTip = "锁定模式下的平移速度，过大可能导致抖动。"))
@@ -375,6 +419,10 @@ protected:
     FVector LastPositionForStuckCheck = FVector::ZeroVector;
     float AccumulatedStuckTime = 0.0f;
     bool bRecruitMovementActive = false;
+
+    // ✨ 新增 - 招募过渡阶段状态
+    UPROPERTY(BlueprintReadOnly, Category = "XB|Follow", meta = (DisplayName = "招募过渡阶段"))
+    EXBRecruitTransitionPhase CurrentRecruitPhase = EXBRecruitTransitionPhase::Moving;
 
     // ✨ 新增 - 幽灵目标状态
     FVector GhostTargetLocation = FVector::ZeroVector;
