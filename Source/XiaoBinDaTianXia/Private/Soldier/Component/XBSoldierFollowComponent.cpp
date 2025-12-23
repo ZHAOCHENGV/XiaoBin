@@ -346,12 +346,6 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
         bLeaderIsSprinting = false;
         CachedLeaderSpeed = 0.0f;
 
-        if (bSkipRVOForFirstJoin)
-        {
-            bSkipRVOForFirstJoin = false;
-            SetRVOAvoidanceEnabled(bEnableRVOWhileFollowing);
-        }
-        
         if (bFollowRotation)
         {
             FRotator LeaderRotation = CalculateFormationWorldRotation();
