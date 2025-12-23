@@ -93,6 +93,13 @@ void UXBSoldierFollowComponent::TickComponent(float DeltaTime, ELevelTick TickTy
 
     // 🔧 修改 - 更新幽灵目标，平滑跟随将领旋转与位置
     UpdateGhostTarget(DeltaTime);
+    // 🔧 修改 - 更新动态膨胀（根据角速度调整槽位间距）
+    if (bEnableDynamicSpacing)
+    {
+        UpdateDynamicSpacing(DeltaTime);
+    }
+    // 🔧 修改 - 更新分离向量（定期采样周围队友）
+    UpdateSeparationVector(DeltaTime);
 
     // ✨ 新增 - 每帧更新将领速度缓存（用于招募过渡模式）
     if (bSyncLeaderSprint && CurrentMode == EXBFollowMode::RecruitTransition)
@@ -259,9 +266,11 @@ void UXBSoldierFollowComponent::UpdateLockedMode(float DeltaTime)
     {
         MoveComp->MaxWalkSpeed = LockedFollowMoveSpeed;
         FVector MoveDir = (TargetPosition - CurrentPosition).GetSafeNormal2D();
-        if (!MoveDir.IsNearlyZero() && FVector::Dist2D(CurrentPosition, TargetPosition) > ArrivalThreshold)
+        FVector SeparationDir = bEnableSeparationForce ? CachedSeparationVector : FVector::ZeroVector;
+        FVector FinalMoveDir = (MoveDir + SeparationDir * SeparationWeight).GetSafeNormal2D();
+        if (!FinalMoveDir.IsNearlyZero() && FVector::Dist2D(CurrentPosition, TargetPosition) > ArrivalThreshold)
         {
-            MoveComp->AddInputVector(MoveDir);
+            MoveComp->AddInputVector(FinalMoveDir);
         }
     }
     
@@ -329,11 +338,13 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
         
         // 计算移动方向
         FVector MoveDirection = (TargetPosition - CurrentPosition).GetSafeNormal2D();
+        FVector SeparationDir = bEnableSeparationForce ? CachedSeparationVector : FVector::ZeroVector;
+        FVector FinalMoveDirection = (MoveDirection + SeparationDir * SeparationWeight).GetSafeNormal2D();
         
-        if (!MoveDirection.IsNearlyZero())
+        if (!FinalMoveDirection.IsNearlyZero())
         {
             // ✨ 核心 - 使用 AddMovementInput 驱动移动
-            CharOwner->AddMovementInput(MoveDirection, 1.0f);
+            CharOwner->AddMovementInput(FinalMoveDirection, 1.0f);
             
             // 平滑旋转
             if (bFollowRotation)
@@ -400,6 +411,8 @@ void UXBSoldierFollowComponent::UpdateGhostTarget(float DeltaTime)
     {
         bGhostInitialized = false;
         GhostSlotTargetLocation = FVector::ZeroVector;
+        bGhostYawInitialized = false;
+        GhostAngularSpeed = 0.0f;
         return;
     }
 
@@ -428,6 +441,16 @@ void UXBSoldierFollowComponent::UpdateGhostTarget(float DeltaTime)
         DeltaTime,
         GhostRotationInterpSpeed
     );
+
+    // 记录角速度用于动态膨胀
+    const float CurrentYaw = GhostTargetRotation.Yaw;
+    if (!bGhostYawInitialized)
+    {
+        LastGhostYaw = CurrentYaw;
+        bGhostYawInitialized = true;
+    }
+    GhostAngularSpeed = FMath::Abs(FMath::FindDeltaAngleDegrees(LastGhostYaw, CurrentYaw)) / DeltaTime;
+    LastGhostYaw = CurrentYaw;
 
     // ✨ 新增 - 直接缓存幽灵槽位世界坐标，供插值使用
     FVector2D SlotOffset = GetSlotLocalOffset();
@@ -963,11 +986,11 @@ FVector UXBSoldierFollowComponent::CalculateFormationWorldPosition() const
     // 🔧 修改 - 使用幽灵目标位置/旋转计算槽位
     FVector LeaderLocation = bGhostInitialized ? GhostTargetLocation : Leader->GetActorLocation();
     FRotator LeaderRotation = bGhostInitialized ? GhostTargetRotation : Leader->GetActorRotation();
-    
+
     FVector2D SlotOffset = GetSlotLocalOffset();
     FVector LocalOffset3D(SlotOffset.X, SlotOffset.Y, 0.0f);
     FVector WorldOffset = LeaderRotation.RotateVector(LocalOffset3D);
-    
+
     return LeaderLocation + WorldOffset;
 }
 
@@ -985,6 +1008,88 @@ FRotator UXBSoldierFollowComponent::CalculateFormationWorldRotation() const
     return FRotator(0.0f, LeaderRotation.Yaw, 0.0f);
 }
 
+void UXBSoldierFollowComponent::UpdateDynamicSpacing(float DeltaTime)
+{
+    float TargetScale = 1.0f;
+    if (GhostAngularSpeed >= SpacingAngularThreshold)
+    {
+        TargetScale = SpacingInflationScale;
+    }
+
+    CurrentSpacingScale = FMath::FInterpTo(CurrentSpacingScale, TargetScale, DeltaTime, SpacingInflationInterpSpeed);
+}
+
+void UXBSoldierFollowComponent::UpdateSeparationVector(float DeltaTime)
+{
+    if (!bEnableSeparationForce)
+    {
+        CachedSeparationVector = FVector::ZeroVector;
+        return;
+    }
+
+    SeparationSampleTimer -= DeltaTime;
+    if (SeparationSampleTimer > 0.0f)
+    {
+        return;
+    }
+    SeparationSampleTimer = SeparationQueryInterval;
+
+    AActor* Owner = GetOwner();
+    UWorld* World = GetWorld();
+    if (!Owner || !World)
+    {
+        CachedSeparationVector = FVector::ZeroVector;
+        return;
+    }
+
+    const FVector MyLocation = Owner->GetActorLocation();
+    TArray<FOverlapResult> Overlaps;
+    FCollisionObjectQueryParams ObjParams;
+    ObjParams.AddObjectTypesToQuery(ECC_Pawn);
+
+    FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(UpdateSeparationVector), false, Owner);
+
+    bool bHit = World->OverlapMultiByObjectType(
+        Overlaps,
+        MyLocation,
+        FQuat::Identity,
+        ObjParams,
+        FCollisionShape::MakeSphere(SeparationRadius),
+        QueryParams
+    );
+
+    if (!bHit)
+    {
+        CachedSeparationVector = FVector::ZeroVector;
+        return;
+    }
+
+    FVector Accumulated = FVector::ZeroVector;
+    int32 Count = 0;
+    for (const FOverlapResult& Result : Overlaps)
+    {
+        AActor* Other = Result.GetActor();
+        if (!Other || Other == Owner)
+        {
+            continue;
+        }
+
+        const FVector OtherLoc = Other->GetActorLocation();
+        const float Dist = FVector::Dist2D(MyLocation, OtherLoc);
+        if (Dist < KINDA_SMALL_NUMBER || Dist > SeparationRadius)
+        {
+            continue;
+        }
+
+        FVector Away = (MyLocation - OtherLoc).GetSafeNormal2D();
+        float Strength = 1.0f - (Dist / SeparationRadius); // 越近推力越大
+        Accumulated += Away * Strength;
+        ++Count;
+    }
+
+    CachedSeparationVector = (Count > 0) ? Accumulated.GetSafeNormal() : FVector::ZeroVector;
+}
+
 FVector2D UXBSoldierFollowComponent::GetSlotLocalOffset() const
 {
     // 优先从编队组件获取
@@ -996,7 +1101,7 @@ FVector2D UXBSoldierFollowComponent::GetSlotLocalOffset() const
             const TArray<FXBFormationSlot>& Slots = FormationComp->GetFormationSlots();
             if (Slots.IsValidIndex(FormationSlotIndex))
             {
-                return Slots[FormationSlotIndex].LocalOffset;
+                return Slots[FormationSlotIndex].LocalOffset * CurrentSpacingScale;
             }
         }
     }
@@ -1015,7 +1120,7 @@ FVector2D UXBSoldierFollowComponent::GetSlotLocalOffset() const
         float OffsetX = -(MinDistanceToLeader + Row * VerticalSpacing);
         float OffsetY = (Col - (Columns - 1) * 0.5f) * HorizontalSpacing;
         
-        return FVector2D(OffsetX, OffsetY);
+        return FVector2D(OffsetX, OffsetY) * CurrentSpacingScale;
     }
     
     return FVector2D::ZeroVector;

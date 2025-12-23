@@ -171,6 +171,16 @@ protected:
     void UpdateGhostTarget(float DeltaTime);
 
     /**
+     * @brief 更新动态膨胀（急转弯放大间距）
+     */
+    void UpdateDynamicSpacing(float DeltaTime);
+
+    /**
+     * @brief 更新分离向量（Boids 分离力）
+     */
+    void UpdateSeparationVector(float DeltaTime);
+
+    /**
      * @brief 获取当前平滑后的编队目标位置
      * @note ✨ 优先使用幽灵目标对应的槽位位置，避免直接依赖将领位置导致堆叠
      */
@@ -342,6 +352,32 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "卡住速度阈值", ClampMin = "0.0", ToolTip = "低于该速度会累计卡住时间，设为0关闭卡住检测。"))
     float StuckSpeedThreshold = 50.0f;
 
+    // ==================== 分离力与动态膨胀 ====================
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Separation", meta = (DisplayName = "启用分离力", ToolTip = "开启后近距离队友会互相推开，减少急转弯堆叠。"))
+    bool bEnableSeparationForce = true;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Separation", meta = (DisplayName = "分离检测半径", ClampMin = "0.0", ToolTip = "检测周围队友的半径，建议 50~120。"))
+    float SeparationRadius = 80.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Separation", meta = (DisplayName = "分离力度权重", ClampMin = "0.0", ToolTip = "分离向量权重，越大推开越强，过大可能抖动。"))
+    float SeparationWeight = 0.6f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Separation", meta = (DisplayName = "分离检测周期(秒)", ClampMin = "0.01", ToolTip = "多久采样一次邻居，值越大性能更好但反应更慢。"))
+    float SeparationQueryInterval = 0.1f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Separation", meta = (DisplayName = "启用急转膨胀", ToolTip = "急转弯时暂时放大槽位间距，减少外圈挤压。"))
+    bool bEnableDynamicSpacing = true;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Separation", meta = (DisplayName = "膨胀触发角速度(度/秒)", ClampMin = "0.0", ToolTip = "幽灵目标角速度大于该值时触发膨胀。"))
+    float SpacingAngularThreshold = 45.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Separation", meta = (DisplayName = "膨胀倍率", ClampMin = "1.0", ToolTip = "触发时槽位偏移的放大倍率。"))
+    float SpacingInflationScale = 1.35f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Separation", meta = (DisplayName = "膨胀插值速度", ClampMin = "0.0", ToolTip = "队形膨胀/恢复的插值速度。"))
+    float SpacingInflationInterpSpeed = 5.0f;
+
     // ==================== 战斗状态 ====================
 
     UPROPERTY(BlueprintReadOnly, Category = "XB|Follow|Combat", meta = (DisplayName = "是否战斗中"))
@@ -375,12 +411,17 @@ protected:
     FVector LastPositionForStuckCheck = FVector::ZeroVector;
     float AccumulatedStuckTime = 0.0f;
     bool bRecruitMovementActive = false;
+    float SeparationSampleTimer = 0.0f;
+    FVector CachedSeparationVector = FVector::ZeroVector;
 
     // ✨ 新增 - 幽灵目标状态
     FVector GhostTargetLocation = FVector::ZeroVector;
     FRotator GhostTargetRotation = FRotator::ZeroRotator;
     bool bGhostInitialized = false;
     FVector GhostSlotTargetLocation = FVector::ZeroVector;
+    float CurrentSpacingScale = 1.0f;
+    float LastGhostYaw = 0.0f;
+    bool bGhostYawInitialized = false;
 
     FTimerHandle DelayedRecruitStartHandle;
 };
