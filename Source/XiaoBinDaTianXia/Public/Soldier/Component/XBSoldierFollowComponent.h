@@ -276,6 +276,15 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "最小追赶速度", ClampMin = "0.0", ToolTip = "保证追赶时不低于此速度，避免调小基础速度后走得过慢。"))
     float MinTransitionSpeed = 600.0f;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "靠近减速距离", ClampMin = "0.0", ToolTip = "距离槽位小于该值时逐步降速，避免冲过槽位。"))
+    float CloseSlowdownDistance = 300.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "启用速度平滑", ToolTip = "开启后追赶速度会用插值平滑，减少忽快忽慢。"))
+    bool bUseSpeedSmoothing = true;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "速度平滑插值率", ClampMin = "0.0", ToolTip = "追赶速度变化的平滑强度，越大越快贴近目标速度，0表示完全不平滑。"))
+    float SpeedSmoothingRate = 8.0f;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "招募启动延迟(秒)", ClampMin = "0.0", ToolTip = "士兵开始奔向槽位前的延迟，默认0立即移动。"))
     float RecruitStartDelay = 0.0f;
 
@@ -352,8 +361,8 @@ protected:
     UPROPERTY(BlueprintReadOnly, Category = "XB|Follow", meta = (DisplayName = "当前移动速度"))
     float CurrentMoveSpeed = 0.0f;
 
-    // ✨ 新增 - 首次入列跳过RVO
-    bool bSkipRVOForFirstJoin = false;
+    // 速度平滑缓存（不暴露蓝图）
+    float SmoothedSpeedCache = 0.0f;
 
     ECollisionResponse OriginalPawnResponse = ECR_Block;
     bool bCollisionModified = false;

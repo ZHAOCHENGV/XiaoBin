@@ -199,6 +199,13 @@ float UXBSoldierFollowComponent::CalculateRecruitTransitionSpeed(float DistanceT
     DistanceMultiplier = FMath::Max(DistanceMultiplier, 1.0f);
     float DistanceBasedSpeed = RecruitTransitionSpeed * DistanceMultiplier;
 
+    // 近距离缓速，避免冲过槽位
+    if (CloseSlowdownDistance > 0.0f)
+    {
+        const float SlowAlpha = FMath::Clamp(DistanceToTarget / CloseSlowdownDistance, 0.0f, 1.0f);
+        DistanceBasedSpeed = FMath::Lerp(MinTransitionSpeed, DistanceBasedSpeed, SlowAlpha);
+    }
+
     // Step 2: 将领速度补偿
     float LeaderBasedSpeed = 0.0f;
     if (bSyncLeaderSprint && CachedLeaderSpeed > KINDA_SMALL_NUMBER)
@@ -245,9 +252,18 @@ void UXBSoldierFollowComponent::UpdateLockedMode(float DeltaTime)
     
     FVector TargetPosition = GetSmoothedFormationTarget();
     FVector CurrentPosition = Owner->GetActorLocation();
-    
-    // 🔧 修改 - 使用可调速度平滑移动到槽位，避免瞬移
-    MoveTowardsTargetXY(TargetPosition, DeltaTime, LockedFollowMoveSpeed);
+
+    // 🔧 修改 - 使用移动组件平滑跟随，避免瞬移
+    UCharacterMovementComponent* MoveComp = GetCachedMovementComponent();
+    if (MoveComp)
+    {
+        MoveComp->MaxWalkSpeed = LockedFollowMoveSpeed;
+        FVector MoveDir = (TargetPosition - CurrentPosition).GetSafeNormal2D();
+        if (!MoveDir.IsNearlyZero() && FVector::Dist2D(CurrentPosition, TargetPosition) > ArrivalThreshold)
+        {
+            MoveComp->AddInputVector(MoveDir);
+        }
+    }
     
     if (bFollowRotation)
     {
@@ -291,8 +307,17 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
     
     // 计算动态速度
     float ActualSpeed = CalculateRecruitTransitionSpeed(Distance);
-    // 🔧 确保速度在可控范围内
+    // 🔧 确保速度在可控范围内，并可选平滑
     ActualSpeed = FMath::Clamp(ActualSpeed, MinTransitionSpeed, MaxTransitionSpeed);
+    if (SmoothedSpeedCache <= KINDA_SMALL_NUMBER)
+    {
+        SmoothedSpeedCache = ActualSpeed;
+    }
+    if (bUseSpeedSmoothing && SpeedSmoothingRate > 0.0f)
+    {
+        SmoothedSpeedCache = FMath::FInterpTo(SmoothedSpeedCache, ActualSpeed, DeltaTime, SpeedSmoothingRate);
+        ActualSpeed = SmoothedSpeedCache;
+    }
     
     // 🔧 修改 - 使用移动组件进行移动
     UCharacterMovementComponent* MoveComp = GetCachedMovementComponent();
@@ -724,6 +749,7 @@ void UXBSoldierFollowComponent::StartInterpolateToFormation()
         MoveComp->GravityScale = 1.0f;
         MoveComp->SetComponentTickEnabled(true);
         MoveComp->SetMovementMode(MOVE_Walking);
+        SmoothedSpeedCache = MoveComp->MaxWalkSpeed;
     }
 
     // 缓存将领状态，便于追赶
