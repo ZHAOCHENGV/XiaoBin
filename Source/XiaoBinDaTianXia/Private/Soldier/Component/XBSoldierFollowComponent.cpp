@@ -741,6 +741,12 @@ void UXBSoldierFollowComponent::StartRecruitTransition()
 {
     SetCombatState(false);
     SetFollowMode(EXBFollowMode::RecruitTransition);
+
+    // ✨ 新增 - 首次入列关闭RVO避免撞车
+    if (bSkipRVOForFirstJoin)
+    {
+        SetRVOAvoidanceEnabled(false);
+    }
     
     if (UWorld* World = GetWorld())
     {

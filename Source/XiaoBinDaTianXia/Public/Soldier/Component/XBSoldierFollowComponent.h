@@ -340,6 +340,9 @@ protected:
     UPROPERTY(BlueprintReadOnly, Category = "XB|Follow", meta = (DisplayName = "当前移动速度"))
     float CurrentMoveSpeed = 0.0f;
 
+    // ✨ 新增 - 首次入列跳过RVO
+    bool bSkipRVOForFirstJoin = false;
+
     ECollisionResponse OriginalPawnResponse = ECR_Block;
     bool bCollisionModified = false;
 
