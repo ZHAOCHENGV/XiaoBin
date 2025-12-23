@@ -193,31 +193,56 @@ float UXBSoldierFollowComponent::GetLeaderCurrentSpeed() const
  */
 float UXBSoldierFollowComponent::CalculateRecruitTransitionSpeed(float DistanceToTarget) const
 {
-    // Step 1: 基础速度 + 距离加速（距离越大速度越快，距离越小则平缓靠拢）
+  
+  // ✨ 新增 - 获取将领当前速度（作为速度上限参考）
+    float LeaderSpeed = CachedLeaderSpeed;
+    if (LeaderSpeed < KINDA_SMALL_NUMBER && CachedLeaderCharacter.IsValid())
+    {
+        LeaderSpeed = GetLeaderCurrentSpeed();
+    }
+    
+    // 🔧 修改 - 在接近范围内，直接使用将领速度（避免震荡）
+    if (CloseSlowdownDistance > 0.0f && DistanceToTarget <= CloseSlowdownDistance)
+    {
+        // 计算接近程度（0=刚进入范围，1=到达槽位）
+        float CloseAlpha = 1.0f - FMath::Clamp(DistanceToTarget / CloseSlowdownDistance, 0.0f, 1.0f);
+        
+        // ✨ 核心修复 - 在接近范围内，速度逐渐趋近将领速度
+        // 这样士兵不会超越槽位，而是与将领保持同步移动
+        float TargetSpeed = FMath::Max(LeaderSpeed, MinTransitionSpeed);
+        
+        // 从追赶速度平滑过渡到将领速度
+        float BaseApproachSpeed = RecruitTransitionSpeed;
+        float FinalSpeed = FMath::Lerp(BaseApproachSpeed, TargetSpeed, CloseAlpha);
+        
+        // 确保不低于最小速度
+        FinalSpeed = FMath::Max(FinalSpeed, MinTransitionSpeed);
+        
+        // ✨ 关键 - 在非常接近时（距离<50），严格限制速度不超过将领速度
+        if (DistanceToTarget < 50.0f && LeaderSpeed > KINDA_SMALL_NUMBER)
+        {
+            FinalSpeed = FMath::Min(FinalSpeed, LeaderSpeed * 1.1f);
+        }
+        
+        return FinalSpeed;
+    }
+
+    // === 远距离追赶模式（保持原逻辑）===
+    
+    // Step 1: 基础速度 + 距离加速
     const float NormalizedDistance = FMath::Clamp(DistanceToTarget / FMath::Max(ArrivalThreshold, 1.0f), 0.0f, 10.0f);
     float DistanceMultiplier = 1.0f + NormalizedDistance * DistanceSpeedMultiplier;
     DistanceMultiplier = FMath::Max(DistanceMultiplier, 1.0f);
     float DistanceBasedSpeed = RecruitTransitionSpeed * DistanceMultiplier;
 
-    // 近距离缓速，避免冲过槽位
-    if (CloseSlowdownDistance > 0.0f)
-    {
-        const float SlowAlpha = FMath::Clamp(DistanceToTarget / CloseSlowdownDistance, 0.0f, 1.0f);
-        DistanceBasedSpeed = FMath::Lerp(MinTransitionSpeed, DistanceBasedSpeed, SlowAlpha);
-    }
-
     // Step 2: 将领速度补偿
     float LeaderBasedSpeed = 0.0f;
-    if (bSyncLeaderSprint && CachedLeaderSpeed > KINDA_SMALL_NUMBER)
+    if (bSyncLeaderSprint && LeaderSpeed > KINDA_SMALL_NUMBER)
     {
-        // 士兵需要比将领更快才能追上
-        // 使用缓存的将领速度 × 补偿倍率
-        LeaderBasedSpeed = CachedLeaderSpeed * CatchUpSpeedMultiplier;
+        LeaderBasedSpeed = LeaderSpeed * CatchUpSpeedMultiplier;
         
-        // 如果将领正在冲刺，额外增加速度确保能追上
         if (bLeaderIsSprinting)
         {
-            // 冲刺时额外增加 20% 速度
             LeaderBasedSpeed *= 1.2f;
         }
     }
@@ -226,9 +251,11 @@ float UXBSoldierFollowComponent::CalculateRecruitTransitionSpeed(float DistanceT
     float FinalSpeed = FMath::Max(DistanceBasedSpeed, LeaderBasedSpeed);
 
     // Step 4: 限制最大速度
-    FinalSpeed = FMath::Min(FinalSpeed, MaxTransitionSpeed);
+    FinalSpeed = FMath::Clamp(FinalSpeed, MinTransitionSpeed, MaxTransitionSpeed);
 
     return FinalSpeed;
+
+  
 }
 
 // ==================== 🔧 修改：锁定模式 ====================
@@ -239,6 +266,7 @@ float UXBSoldierFollowComponent::CalculateRecruitTransitionSpeed(float DistanceT
  */
 void UXBSoldierFollowComponent::UpdateLockedMode(float DeltaTime)
 {
+    
     AActor* Owner = GetOwner();
     AActor* Leader = FollowTargetRef.Get();
     
@@ -247,28 +275,56 @@ void UXBSoldierFollowComponent::UpdateLockedMode(float DeltaTime)
         return;
     }
     
-    // 🔧 修改 - 计算编队旋转，确保全队尾随转向
     FRotator FormationRotation = CalculateFormationWorldRotation();
-    
     FVector TargetPosition = GetSmoothedFormationTarget();
     FVector CurrentPosition = Owner->GetActorLocation();
-
-    // 🔧 修改 - 使用移动组件平滑跟随，避免瞬移
+    
+    // 🔧 修改 - 计算到槽位的距离
+    float DistanceToSlot = FVector::Dist2D(CurrentPosition, TargetPosition);
+    
     UCharacterMovementComponent* MoveComp = GetCachedMovementComponent();
     if (MoveComp)
     {
-        MoveComp->MaxWalkSpeed = LockedFollowMoveSpeed;
-        FVector MoveDir = (TargetPosition - CurrentPosition).GetSafeNormal2D();
-        if (!MoveDir.IsNearlyZero() && FVector::Dist2D(CurrentPosition, TargetPosition) > ArrivalThreshold)
+        // ✨ 新增 - 根据距离动态调整速度
+        float ActualMoveSpeed = LockedFollowMoveSpeed;
+        
+        // 获取将领速度
+        float LeaderSpeed = 0.0f;
+        if (CachedLeaderCharacter.IsValid())
         {
-            MoveComp->AddInputVector(MoveDir);
+            LeaderSpeed = CachedLeaderCharacter->GetCurrentMoveSpeed();
+        }
+        
+        // 🔧 修改 - 在到达阈值内，严格匹配将领速度
+        if (DistanceToSlot <= ArrivalThreshold * 2.0f)
+        {
+            // 已经非常接近槽位，使用将领速度
+            ActualMoveSpeed = FMath::Max(LeaderSpeed, 100.0f);
+        }
+        else if (DistanceToSlot <= CloseSlowdownDistance)
+        {
+            // 在接近范围内，逐渐趋近将领速度
+            float Alpha = DistanceToSlot / CloseSlowdownDistance;
+            ActualMoveSpeed = FMath::Lerp(FMath::Max(LeaderSpeed, 100.0f), LockedFollowMoveSpeed, Alpha);
+        }
+        
+        MoveComp->MaxWalkSpeed = ActualMoveSpeed;
+        
+        // 🔧 修改 - 只有距离超过阈值才发起移动
+        if (DistanceToSlot > ArrivalThreshold)
+        {
+            FVector MoveDir = (TargetPosition - CurrentPosition).GetSafeNormal2D();
+            if (!MoveDir.IsNearlyZero())
+            {
+                MoveComp->AddInputVector(MoveDir);
+            }
         }
     }
     
+    // 旋转更新
     if (bFollowRotation)
     {
         FRotator TargetRotation = FormationRotation;
-        // 🔧 修改 - 使用可调转向速度插值，避免瞬转
         FRotator NewRotation = FMath::RInterpTo(
             Owner->GetActorRotation(),
             TargetRotation,
@@ -277,14 +333,20 @@ void UXBSoldierFollowComponent::UpdateLockedMode(float DeltaTime)
         );
         Owner->SetActorRotation(FRotator(0.0f, NewRotation.Yaw, 0.0f));
     }
+
+  
 }
 
 /**
  * @brief 更新招募过渡模式
- * @note 🔧 修改 - 使用 AI 移动而非手动设置位置，确保物理正确
+ * @note 🔧 修改 - 
+ *       1. 简化速度计算
+ *       2. 朝向槽位移动方向而非将领朝向
+ *       3. 到达后再同步将领朝向
  */
 void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
 {
+   
     AActor* Owner = GetOwner();
     AActor* Leader = FollowTargetRef.Get();
     
@@ -293,7 +355,6 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
         return;
     }
     
-    // 🔧 修改 - 若未到达启动时间则不移动（支持招募延迟）
     if (!bRecruitMovementActive)
     {
         return;
@@ -304,10 +365,46 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
     
     float Distance = FVector::Dist2D(CurrentPosition, TargetPosition);
     
+    // ✨ 新增 - 提前检测到达（避免冲过槽位后才判断）
+    // 使用稍大的阈值进行提前到达判断
+    float EffectiveArrivalThreshold = ArrivalThreshold;
+    
+    // 🔧 修改 - 如果将领在移动，需要更宽松的到达判断
+    float LeaderSpeed = 0.0f;
+    if (CachedLeaderCharacter.IsValid())
+    {
+        LeaderSpeed = CachedLeaderCharacter->GetCurrentMoveSpeed();
+    }
+    
+    if (LeaderSpeed > 50.0f)
+    {
+        // 将领移动时，扩大到达阈值
+        EffectiveArrivalThreshold = ArrivalThreshold * 1.5f;
+    }
+    
+    // 到达检测（提前判断）
+    if (Distance <= EffectiveArrivalThreshold)
+    {
+        UE_LOG(LogXBSoldier, Log, TEXT("跟随组件: 招募过渡完成，切换到锁定模式"));
+        SetFollowMode(EXBFollowMode::Locked);
+        
+        bLeaderIsSprinting = false;
+        CachedLeaderSpeed = 0.0f;
+
+        if (bFollowRotation)
+        {
+            FRotator LeaderRotation = CalculateFormationWorldRotation();
+            Owner->SetActorRotation(LeaderRotation);
+        }
+        
+        OnRecruitTransitionCompleted.Broadcast();
+        return;  // ✨ 提前返回，不再移动
+    }
+    
     // 计算动态速度
     float ActualSpeed = CalculateRecruitTransitionSpeed(Distance);
-    // 🔧 确保速度在可控范围内，并可选平滑
     ActualSpeed = FMath::Clamp(ActualSpeed, MinTransitionSpeed, MaxTransitionSpeed);
+    
     if (SmoothedSpeedCache <= KINDA_SMALL_NUMBER)
     {
         SmoothedSpeedCache = ActualSpeed;
@@ -318,28 +415,23 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
         ActualSpeed = SmoothedSpeedCache;
     }
     
-    // 🔧 修改 - 使用移动组件进行移动
+    // 使用移动组件进行移动
     UCharacterMovementComponent* MoveComp = GetCachedMovementComponent();
     ACharacter* CharOwner = Cast<ACharacter>(Owner);
     
     if (MoveComp && CharOwner && Distance > ArrivalThreshold)
     {
-        // 设置移动速度
         MoveComp->MaxWalkSpeed = ActualSpeed;
         
-        // 计算移动方向
         FVector MoveDirection = (TargetPosition - CurrentPosition).GetSafeNormal2D();
         
         if (!MoveDirection.IsNearlyZero())
         {
-            // ✨ 核心 - 使用 AddMovementInput 驱动移动
             CharOwner->AddMovementInput(MoveDirection, 1.0f);
             
-            // 平滑旋转
             if (bFollowRotation)
             {
                 FRotator CurrentRotation = Owner->GetActorRotation();
-                // 🔧 修改 - 直接面向槽位的编队旋转，保证“蛇尾”对齐
                 FRotator TargetRotation = CalculateFormationWorldRotation();
                 FRotator NewRotation = FMath::RInterpTo(CurrentRotation, TargetRotation, DeltaTime, RecruitRotationInterpSpeed);
                 Owner->SetActorRotation(FRotator(0.0f, NewRotation.Yaw, 0.0f));
@@ -365,25 +457,8 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
             LastPositionForStuckCheck = NewPosition;
         }
     }
-    
-    // 到达检测
-    float CurrentDistance = FVector::Dist2D(Owner->GetActorLocation(), TargetPosition);
-    if (CurrentDistance <= ArrivalThreshold)
-    {
-        UE_LOG(LogXBSoldier, Log, TEXT("跟随组件: 招募过渡完成，切换到锁定模式"));
-        SetFollowMode(EXBFollowMode::Locked);
-        
-        bLeaderIsSprinting = false;
-        CachedLeaderSpeed = 0.0f;
 
-        if (bFollowRotation)
-        {
-            FRotator LeaderRotation = CalculateFormationWorldRotation();
-            Owner->SetActorRotation(LeaderRotation);
-        }
-        
-        OnRecruitTransitionCompleted.Broadcast();
-    }
+   
 }
 
 // ==================== ✨ 新增：幽灵目标插值 ====================
@@ -480,8 +555,7 @@ void UXBSoldierFollowComponent::SetFollowTarget(AActor* NewTarget)
         FVector2D SlotOffset = GetSlotLocalOffset();
         GhostSlotTargetLocation = GhostTargetLocation + GhostTargetRotation.RotateVector(FVector(SlotOffset.X, SlotOffset.Y, 0.0f));
 
-        // ✨ 新增 - 首次入列不进行RVO避让
-        bSkipRVOForFirstJoin = true;
+     
     }
     else
     {
@@ -492,7 +566,7 @@ void UXBSoldierFollowComponent::SetFollowTarget(AActor* NewTarget)
 
         bGhostInitialized = false;
         GhostSlotTargetLocation = FVector::ZeroVector;
-        bSkipRVOForFirstJoin = false;
+        
     }
 }
 
@@ -790,6 +864,7 @@ void UXBSoldierFollowComponent::StartRecruitTransition()
     }
 
     StartRecruitTransition_Internal();
+
 }
 
 void UXBSoldierFollowComponent::StartRecruitTransition_Internal()
@@ -812,7 +887,7 @@ void UXBSoldierFollowComponent::StartRecruitTransition_Internal()
         MoveComp->SetComponentTickEnabled(true);
         MoveComp->SetMovementMode(MOVE_Walking);
         SmoothedSpeedCache = MoveComp->MaxWalkSpeed;
-    }
+    }   
 
     if (CachedLeaderCharacter.IsValid())
     {

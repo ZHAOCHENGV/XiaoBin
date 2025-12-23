@@ -357,6 +357,28 @@ public:
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|Behavior", meta = (DisplayName = "获取行为接口"))
     UXBSoldierBehaviorInterface* GetBehaviorInterface() const { return BehaviorInterface; }
 
+
+    // ==================== ✨ 新增：动画系统接口 ====================
+
+    /**
+     * @brief 获取用于动画的移动速度
+     * @return 当前移动速度，仅在合适状态下返回有效值
+     * @note ✨ 新增 - 仅在以下条件满足时返回速度：
+     *       1. 已被招募
+     *       2. 处于锁定跟随模式或战斗状态
+     *       3. 已到达编队位置（非招募过渡中）
+     *       其他情况返回0，避免过渡动画异常
+     */
+    UFUNCTION(BlueprintPure, Category = "XB|Soldier|Animation", meta = (DisplayName = "获取动画移动速度"))
+    float GetAnimationMoveSpeed() const;
+
+    /**
+     * @brief 检查是否应该播放移动动画
+     * @return 是否应该播放移动动画
+     * @note ✨ 新增 - 供动画蓝图判断是否使用移动混合空间
+     */
+    UFUNCTION(BlueprintPure, Category = "XB|Soldier|Animation", meta = (DisplayName = "应该播放移动动画"))
+    bool ShouldPlayMoveAnimation() const;
 protected:
 
     // ✨ 新增 - 配置跟随并开始移动

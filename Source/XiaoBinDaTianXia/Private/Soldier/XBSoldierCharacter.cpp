@@ -646,6 +646,86 @@ void AXBSoldierCharacter::AutoRecruitToLeader()
     UE_LOG(LogXBSoldier, Log, TEXT(""));
 }
 
+/**
+ * @brief 获取用于动画的移动速度
+ * @return 当前移动速度
+ * @note ✨ 新增 - 核心逻辑：
+ *       1. 未招募 → 返回0
+ *       2. 招募过渡中 → 返回0（避免过渡期间动画异常）
+ *       3. 锁定跟随/战斗状态且已到位 → 返回实际速度
+ */
+float AXBSoldierCharacter::GetAnimationMoveSpeed() const
+{
+    // 条件1：必须已被招募
+    if (!bIsRecruited)
+    {
+        return 0.0f;
+    }
+
+    // 条件2：必须处于跟随或战斗状态
+    if (CurrentState != EXBSoldierState::Following && CurrentState != EXBSoldierState::Combat)
+    {
+        return 0.0f;
+    }
+
+    // 条件3：检查跟随组件状态
+    if (FollowComponent)
+    {
+        EXBFollowMode FollowMode = FollowComponent->GetFollowMode();
+        
+        // 招募过渡中不返回速度（避免过渡动画）
+        if (FollowMode == EXBFollowMode::RecruitTransition)
+        {
+            return 0.0f;
+        }
+        
+        // 锁定模式或自由模式（战斗）：返回实际速度
+        if (FollowMode == EXBFollowMode::Locked || FollowMode == EXBFollowMode::Free)
+        {
+            // 使用跟随组件缓存的移动速度
+            return FollowComponent->GetCurrentMoveSpeed();
+        }
+    }
+
+    // 回退：使用移动组件速度
+    if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+    {
+        FVector Velocity = MoveComp->Velocity;
+        Velocity.Z = 0.0f;
+        return Velocity.Size();
+    }
+
+    return 0.0f;
+}
+
+/**
+ * @brief 检查是否应该播放移动动画
+ * @return 是否应该播放
+ * @note ✨ 新增 - 简化版判断，供动画蓝图使用
+ */
+bool AXBSoldierCharacter::ShouldPlayMoveAnimation() const
+{
+    // 必须已招募
+    if (!bIsRecruited)
+    {
+        return false;
+    }
+
+    // 必须处于正确状态
+    if (CurrentState != EXBSoldierState::Following && CurrentState != EXBSoldierState::Combat)
+    {
+        return false;
+    }
+
+    // 必须不在招募过渡中
+    if (FollowComponent && FollowComponent->GetFollowMode() == EXBFollowMode::RecruitTransition)
+    {
+        return false;
+    }
+
+    // 速度大于阈值才播放
+    return GetAnimationMoveSpeed() > 10.0f;
+}
 
 /**
  * @brief 配置跟随组件并开始移动
@@ -1257,9 +1337,21 @@ bool AXBSoldierCharacter::CanBeRecruited() const
     return true;
 }
 
+
+/**
+ * @brief 被招募回调
+ * @param NewLeader 新将领
+ * @param SlotIndex 槽位索引
+ * @note 🔧 修改 - 消除招募延迟，立即开始移动
+ *       1. 移除AI启动延迟对移动的阻塞
+ *       2. 立即配置跟随组件并开始移动
+ *       3. AI控制器仍可延迟初始化（不影响移动）
+ */
 void AXBSoldierCharacter::OnRecruited(AActor* NewLeader, int32 SlotIndex)
 {
-    if (!NewLeader)
+   
+
+   if (!NewLeader)
     {
         UE_LOG(LogXBSoldier, Warning, TEXT("士兵 %s: 招募失败 - 将领为空"), *GetName());
         return;
@@ -1293,31 +1385,41 @@ void AXBSoldierCharacter::OnRecruited(AActor* NewLeader, int32 SlotIndex)
     UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 被将领 %s 招募，槽位: %d，当前状态: %d"), 
         *GetName(), *NewLeader->GetName(), SlotIndex, static_cast<int32>(CurrentState));
     
+    // ✨ 核心修改 - 立即设置招募状态
     bIsRecruited = true;
     FollowTarget = NewLeader;
     FormationSlotIndex = SlotIndex;
     
+    // 退出休眠态（如果处于休眠）
     if (CurrentState == EXBSoldierState::Dormant)
     {
         ExitDormantState();
     }
     
+    // 设置阵营
     if (AXBCharacterBase* LeaderChar = Cast<AXBCharacterBase>(NewLeader))
     {
         Faction = LeaderChar->GetFaction();
     }
     
+    // 🔧 修改 - 面向将领
     FVector DirectionToLeader = (NewLeader->GetActorLocation() - GetActorLocation()).GetSafeNormal2D();
     if (!DirectionToLeader.IsNearlyZero())
     {
         SetActorRotation(DirectionToLeader.Rotation());
     }
     
+    // ✨ 核心修改 - 立即配置跟随组件并开始移动（不等待AI）
     if (FollowComponent)
     {
+        // 确保跟随组件启用
+        FollowComponent->SetComponentTickEnabled(true);
+        
+        // 设置跟随目标和槽位
         FollowComponent->SetFollowTarget(NewLeader);
         FollowComponent->SetFormationSlotIndex(SlotIndex);
         
+        // 同步将领冲刺状态
         if (AXBCharacterBase* LeaderChar = Cast<AXBCharacterBase>(NewLeader))
         {
             bool bLeaderSprinting = LeaderChar->IsSprinting();
@@ -1325,20 +1427,39 @@ void AXBSoldierCharacter::OnRecruited(AActor* NewLeader, int32 SlotIndex)
             FollowComponent->SyncLeaderSprintState(bLeaderSprinting, LeaderSpeed);
         }
         
+        // ✨ 核心 - 立即开始招募过渡移动
         FollowComponent->StartRecruitTransition();
     }
     
+    // 🔧 修改 - 确保移动组件立即可用
+    if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+    {
+        MoveComp->SetComponentTickEnabled(true);
+        MoveComp->SetMovementMode(MOVE_Walking);
+        MoveComp->GravityScale = 1.0f;
+        MoveComp->MaxWalkSpeed = GetMoveSpeed();
+    }
+    
+    // 设置状态
     SetSoldierState(EXBSoldierState::Following);
     
+    // 🔧 修改 - AI控制器延迟初始化（不阻塞移动）
+    // 移动由 FollowComponent 通过 AddMovementInput 驱动，不依赖AI
     GetWorldTimerManager().SetTimer(
         DelayedAIStartTimerHandle,
         this,
         &AXBSoldierCharacter::SpawnAndPossessAIController,
-        0.3f,
+        0.1f,
         false
     );
     
+    // 广播事件
     OnSoldierRecruited.Broadcast(this, NewLeader);
+    
+    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 招募完成，立即开始移动到槽位 %d"), 
+        *GetName(), SlotIndex);
+
+  
 }
 
 // ==================== 跟随系统 ====================
