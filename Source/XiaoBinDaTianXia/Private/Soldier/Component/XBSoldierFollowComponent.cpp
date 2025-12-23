@@ -43,7 +43,7 @@ void UXBSoldierFollowComponent::BeginPlay()
     }
     
     SetMovementMode(true);
-    SetRVOAvoidanceEnabled(false);
+    // 🔧 修改 - 取消RVO相关逻辑，依靠幽灵目标平滑跟随
 
     UE_LOG(LogXBSoldier, Log, TEXT("跟随组件初始化 - 实时锁定槽位模式，追赶补偿倍率: %.2f"), CatchUpSpeedMultiplier);
 }
@@ -90,6 +90,9 @@ void UXBSoldierFollowComponent::TickComponent(float DeltaTime, ELevelTick TickTy
         LastFrameLocation = Owner->GetActorLocation();
         return;
     }
+
+    // 🔧 修改 - 更新幽灵目标，平滑跟随将领旋转与位置
+    UpdateGhostTarget(DeltaTime);
 
     // ✨ 新增 - 每帧更新将领速度缓存（用于招募过渡模式）
     if (bSyncLeaderSprint && CurrentMode == EXBFollowMode::RecruitTransition)
@@ -190,8 +193,10 @@ float UXBSoldierFollowComponent::GetLeaderCurrentSpeed() const
  */
 float UXBSoldierFollowComponent::CalculateRecruitTransitionSpeed(float DistanceToTarget) const
 {
-    // Step 1: 基础速度 + 距离加速
-    float DistanceMultiplier = 1.0f + (DistanceToTarget / 100.0f) * (DistanceSpeedMultiplier - 1.0f);
+    // Step 1: 基础速度 + 距离加速（距离越大速度越快，距离越小则平缓靠拢）
+    const float NormalizedDistance = FMath::Clamp(DistanceToTarget / FMath::Max(ArrivalThreshold, 1.0f), 0.0f, 10.0f);
+    float DistanceMultiplier = 1.0f + NormalizedDistance * DistanceSpeedMultiplier;
+    DistanceMultiplier = FMath::Max(DistanceMultiplier, 1.0f);
     float DistanceBasedSpeed = RecruitTransitionSpeed * DistanceMultiplier;
 
     // Step 2: 将领速度补偿
@@ -235,7 +240,10 @@ void UXBSoldierFollowComponent::UpdateLockedMode(float DeltaTime)
         return;
     }
     
-    FVector TargetPosition = CalculateFormationWorldPosition();
+    // 🔧 修改 - 计算编队旋转，确保全队尾随转向
+    FRotator FormationRotation = CalculateFormationWorldRotation();
+    
+    FVector TargetPosition = GetSmoothedFormationTarget();
     FVector CurrentPosition = Owner->GetActorLocation();
     
     // 🔧 修改 - 使用可调速度平滑移动到槽位，避免瞬移
@@ -243,7 +251,7 @@ void UXBSoldierFollowComponent::UpdateLockedMode(float DeltaTime)
     
     if (bFollowRotation)
     {
-        FRotator TargetRotation = CalculateFormationWorldRotation();
+        FRotator TargetRotation = FormationRotation;
         // 🔧 修改 - 使用可调转向速度插值，避免瞬转
         FRotator NewRotation = FMath::RInterpTo(
             Owner->GetActorRotation(),
@@ -276,7 +284,7 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
         return;
     }
     
-    FVector TargetPosition = CalculateFormationWorldPosition();
+    FVector TargetPosition = GetSmoothedFormationTarget();
     FVector CurrentPosition = Owner->GetActorLocation();
     
     float Distance = FVector::Dist2D(CurrentPosition, TargetPosition);
@@ -305,7 +313,8 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
             if (bFollowRotation)
             {
                 FRotator CurrentRotation = Owner->GetActorRotation();
-                FRotator TargetRotation = MoveDirection.Rotation();
+                // 🔧 修改 - 直接面向槽位的编队旋转，保证“蛇尾”对齐
+                FRotator TargetRotation = CalculateFormationWorldRotation();
                 FRotator NewRotation = FMath::RInterpTo(CurrentRotation, TargetRotation, DeltaTime, RecruitRotationInterpSpeed);
                 Owner->SetActorRotation(FRotator(0.0f, NewRotation.Yaw, 0.0f));
             }
@@ -340,7 +349,7 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
         
         bLeaderIsSprinting = false;
         CachedLeaderSpeed = 0.0f;
-        
+
         if (bFollowRotation)
         {
             FRotator LeaderRotation = CalculateFormationWorldRotation();
@@ -349,6 +358,70 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
         
         OnRecruitTransitionCompleted.Broadcast();
     }
+}
+
+// ==================== ✨ 新增：幽灵目标插值 ====================
+
+/**
+ * @brief 更新幽灵目标（位置与旋转插值）
+ * @param DeltaTime 帧间隔
+ * @note 🔧 使用插值后的幽灵位置/朝向计算槽位，避免瞬转导致队伍扭曲
+ */
+void UXBSoldierFollowComponent::UpdateGhostTarget(float DeltaTime)
+{
+    AActor* Leader = FollowTargetRef.Get();
+    if (!Leader || !IsValid(Leader))
+    {
+        bGhostInitialized = false;
+        GhostSlotTargetLocation = FVector::ZeroVector;
+        return;
+    }
+
+    FVector LeaderLocation = Leader->GetActorLocation();
+    FRotator LeaderRotation = Leader->GetActorRotation();
+
+    if (!bGhostInitialized)
+    {
+        GhostTargetLocation = LeaderLocation;
+        GhostTargetRotation = LeaderRotation;
+        bGhostInitialized = true;
+        return;
+    }
+
+    // 🔧 修改 - 使用插值让跟随更平滑
+    GhostTargetLocation = FMath::VInterpTo(
+        GhostTargetLocation,
+        LeaderLocation,
+        DeltaTime,
+        GhostLocationInterpSpeed
+    );
+
+    GhostTargetRotation = FMath::RInterpTo(
+        GhostTargetRotation,
+        LeaderRotation,
+        DeltaTime,
+        GhostRotationInterpSpeed
+    );
+
+    // ✨ 新增 - 直接缓存幽灵槽位世界坐标，供插值使用
+    FVector2D SlotOffset = GetSlotLocalOffset();
+    FVector LocalOffset3D(SlotOffset.X, SlotOffset.Y, 0.0f);
+    FVector WorldOffset = GhostTargetRotation.RotateVector(LocalOffset3D);
+    GhostSlotTargetLocation = GhostTargetLocation + WorldOffset;
+}
+
+/**
+ * @brief 获取当前平滑后的编队目标位置
+ * @note 优先返回幽灵槽位位置，失败时回退到即时计算
+ */
+FVector UXBSoldierFollowComponent::GetSmoothedFormationTarget() const
+{
+    if (bGhostInitialized && !GhostSlotTargetLocation.IsZero())
+    {
+        return GhostSlotTargetLocation;
+    }
+
+    return CalculateFormationWorldPosition();
 }
 
 // ==================== 目标设置 ====================
@@ -373,6 +446,16 @@ void UXBSoldierFollowComponent::SetFollowTarget(AActor* NewTarget)
             *NewTarget->GetName(),
             bLeaderIsSprinting ? TEXT("是") : TEXT("否"),
             CachedLeaderSpeed);
+
+        // 🔧 修改 - 初始化幽灵目标
+        GhostTargetLocation = NewTarget->GetActorLocation();
+        GhostTargetRotation = NewTarget->GetActorRotation();
+        bGhostInitialized = true;
+        FVector2D SlotOffset = GetSlotLocalOffset();
+        GhostSlotTargetLocation = GhostTargetLocation + GhostTargetRotation.RotateVector(FVector(SlotOffset.X, SlotOffset.Y, 0.0f));
+
+        // ✨ 新增 - 首次入列不进行RVO避让
+        bSkipRVOForFirstJoin = true;
     }
     else
     {
@@ -380,6 +463,10 @@ void UXBSoldierFollowComponent::SetFollowTarget(AActor* NewTarget)
         CachedLeaderCharacter = nullptr;
         bLeaderIsSprinting = false;
         CachedLeaderSpeed = 0.0f;
+
+        bGhostInitialized = false;
+        GhostSlotTargetLocation = FVector::ZeroVector;
+        bSkipRVOForFirstJoin = false;
     }
 }
 
@@ -486,13 +573,12 @@ void UXBSoldierFollowComponent::SetMovementMode(bool bEnableWalking)
 
 void UXBSoldierFollowComponent::SetRVOAvoidanceEnabled(bool bEnable)
 {
+    // 🔧 移除RVO控制，保持默认关闭，避免跟随期间被避让干扰
     UCharacterMovementComponent* MoveComp = GetCachedMovementComponent();
-    if (!MoveComp)
+    if (MoveComp)
     {
-        return;
+        MoveComp->SetAvoidanceEnabled(false);
     }
-    
-    MoveComp->SetAvoidanceEnabled(bEnable);
 }
 
 // ==================== 战斗状态控制 ====================
@@ -508,12 +594,11 @@ void UXBSoldierFollowComponent::SetCombatState(bool bInCombat)
     
     if (bInCombat)
     {
-        SetRVOAvoidanceEnabled(true);
         SetSoldierCollisionEnabled(true);
     }
     else
     {
-        SetRVOAvoidanceEnabled(false);
+        // 🔧 移除RVO切换
     }
     
     SetMovementMode(true);
@@ -545,7 +630,7 @@ void UXBSoldierFollowComponent::SetFollowMode(EXBFollowMode NewMode)
             SetSoldierCollisionEnabled(true);
         }
     }
-    
+
     SetMovementMode(true);
     
     UE_LOG(LogXBSoldier, Log, TEXT("跟随组件: 模式切换 %d -> %d"), 
@@ -561,10 +646,10 @@ void UXBSoldierFollowComponent::EnterCombatMode()
 void UXBSoldierFollowComponent::ExitCombatMode()
 {
     SetCombatState(false);
-    
-    // 退出战斗后直接传送到槽位，然后锁定
-    TeleportToFormationPosition();
-    SetFollowMode(EXBFollowMode::Locked);
+
+    // 🔧 修改 - 改为招募过渡移动回槽位，避免瞬移闪现
+    SetFollowMode(EXBFollowMode::RecruitTransition);
+    StartRecruitTransition();
 }
 
 /**
@@ -611,15 +696,42 @@ void UXBSoldierFollowComponent::TeleportToFormationPosition()
 
 /**
  * @brief 开始插值到编队位置
- * @note 🔧 兼容旧接口：由于现在使用实时锁定，直接传送并锁定
+ * @note 🔧 修改 - 使用招募过渡实现平滑插值，不再瞬移
  */
 void UXBSoldierFollowComponent::StartInterpolateToFormation()
 {
-    // 直接传送到槽位并锁定
-    TeleportToFormationPosition();
-    SetFollowMode(EXBFollowMode::Locked);
-    
-    UE_LOG(LogXBSoldier, Log, TEXT("跟随组件: StartInterpolateToFormation -> 直接锁定"));
+    // 复用招募过渡逻辑，保证物理与碰撞正确
+    SetCombatState(false);
+    SetFollowMode(EXBFollowMode::RecruitTransition);
+
+    if (UWorld* World = GetWorld())
+    {
+        RecruitTransitionStartTime = World->GetTimeSeconds();
+    }
+
+    if (AActor* Owner = GetOwner())
+    {
+        LastPositionForStuckCheck = Owner->GetActorLocation();
+    }
+    AccumulatedStuckTime = 0.0f;
+
+    // 确保移动组件配置正确
+    UCharacterMovementComponent* MoveComp = GetCachedMovementComponent();
+    if (MoveComp)
+    {
+        MoveComp->GravityScale = 1.0f;
+        MoveComp->SetComponentTickEnabled(true);
+        MoveComp->SetMovementMode(MOVE_Walking);
+    }
+
+    // 缓存将领状态，便于追赶
+    if (CachedLeaderCharacter.IsValid())
+    {
+        bLeaderIsSprinting = CachedLeaderCharacter->IsSprinting();
+        CachedLeaderSpeed = CachedLeaderCharacter->GetCurrentMoveSpeed();
+    }
+
+    UE_LOG(LogXBSoldier, Log, TEXT("跟随组件: StartInterpolateToFormation -> 进入平滑招募过渡"));
 }
 /**
  * @brief 开始招募过渡
@@ -664,7 +776,7 @@ void UXBSoldierFollowComponent::StartRecruitTransition()
 
 FVector UXBSoldierFollowComponent::GetTargetPosition() const
 {
-    return CalculateFormationWorldPosition();
+    return GetSmoothedFormationTarget();
 }
 
 bool UXBSoldierFollowComponent::IsAtFormationPosition() const
@@ -793,9 +905,10 @@ FVector UXBSoldierFollowComponent::CalculateFormationWorldPosition() const
         AActor* Owner = GetOwner();
         return Owner ? Owner->GetActorLocation() : FVector::ZeroVector;
     }
-    
-    FVector LeaderLocation = Leader->GetActorLocation();
-    FRotator LeaderRotation = Leader->GetActorRotation();
+
+    // 🔧 修改 - 使用幽灵目标位置/旋转计算槽位
+    FVector LeaderLocation = bGhostInitialized ? GhostTargetLocation : Leader->GetActorLocation();
+    FRotator LeaderRotation = bGhostInitialized ? GhostTargetRotation : Leader->GetActorRotation();
     
     FVector2D SlotOffset = GetSlotLocalOffset();
     FVector LocalOffset3D(SlotOffset.X, SlotOffset.Y, 0.0f);
@@ -813,7 +926,8 @@ FRotator UXBSoldierFollowComponent::CalculateFormationWorldRotation() const
         return Owner ? Owner->GetActorRotation() : FRotator::ZeroRotator;
     }
     
-    FRotator LeaderRotation = Leader->GetActorRotation();
+    // 🔧 修改 - 使用幽灵目标旋转，避免瞬间转向
+    FRotator LeaderRotation = bGhostInitialized ? GhostTargetRotation : Leader->GetActorRotation();
     return FRotator(0.0f, LeaderRotation.Yaw, 0.0f);
 }
 
