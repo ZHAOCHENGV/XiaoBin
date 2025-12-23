@@ -43,9 +43,7 @@ void UXBSoldierFollowComponent::BeginPlay()
     }
     
     SetMovementMode(true);
-    // 🔧 修改 - 初始即启用RVO以减少重叠
-    SetRVOAvoidanceEnabled(bEnableRVOWhileFollowing);
-    bSkipRVOForFirstJoin = true;
+    // 🔧 修改 - 取消RVO相关逻辑，依靠幽灵目标平滑跟随
 
     UE_LOG(LogXBSoldier, Log, TEXT("跟随组件初始化 - 实时锁定槽位模式，追赶补偿倍率: %.2f"), CatchUpSpeedMultiplier);
 }
@@ -577,13 +575,12 @@ void UXBSoldierFollowComponent::SetMovementMode(bool bEnableWalking)
 
 void UXBSoldierFollowComponent::SetRVOAvoidanceEnabled(bool bEnable)
 {
+    // 🔧 移除RVO控制，保持默认关闭，避免跟随期间被避让干扰
     UCharacterMovementComponent* MoveComp = GetCachedMovementComponent();
-    if (!MoveComp)
+    if (MoveComp)
     {
-        return;
+        MoveComp->SetAvoidanceEnabled(false);
     }
-    
-    MoveComp->SetAvoidanceEnabled(bEnable);
 }
 
 // ==================== 战斗状态控制 ====================
@@ -599,13 +596,11 @@ void UXBSoldierFollowComponent::SetCombatState(bool bInCombat)
     
     if (bInCombat)
     {
-        SetRVOAvoidanceEnabled(true);
         SetSoldierCollisionEnabled(true);
     }
     else
     {
-        // 🔧 修改 - 非战斗状态保持RVO以避免重叠
-        SetRVOAvoidanceEnabled(bEnableRVOWhileFollowing);
+        // 🔧 移除RVO切换
     }
     
     SetMovementMode(true);
@@ -636,16 +631,6 @@ void UXBSoldierFollowComponent::SetFollowMode(EXBFollowMode NewMode)
         {
             SetSoldierCollisionEnabled(true);
         }
-    }
-    
-    // 🔧 修改 - 编队模式下启用RVO，减少小兵互相穿插
-    if (bEnableRVOWhileFollowing && (NewMode == EXBFollowMode::Locked || NewMode == EXBFollowMode::RecruitTransition))
-    {
-        SetRVOAvoidanceEnabled(true);
-    }
-    else if (!bIsInCombat)
-    {
-        SetRVOAvoidanceEnabled(bEnableRVOWhileFollowing);
     }
 
     SetMovementMode(true);

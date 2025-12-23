@@ -286,10 +286,6 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Ghost", meta = (DisplayName = "幽灵旋转插值速度", ClampMin = "0.1"))
     float GhostRotationInterpSpeed = 8.0f;
 
-    // ✨ 新增 - 避让配置
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Avoidance", meta = (DisplayName = "编队启用RVO避让"))
-    bool bEnableRVOWhileFollowing = true;
-
     // ✨ 新增 - 追赶补偿配置
     /**
      * @brief 追赶速度补偿倍率
