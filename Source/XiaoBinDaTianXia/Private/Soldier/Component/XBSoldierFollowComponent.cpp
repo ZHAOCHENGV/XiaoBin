@@ -47,6 +47,15 @@ void UXBSoldierFollowComponent::BeginPlay()
         bUseInstantLeaderYawForSlot ? TEXT("启用") : TEXT("禁用"));
 }
 
+
+/**
+ * @brief 跟随组件Tick
+ * @param DeltaTime 帧间隔
+ * @param TickType Tick类型
+ * @param ThisTickFunction Tick函数
+ * @note  🔧 修改 - 在 Locked/RecruitTransition 下都更新“主将速度感知”
+ *        以便 Locked 模式出现加速传播波（前后排交错）
+ */
 void UXBSoldierFollowComponent::TickComponent(float DeltaTime, ELevelTick TickType,
     FActorComponentTickFunction* ThisTickFunction)
 {
@@ -59,7 +68,7 @@ void UXBSoldierFollowComponent::TickComponent(float DeltaTime, ELevelTick TickTy
         return;
     }
 
-    // 检查士兵是否已死亡，死亡则不更新
+    // 死亡不更新
     if (AXBSoldierCharacter* Soldier = Cast<AXBSoldierCharacter>(Owner))
     {
         if (Soldier->IsDead())
@@ -69,7 +78,7 @@ void UXBSoldierFollowComponent::TickComponent(float DeltaTime, ELevelTick TickTy
         }
     }
 
-    // 自由模式：战斗中，不控制位置
+    // 自由模式：不控制位置
     if (CurrentMode == EXBFollowMode::Free)
     {
         if (UCharacterMovementComponent* MoveComp = GetCachedMovementComponent())
@@ -82,7 +91,7 @@ void UXBSoldierFollowComponent::TickComponent(float DeltaTime, ELevelTick TickTy
         return;
     }
 
-    // 没有跟随目标
+    // 无目标
     if (!FollowTargetRef.IsValid())
     {
         CurrentMoveSpeed = 0.0f;
@@ -90,21 +99,20 @@ void UXBSoldierFollowComponent::TickComponent(float DeltaTime, ELevelTick TickTy
         return;
     }
 
-    // 更新幽灵目标（位置与Yaw），用于平滑编队
+    // 更新幽灵目标（位置/槽位Yaw等）
     UpdateGhostTarget(DeltaTime);
 
-    // 每帧更新将领速度缓存（用于招募过渡模式）
-    if (bSyncLeaderSprint && CurrentMode == EXBFollowMode::RecruitTransition)
+    // 🔧 修改 - 无论 Locked 还是 RecruitTransition，都刷新将领状态缓存（用于速度感知）
+    if (CachedLeaderCharacter.IsValid())
     {
         CachedLeaderSpeed = GetLeaderCurrentSpeed();
-
-        if (CachedLeaderCharacter.IsValid())
-        {
-            bLeaderIsSprinting = CachedLeaderCharacter->IsSprinting();
-        }
+        bLeaderIsSprinting = CachedLeaderCharacter->IsSprinting();
     }
 
-    FVector PreUpdateLocation = Owner->GetActorLocation();
+    // ✨ 新增 - 更新“速度传播波”的感知速度
+    UpdateLeaderSpeedPerception(DeltaTime);
+
+    const FVector PreUpdateLocation = Owner->GetActorLocation();
 
     switch (CurrentMode)
     {
@@ -120,7 +128,7 @@ void UXBSoldierFollowComponent::TickComponent(float DeltaTime, ELevelTick TickTy
         break;
     }
 
-    // 计算实际移动速度（用于动画等）
+    // 计算实际移动速度（给动画用）
     if (DeltaTime > KINDA_SMALL_NUMBER)
     {
         FVector CurrentLocation = Owner->GetActorLocation();
@@ -219,18 +227,314 @@ bool UXBSoldierFollowComponent::IsRotationAligned(const FRotator& TargetRotation
     float YawDiff = FMath::Abs(FRotator::NormalizeAxis(CurrentRotation.Yaw - TargetRotation.Yaw));
     return YawDiff <= ToleranceDegrees;
 }
+/**
+ * @brief 更新主将速度感知（传播波 - 加速上升沿触发）
+ * @param DeltaTime 帧间隔
+ * @note  🔧 修改 - 修复波纹可能“不触发”的情况：
+ *        1) 保留“加速度上升沿触发”主逻辑（开始加速瞬间触发）
+ *        2) ✨ 新增：速度变化阈值触发兜底（LeaderSpeedWaveTriggerThreshold）
+ *           避免某些插值/网络/状态切换导致 Accel 不够大时，波纹永远不进入 Pending
+ */
+void UXBSoldierFollowComponent::UpdateLeaderSpeedPerception(float DeltaTime)
+{
+    if (!CachedLeaderCharacter.IsValid())
+    {
+        bLeaderSpeedWaveInitialized = false;
+        bLeaderSpeedEventPending = false;
+
+        InstantLeaderSpeed = 0.0f;
+        PerceivedLeaderSpeed = 0.0f;
+
+        PrevInstantLeaderSpeedForAccel = 0.0f;
+        bWasLeaderAccelerating = false;
+
+        return;
+    }
+
+    UWorld* World = GetWorld();
+    if (!World)
+    {
+        return;
+    }
+
+    const float Now = World->GetTimeSeconds();
+
+    // 主将瞬时速度（当前“指令速度”，你这边返回的是 MaxWalkSpeed）
+    InstantLeaderSpeed = GetLeaderCurrentSpeed();
+
+    // 初始化
+    if (!bLeaderSpeedWaveInitialized)
+    {
+        PerceivedLeaderSpeed = InstantLeaderSpeed;
+        PendingLeaderSpeed = InstantLeaderSpeed;
+
+        PrevInstantLeaderSpeedForAccel = InstantLeaderSpeed;
+        bWasLeaderAccelerating = false;
+        LastAccelEventTime = Now;
+
+        bLeaderSpeedWaveInitialized = true;
+        bLeaderSpeedEventPending = false;
+
+        bPrevLeaderSprintingForWave = bLeaderIsSprinting;
+
+        CachedEstimatedColumns = GetEstimatedFormationColumns();
+        CachedSlotsNumForColumns = CachedFormationComponent.IsValid()
+            ? CachedFormationComponent->GetFormationSlots().Num()
+            : 0;
+
+        return;
+    }
+
+    // 如果禁用波纹：感知速度平滑贴近瞬时速度
+    if (!bEnableLeaderSpeedWave)
+    {
+        PerceivedLeaderSpeed = (LeaderSpeedWaveApplyInterpRate > 0.0f)
+            ? FMath::FInterpTo(PerceivedLeaderSpeed, InstantLeaderSpeed, DeltaTime, LeaderSpeedWaveApplyInterpRate)
+            : InstantLeaderSpeed;
+
+        PrevInstantLeaderSpeedForAccel = InstantLeaderSpeed;
+        bWasLeaderAccelerating = false;
+        return;
+    }
+
+    // ===================== ✨ 加速度上升沿检测 =====================
+
+    float Accel = 0.0f;
+    if (DeltaTime > KINDA_SMALL_NUMBER)
+    {
+        // 为什么用瞬时速度差：你主将加速是通过 MaxWalkSpeed 插值，dV/dt 在开始加速时会很大
+        Accel = (InstantLeaderSpeed - PrevInstantLeaderSpeedForAccel) / DeltaTime;
+    }
+    PrevInstantLeaderSpeedForAccel = InstantLeaderSpeed;
+
+    // Sprint 变化也视作“开始加速事件”（确保按键触发立刻有波纹）
+    const bool bSprintChanged = (bLeaderIsSprinting != bPrevLeaderSprintingForWave);
+
+    // 处于“加速中”判定（上升沿需要这个状态机）
+    const bool bIsLeaderAccelerating = (Accel >= AccelStartThreshold);
+    const bool bStopAccelerating = (Accel <= AccelStopThreshold);
+
+    // 上升沿：从非加速 -> 加速
+    const bool bAccelRisingEdge = (bTriggerWaveOnAccelStart && bIsLeaderAccelerating && !bWasLeaderAccelerating);
+
+    // 触发冷却：避免插值抖动造成短时间重复触发
+    const bool bCooldownOk = ((Now - LastAccelEventTime) >= AccelEventCooldown);
+
+    // ✨ 新增 - 速度变化阈值触发兜底（你在 .h 暴露了参数，但原逻辑没用上）
+    // 为什么：某些情况下加速度可能不够大，但速度差已经足够“肉眼可见”，此时也应该触发一次波纹
+    const bool bSpeedDeltaTrigger =
+        (LeaderSpeedWaveTriggerThreshold > 0.0f) &&
+        (FMath::Abs(InstantLeaderSpeed - PerceivedLeaderSpeed) >= LeaderSpeedWaveTriggerThreshold);
+
+    if (((bAccelRisingEdge && bCooldownOk) || (bSpeedDeltaTrigger && bCooldownOk)) || bSprintChanged)
+    {
+        // 🔧 修改 - 只在“开始加速瞬间”记录事件起点
+        LeaderSpeedEventStartTime = Now;
+        bLeaderSpeedEventPending = true;
+
+        LastAccelEventTime = Now;
+
+        // PendingLeaderSpeed 初始取当前（后续会持续更新）
+        PendingLeaderSpeed = InstantLeaderSpeed;
+
+        UE_LOG(LogXBSoldier, Log, TEXT("跟随组件：触发速度传播波；Accel=%.1f，速度差=%.1f，槽位=%d，延迟=%.3fs"),
+            Accel,
+            FMath::Abs(InstantLeaderSpeed - PerceivedLeaderSpeed),
+            FormationSlotIndex,
+            ComputeLeaderSpeedWaveDelay());
+    }
+
+    // 记录加速状态（用于下一帧上升沿检测）
+    if (bStopAccelerating)
+    {
+        bWasLeaderAccelerating = false;
+    }
+    else if (bIsLeaderAccelerating)
+    {
+        bWasLeaderAccelerating = true;
+    }
+
+    bPrevLeaderSprintingForWave = bLeaderIsSprinting;
+
+    // ===================== 🔧 波纹事件处理 =====================
+
+    if (!bLeaderSpeedEventPending)
+    {
+        // 没有事件时，慢慢贴近主将速度（避免长期漂移）
+        PerceivedLeaderSpeed = (LeaderSpeedWaveApplyInterpRate > 0.0f)
+            ? FMath::FInterpTo(PerceivedLeaderSpeed, InstantLeaderSpeed, DeltaTime, LeaderSpeedWaveApplyInterpRate)
+            : InstantLeaderSpeed;
+
+        return;
+    }
+
+    // 🔧 修改 - 事件期间：PendingLeaderSpeed 持续跟随主将瞬时速度
+    // 为什么：你要的是“开始加速触发波”，而不是“每个增量都重新触发”，因此不重置 StartTime，只更新目标值
+    PendingLeaderSpeed = InstantLeaderSpeed;
+
+    const float Delay = ComputeLeaderSpeedWaveDelay();
+    const float Elapsed = Now - LeaderSpeedEventStartTime;
+
+    if (Elapsed >= Delay)
+    {
+        // 到点后快速贴近（插值），前排先开始，后排后开始 → 交错感
+        PerceivedLeaderSpeed = (LeaderSpeedWaveApplyInterpRate > 0.0f)
+            ? FMath::FInterpTo(PerceivedLeaderSpeed, PendingLeaderSpeed, DeltaTime, LeaderSpeedWaveApplyInterpRate)
+            : PendingLeaderSpeed;
+
+        // 事件结束条件：主将不再加速 & 已基本跟上
+        if (!bWasLeaderAccelerating && FMath::Abs(PerceivedLeaderSpeed - PendingLeaderSpeed) <= 15.0f)
+        {
+            bLeaderSpeedEventPending = false;
+        }
+    }
+    // 未到点：保持当前感知速度不变 → “后排晚看到”的核心效果
+}
 
 /**
- * @brief 更新锁定模式
- * @param DeltaTime 帧间隔
- * @note  🔧 修复点：
- *        1) 不再使用 SetActorLocation 步进（那会让移动组件速度为0，看起来像粘住主将）
- *        2) 改用 AddMovementInput 驱动 CharacterMovement，保证有真实速度/加速度
- *        3) 使用“死区 + 输入按误差缩放 + MaxWalkSpeed 插值”避免微抖与挤压
+ * @brief 计算主将速度传播波的延迟（按槽位/行号推导）
+ * @return 本士兵的触发延迟（秒）
+ * @note   🔧 修改 - 修复“波纹无效果/延迟全部相同”的问题：
+ *        原因：当 LeaderSpeedWaveMaxDelay 设置为 0.5 等较小值时，
+ *              原逻辑直接 Min(Delay, MaxDelay) 会把大量槽位的延迟硬截断成同一个值，
+ *              导致传播波失去层级差异（看起来像没有波纹）。
+ *        修复：当设置了 MaxDelay 时，不做硬截断，而是把“原始延迟增量”根据编队规模归一化，
+ *              映射到 [0, MaxDelay]，既能限制最大延迟，又能保留波纹梯度。
+ */
+float UXBSoldierFollowComponent::ComputeLeaderSpeedWaveDelay() const
+{
+   const int32 SlotIndex = FMath::Max(FormationSlotIndex, 0);
+
+    // 1) 估算列数与行号
+    const int32 Columns = FMath::Max(CachedEstimatedColumns, 1);
+    const int32 RowIndex = SlotIndex / Columns;
+
+    // 2) 原始“延迟增量”计算：按行或按槽位（取更大的那个，确保后排更晚）
+    const float RawRowDelay = LeaderSpeedWaveDelayPerRow * static_cast<float>(RowIndex);
+    const float RawSlotDelay = LeaderSpeedWaveDelayPerSlot * static_cast<float>(SlotIndex);
+    float RawDelayAdd = FMath::Max(RawRowDelay, RawSlotDelay);
+
+    // 3) 确定性抖动：每个士兵固定，避免每帧波动导致视觉噪声
+    if (LeaderSpeedWaveRandomJitter > 0.0f)
+    {
+        RawDelayAdd += GetDeterministicRandom01() * LeaderSpeedWaveRandomJitter;
+    }
+
+    // 4) 🔧 修改 - MaxDelay 不再硬截断，而是归一化映射
+    // 为什么：硬截断会让大量槽位全部变成同一个延迟（例如全是 0.5s）
+    if (LeaderSpeedWaveMaxDelay > 0.0f)
+    {
+        // 编队规模推导：用槽位总数估算最大行号与最大槽位号
+        int32 SlotCount = 0;
+        if (CachedFormationComponent.IsValid())
+        {
+            const UXBFormationComponent* FormationComp = CachedFormationComponent.Get();
+            if (FormationComp)
+            {
+                SlotCount = FormationComp->GetFormationSlots().Num();
+            }
+        }
+
+        // 如果拿不到槽位数，退化为“保留原逻辑但做安全限制”
+        if (SlotCount <= 0)
+        {
+            RawDelayAdd = FMath::Min(RawDelayAdd, LeaderSpeedWaveMaxDelay);
+        }
+        else
+        {
+            const int32 MaxSlotIndex = FMath::Max(SlotCount - 1, 1);
+            const int32 MaxRowIndex = FMath::Max(MaxSlotIndex / Columns, 1);
+
+            // 估算“理论最大延迟增量”（用于归一化）
+            const float MaxByRow = LeaderSpeedWaveDelayPerRow * static_cast<float>(MaxRowIndex);
+            const float MaxBySlot = LeaderSpeedWaveDelayPerSlot * static_cast<float>(MaxSlotIndex);
+            const float MaxExpectedAdd = FMath::Max(FMath::Max(MaxByRow, MaxBySlot), KINDA_SMALL_NUMBER);
+
+            // 归一化并映射到 [0, MaxDelay]
+            const float Normalized = FMath::Clamp(RawDelayAdd / MaxExpectedAdd, 0.0f, 1.0f);
+            RawDelayAdd = Normalized * LeaderSpeedWaveMaxDelay;
+        }
+    }
+
+    const float FinalDelay = LeaderSpeedWaveBaseDelay + RawDelayAdd;
+    return FMath::Max(FinalDelay, 0.0f);
+}
+
+/**
+ * @brief 估算当前编队列数（用于由槽位序号推导行号）
+ * @return 列数（>=1）
+ * @note  为什么要估算：
+ *        - FormationComponent 的“实际Columns”不是公开字段
+ *        - 但 FormationSlots 中第一行槽位的 LocalOffset.X 相同，可用来推断列数
+ *        - 只在槽位数变化时重新估算，避免每帧开销
+ */
+int32 UXBSoldierFollowComponent::GetEstimatedFormationColumns() const
+{
+    if (!CachedFormationComponent.IsValid())
+    {
+        return 4;
+    }
+
+    UXBFormationComponent* FormationComp = CachedFormationComponent.Get();
+    if (!FormationComp)
+    {
+        return 4;
+    }
+
+    const TArray<FXBFormationSlot>& Slots = FormationComp->GetFormationSlots();
+    if (Slots.Num() <= 0)
+    {
+        return 4;
+    }
+
+    // 第一行的 X 偏移是相同的，统计连续相同X的数量即列数
+    const float FirstRowX = Slots[0].LocalOffset.X;
+    const float Tolerance = 0.1f;
+
+    int32 Columns = 0;
+    for (int32 i = 0; i < Slots.Num(); ++i)
+    {
+        if (FMath::Abs(Slots[i].LocalOffset.X - FirstRowX) <= Tolerance)
+        {
+            ++Columns;
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    return FMath::Max(Columns, 1);
+}
+
+/**
+ * @brief 生成确定性随机抖动（每个士兵固定）
+ * @return [0,1) 随机值
+ * @note  为什么要确定性：
+ *        - 同一士兵每次运行保持一致，便于调试与复现
+ *        - 不依赖全局随机，避免多人联机/回放出现差异
+ */
+float UXBSoldierFollowComponent::GetDeterministicRandom01() const
+{
+    const AActor* Owner = GetOwner();
+    const int32 Seed = Owner ? Owner->GetUniqueID() : 1;
+
+    // 经典 hash->float：sin 哈希用于生成稳定伪随机
+    const float S = FMath::Sin(static_cast<float>(Seed) * 12.9898f) * 43758.5453f;
+    return FMath::Frac(S);
+}
+
+/**
+ * @brief  锁定模式更新（严格跟随槽位）
+ * @param  DeltaTime 帧间隔
+ * @note   🔧 修改 - 朝向严格对齐主将朝向：
+ *        原逻辑用 CalculateFormationWorldRotation()，在 GhostYaw 插值/限速时可能与主将Yaw不一致，
+ *        导致士兵看起来“队形在走但脸没对齐主将”。
+ *        修复：Locked 模式下，若启用 bFollowRotation，直接以 Leader->GetActorRotation().Yaw 作为目标Yaw。
  */
 void UXBSoldierFollowComponent::UpdateLockedMode(float DeltaTime)
 {
-   AActor* Owner = GetOwner();
+    AActor* Owner = GetOwner();
     AActor* Leader = FollowTargetRef.Get();
 
     if (!Owner || !Leader || !IsValid(Leader))
@@ -249,45 +553,73 @@ void UXBSoldierFollowComponent::UpdateLockedMode(float DeltaTime)
     const FVector CurrentPosition = Owner->GetActorLocation();
     const float DistanceToSlot = FVector::Dist2D(CurrentPosition, TargetPosition);
 
-    // ========== 速度策略 ==========
-    float LeaderSpeed = 0.0f;
-    if (CachedLeaderCharacter.IsValid())
+    // 🔧 修改 - 速度来源使用“感知速度”（用于产生按行传播波纹）
+    const float LeaderSpeedForThisSoldier = (bEnableLeaderSpeedWave ? PerceivedLeaderSpeed : InstantLeaderSpeed);
+
+    // ==================== 误差归一化（用于输入与追赶速度缩放） ====================
+
+    const float Deadzone = FMath::Max(LockedDeadzoneDistance, 0.0f);
+    const float FullDist = FMath::Max(LockedFullInputDistance, Deadzone + 1.0f);
+    const float ErrorAlpha = FMath::Clamp((DistanceToSlot - Deadzone) / (FullDist - Deadzone), 0.0f, 1.0f);
+
+    // ==================== 波纹保护：延迟未到点时抑制追赶速度 ====================
+
+    bool bHoldCatchUpForWave = false;
+    if (bEnableLeaderSpeedWave && bLeaderSpeedEventPending)
     {
-        LeaderSpeed = CachedLeaderCharacter->GetCurrentMoveSpeed();
+        if (UWorld* World = GetWorld())
+        {
+            const float Now = World->GetTimeSeconds();
+            const float Delay = ComputeLeaderSpeedWaveDelay();
+            const float Elapsed = Now - LeaderSpeedEventStartTime;
+
+            if (Elapsed < Delay)
+            {
+                bHoldCatchUpForWave = true;
+            }
+        }
     }
 
-    // 🔧 修改 - 目标速度：至少不低于 LockedFollowMoveSpeed，并允许一定追赶余量（保持跟随感但不“贴死”）
-    const float DesiredSpeed = FMath::Max(LockedFollowMoveSpeed, LeaderSpeed + LockedCatchUpExtraSpeed);
+    // ==================== 追赶额外速度（仅在偏离槽位时） ====================
 
-    // 速度插值：避免速度突跳产生顿挫
+    float CatchUpExtra = LockedCatchUpExtraSpeed * ErrorAlpha;
+
+    if (bHoldCatchUpForWave)
+    {
+        CatchUpExtra = 0.0f;
+    }
+
+    const float DesiredSpeed = FMath::Max(LockedFollowMoveSpeed, LeaderSpeedForThisSoldier) + CatchUpExtra;
+
     const float NewMaxSpeed = (LockedSpeedInterpRate > 0.0f)
         ? FMath::FInterpTo(MoveComp->MaxWalkSpeed, DesiredSpeed, DeltaTime, LockedSpeedInterpRate)
         : DesiredSpeed;
 
     MoveComp->MaxWalkSpeed = NewMaxSpeed;
 
-    // ========== 误差驱动移动：死区 + 输入缩放 ==========
-    if (DistanceToSlot > LockedDeadzoneDistance)
+    // ==================== 位移：输入强度随误差缩放 ====================
+
+    if (DistanceToSlot > Deadzone)
     {
         const FVector MoveDir = (TargetPosition - CurrentPosition).GetSafeNormal2D();
-        if (!MoveDir.IsNearlyZero())
-        {
-            // 为什么按误差缩放输入：误差越小越不抢位，减少“挤成团”和抖腿
-            const float InputAlpha = FMath::Clamp(DistanceToSlot / FMath::Max(LockedFullInputDistance, 1.0f), 0.0f, 1.0f);
-            CharOwner->AddMovementInput(MoveDir, InputAlpha);
-        }
+        const float InputScale = FMath::Clamp(ErrorAlpha, 0.15f, 1.0f);
+        CharOwner->AddMovementInput(MoveDir, InputScale);
     }
 
-    // ========== 朝向：锁定模式始终面向队伍前方 ==========
+    // ==================== 🔧 修改 - 朝向：严格对齐主将Yaw ====================
+
     if (bFollowRotation)
     {
-        const FRotator TargetRotation = CalculateFormationWorldRotation();
+        const float LeaderYaw = FRotator::NormalizeAxis(Leader->GetActorRotation().Yaw);
+
+        const FRotator TargetRotation(0.0f, LeaderYaw, 0.0f);
         const FRotator NewRotation = FMath::RInterpTo(
             Owner->GetActorRotation(),
             TargetRotation,
             DeltaTime,
             LockedRotationInterpSpeed
         );
+
         Owner->SetActorRotation(FRotator(0.0f, NewRotation.Yaw, 0.0f));
     }
 }
@@ -664,7 +996,11 @@ FRotator UXBSoldierFollowComponent::CalculateFormationWorldRotation() const
 }
 
 // ==================== 目标设置 ====================
-
+/**
+ * @brief 设置跟随目标
+ * @param NewTarget 新目标
+ * @note  🔧 修改 - 初始化加速度上升沿检测状态，避免切换目标后第一帧误触发波纹
+ */
 void UXBSoldierFollowComponent::SetFollowTarget(AActor* NewTarget)
 {
     FollowTargetRef = NewTarget;
@@ -680,32 +1016,69 @@ void UXBSoldierFollowComponent::SetFollowTarget(AActor* NewTarget)
             CachedLeaderSpeed = CharTarget->GetCurrentMoveSpeed();
         }
 
-        // 🔧 修改 - 初始化Yaw缓存（Yaw-only），避免第一帧角度突跳
+        // 初始化幽灵目标
+        GhostTargetLocation = NewTarget->GetActorLocation();
         const float InitYaw = FRotator::NormalizeAxis(NewTarget->GetActorRotation().Yaw);
         GhostYawDegrees = InitYaw;
         GhostSlotYawDegrees = InitYaw;
-
-        GhostTargetLocation = NewTarget->GetActorLocation();
         GhostTargetRotation = FRotator(0.0f, GhostYawDegrees, 0.0f);
-
         bGhostInitialized = true;
 
         const FVector2D SlotOffset = GetSlotLocalOffset();
         GhostSlotTargetLocation = GhostTargetLocation + FRotator(0.0f, GhostSlotYawDegrees, 0.0f).RotateVector(FVector(SlotOffset.X, SlotOffset.Y, 0.0f));
 
-        UE_LOG(LogXBSoldier, Log, TEXT("跟随组件：设置跟随目标=%s，槽位即时Yaw=%s"),
-            *NewTarget->GetName(),
-            bUseInstantLeaderYawForSlot ? TEXT("启用") : TEXT("禁用"));
+        // 初始化速度传播波
+        bLeaderSpeedWaveInitialized = false;
+        bLeaderSpeedEventPending = false;
+
+        PendingLeaderSpeed = 0.0f;
+        LeaderSpeedEventStartTime = 0.0f;
+        bPrevLeaderSprintingForWave = bLeaderIsSprinting;
+
+        // 🔧 修改 - 初始化加速度检测缓存
+        InstantLeaderSpeed = GetLeaderCurrentSpeed();
+        PerceivedLeaderSpeed = InstantLeaderSpeed;
+
+        PrevInstantLeaderSpeedForAccel = InstantLeaderSpeed;
+        bWasLeaderAccelerating = false;
+
+        if (UWorld* World = GetWorld())
+        {
+            LastAccelEventTime = World->GetTimeSeconds();
+        }
+        else
+        {
+            LastAccelEventTime = -10000.0f;
+        }
+
+        CachedEstimatedColumns = GetEstimatedFormationColumns();
+        CachedSlotsNumForColumns = CachedFormationComponent.IsValid()
+            ? CachedFormationComponent->GetFormationSlots().Num()
+            : 0;
+
+        UE_LOG(LogXBSoldier, Log, TEXT("跟随组件：设置跟随目标=%s，已启用加速上升沿波纹；列数=%d"),
+            *NewTarget->GetName(), CachedEstimatedColumns);
     }
     else
     {
         CachedFormationComponent = nullptr;
         CachedLeaderCharacter = nullptr;
+
         bLeaderIsSprinting = false;
         CachedLeaderSpeed = 0.0f;
 
         bGhostInitialized = false;
         GhostSlotTargetLocation = FVector::ZeroVector;
+
+        bLeaderSpeedWaveInitialized = false;
+        bLeaderSpeedEventPending = false;
+
+        InstantLeaderSpeed = 0.0f;
+        PerceivedLeaderSpeed = 0.0f;
+
+        PrevInstantLeaderSpeedForAccel = 0.0f;
+        bWasLeaderAccelerating = false;
+        LastAccelEventTime = -10000.0f;
     }
 }
 

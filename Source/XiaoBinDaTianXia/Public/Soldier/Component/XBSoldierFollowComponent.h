@@ -364,6 +364,69 @@ protected:
     // 🔧 修改 - 用“到达累积时间”替代硬切阶段，避免接近槽位时的顿挫
     float ArrivedTimeAccumulator = 0.0f;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked",
+    meta = (DisplayName = "启用主将加速传播波", ToolTip = "启用后：主将加速/减速不会全队同步，按槽位序号/行数产生先后响应的交错感。"))
+    bool bEnableLeaderSpeedWave = true;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked",
+    meta = (DisplayName = "传播基础延迟(秒)", ClampMin = "0.0", ToolTip = "每个士兵都会叠加的基础延迟。"))
+    float LeaderSpeedWaveBaseDelay = 0.00f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked",
+    meta = (DisplayName = "每行额外延迟(秒)", ClampMin = "0.0", ToolTip = "按行传播时，每往后一行增加的延迟。建议 0.03~0.08。"))
+    float LeaderSpeedWaveDelayPerRow = 0.05f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked",
+    meta = (DisplayName = "每槽位额外延迟(秒)", ClampMin = "0.0", ToolTip = "按槽位序号传播时，每个槽位增加的延迟。可用于更强的“蛇尾”效果。"))
+    float LeaderSpeedWaveDelayPerSlot = 0.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked",
+    meta = (DisplayName = "传播随机抖动(秒)", ClampMin = "0.0", ToolTip = "为避免过于整齐，可加入少量随机抖动（确定性），建议 0~0.02。"))
+    float LeaderSpeedWaveRandomJitter = 0.01f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked",
+    meta = (DisplayName = "最大传播延迟(秒)", ClampMin = "0.0", ToolTip = "延迟上限，防止队尾响应过慢。"))
+    float LeaderSpeedWaveMaxDelay = 0.35f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked",
+    meta = (DisplayName = "速度变化触发阈值", ClampMin = "0.0", ToolTip = "主将速度变化超过该值才触发传播事件，避免微小速度抖动导致频繁波动。"))
+    float LeaderSpeedWaveTriggerThreshold = 80.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked",
+    meta = (DisplayName = "传播后速度应用插值率", ClampMin = "0.0", ToolTip = "延迟到点后，感知速度用插值靠近目标速度，越大越快。"))
+    float LeaderSpeedWaveApplyInterpRate = 18.0f;
+    
+    // ✨ 新增 - 对外可观察的“主将速度感知”缓存（可用于调试/动画）
+
+    UPROPERTY(BlueprintReadOnly, Category = "XB|Follow|Locked", meta = (DisplayName = "主将瞬时速度"))
+    float InstantLeaderSpeed = 0.0f;
+
+    UPROPERTY(BlueprintReadOnly, Category = "XB|Follow|Locked", meta = (DisplayName = "主将感知速度"))
+    float PerceivedLeaderSpeed = 0.0f;
+
+    // ✨ 新增 - 主将加速“上升沿触发”配置（让波纹在开始加速瞬间出现）
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked",
+        meta = (DisplayName = "加速上升沿触发波纹", ToolTip = "启用后：仅在主将开始加速的瞬间触发一次传播波，形成明显先后交错感。"))
+    bool bTriggerWaveOnAccelStart = true;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked",
+        meta = (DisplayName = "加速触发阈值(uu/s^2)", ClampMin = "0.0",
+            ToolTip = "主将速度变化率(dV/dt)超过该阈值，视为开始加速并触发波纹。建议 1000~3000（视你的 SpeedInterpRate 而定）。"))
+    float AccelStartThreshold = 1500.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked",
+        meta = (DisplayName = "加速结束阈值(uu/s^2)", ClampMin = "0.0",
+            ToolTip = "当加速度低于该值，认为主将已不再加速，用于上升沿检测复位。建议 200~600。"))
+    float AccelStopThreshold = 400.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked",
+        meta = (DisplayName = "加速触发冷却(秒)", ClampMin = "0.0",
+            ToolTip = "防止短时间内反复触发波纹事件。建议 0.2~0.6。"))
+    float AccelEventCooldown = 0.35f;
+
+
+    
     // ==================== 战斗状态 ====================
 
     UPROPERTY(BlueprintReadOnly, Category = "XB|Follow|Combat", meta = (DisplayName = "是否战斗中"))
@@ -413,5 +476,57 @@ protected:
     // ✨ 新增 - 槽位Yaw缓存（可选择即时或最小插值）
     float GhostSlotYawDegrees = 0.0f;
 
+    
+    // ✨ 新增 - 内部方法声明（建议放到 protected: 内部方法区）
+
+    /**
+     * @brief 更新主将速度感知（传播波）
+     * @param DeltaTime 帧间隔
+     * @note  仅影响“Locked 模式”的速度响应节奏，用于制造前后排先后交错感
+     */
+    void UpdateLeaderSpeedPerception(float DeltaTime);
+
+    /**
+     * @brief 计算当前士兵的传播延迟
+     * @return 延迟秒数
+     * @note  综合：基础延迟 + 行延迟/槽位延迟 + 确定性随机抖动，并受最大延迟限制
+     */
+    float ComputeLeaderSpeedWaveDelay() const;
+
+    /**
+     * @brief 估算当前编队列数（用于由槽位序号推导行号）
+     * @return 估算列数（>=1）
+     * @note  优先从 FormationSlots 推断第一行有多少个相同X偏移的槽位
+     */
+    int32 GetEstimatedFormationColumns() const;
+
+    /**
+     * @brief 生成确定性随机抖动（每个士兵固定）
+     * @return [0,1) 的随机值
+     */
+    float GetDeterministicRandom01() const;
+
+
+    // ✨ 新增 - 内部状态（建议放到你的状态变量区域）
+
+    bool bLeaderSpeedWaveInitialized = false;
+    bool bLeaderSpeedEventPending = false;
+
+    float PendingLeaderSpeed = 0.0f;
+    float LeaderSpeedEventStartTime = 0.0f;
+
+    bool bPrevLeaderSprintingForWave = false;
+
+    // 缓存估算列数，减少每帧扫描
+    int32 CachedEstimatedColumns = 4;
+    int32 CachedSlotsNumForColumns = 0;
+
     FTimerHandle DelayedRecruitStartHandle;
+
+    
+    // ✨ 新增 - 加速度检测运行时状态（放到你的状态变量区域）
+
+    float PrevInstantLeaderSpeedForAccel = 0.0f;
+    bool bWasLeaderAccelerating = false;
+    float LastAccelEventTime = -10000.0f;
 };
