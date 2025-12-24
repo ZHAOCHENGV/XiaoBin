@@ -13,6 +13,7 @@
  *       5. ✨ 新增对士兵的伤害支持
  *       6. ❌ 删除 BaseDamage 成员变量
  *       7. ✨ 新增 GetAttackDamage() 从战斗组件获取伤害
+ *       8. 🔧 修改 - 主将命中时通知战斗逻辑
  */
 
 #include "Animation/ANS_XBMeleeDetection.h"
@@ -386,6 +387,13 @@ void UANS_XBMeleeDetection::ApplyDamageToTargets(const TArray<FHitResult>& HitRe
             UE_LOG(LogXBCombat, Verbose, TEXT("阵营过滤: %s 不攻击 %s（非敌对）"),
                 *OwnerActor->GetName(), *HitActor->GetName());
             continue;
+        }
+
+        // 🔧 修改 - 当主将命中目标时，通知主将触发战斗逻辑（命中敌方主将时会驱动士兵进入战斗）
+        if (AXBCharacterBase* OwnerLeader = Cast<AXBCharacterBase>(OwnerActor))
+        {
+            // 为什么这里调用：近战命中是主将攻击敌方主将的确定时机，可确保士兵及时进入战斗
+            OwnerLeader->OnAttackHit(HitActor);
         }
 
         // 记录已命中，避免重复伤害
