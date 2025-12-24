@@ -693,6 +693,8 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
     // ========= 位移与旋转 =========
     if (Distance > EffectiveArrivalThreshold)
     {
+        // 🔧 修改 - 明确记录招募阶段，便于蓝图/调试读取
+        CurrentRecruitPhase = EXBRecruitTransitionPhase::Moving;
         ArrivedTimeAccumulator = 0.0f;
 
         const FVector MoveDirection = (TargetPosition - CurrentPosition).GetSafeNormal2D();
@@ -727,6 +729,9 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
     }
     else
     {
+        // 🔧 修改 - 进入对齐阶段（到达阈值内）
+        CurrentRecruitPhase = EXBRecruitTransitionPhase::Aligning;
+
         // 在到达阈值内：累计确认时间（滞回），避免边界抖动导致“顿挫/掉帧感”
         ArrivedTimeAccumulator += DeltaTime;
 
@@ -780,65 +785,6 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
             LastPositionForStuckCheck = NewPosition;
         }
     }
-    // 这里原本有 ShouldForceTeleport/PerformForceTeleport，但你当前 bAllowTeleportDuringRecruit 默认关闭
-    // 若你后续希望启用“卡住/超时传送”，可在这里加上判断调用（不影响本次抖动修复核心）。
-}
-
-void UXBSoldierFollowComponent::UpdateAlignmentPhase(float DeltaTime)
-{
-    AActor* Owner = GetOwner();
-    if (!Owner)
-    {
-        return;
-    }
-
-    FRotator FormationRotation = CalculateFormationWorldRotation();
-
-    if (IsRotationAligned(FormationRotation, AlignmentToleranceDegrees))
-    {
-        UE_LOG(LogXBSoldier, Log, TEXT("跟随组件：对齐完成，切换到锁定模式"));
-
-        Owner->SetActorRotation(FRotator(0.0f, FormationRotation.Yaw, 0.0f));
-        SetFollowMode(EXBFollowMode::Locked);
-        OnRecruitTransitionCompleted.Broadcast();
-        return;
-    }
-
-    FRotator CurrentRotation = Owner->GetActorRotation();
-    FRotator NewRotation = FMath::RInterpTo(
-        CurrentRotation,
-        FormationRotation,
-        DeltaTime,
-        AlignmentRotationSpeed
-    );
-    Owner->SetActorRotation(FRotator(0.0f, NewRotation.Yaw, 0.0f));
-
-    FVector TargetPosition = GetSmoothedFormationTarget();
-    FVector CurrentPosition = Owner->GetActorLocation();
-    float Distance = FVector::Dist2D(CurrentPosition, TargetPosition);
-
-    if (Distance > ArrivalThreshold * 2.0f)
-    {
-        UCharacterMovementComponent* MoveComp = GetCachedMovementComponent();
-        ACharacter* CharOwner = Cast<ACharacter>(Owner);
-
-        if (MoveComp && CharOwner)
-        {
-            float LeaderSpeed = 0.0f;
-            if (CachedLeaderCharacter.IsValid())
-            {
-                LeaderSpeed = CachedLeaderCharacter->GetCurrentMoveSpeed();
-            }
-
-            MoveComp->MaxWalkSpeed = FMath::Max(LeaderSpeed, LockedFollowMoveSpeed);
-
-            FVector MoveDirection = (TargetPosition - CurrentPosition).GetSafeNormal2D();
-            if (!MoveDirection.IsNearlyZero())
-            {
-                CharOwner->AddMovementInput(MoveDirection, 1.0f);
-            }
-        }
-    }
 }
 
 /**
@@ -885,8 +831,6 @@ void UXBSoldierFollowComponent::UpdateGhostTarget(float DeltaTime)
         GhostYawDegrees = LeaderYaw;
         GhostSlotYawDegrees = LeaderYaw;
 
-        GhostTargetRotation = FRotator(0.0f, GhostYawDegrees, 0.0f);
-
         bGhostInitialized = true;
 
         // 初始化槽位目标点
@@ -908,26 +852,34 @@ void UXBSoldierFollowComponent::UpdateGhostTarget(float DeltaTime)
 
     // 幽灵Yaw插值：用于士兵朝向/队伍朝向平滑
     GhostYawDegrees = InterpAngleExp(GhostYawDegrees, LeaderYaw, DeltaTime, GhostRotationInterpSpeed);
-    GhostTargetRotation = FRotator(0.0f, GhostYawDegrees, 0.0f);
 
-    // 🔧 修改 - 槽位Yaw：强制最小插值速度，避免你把 GhostRotationInterpSpeed 调低后出现抖动
-    const float SlotYawInterpSpeed = FMath::Max(GhostRotationInterpSpeed, MinGhostSlotYawInterpSpeed);
-
-    // 先插值到“期望槽位Yaw”
-    const float PrevSlotYaw = GhostSlotYawDegrees;
-    float NewSlotYaw = InterpAngleExp(GhostSlotYawDegrees, LeaderYaw, DeltaTime, SlotYawInterpSpeed);
-
-    // ✨ 新增 - 限制槽位Yaw最大角速度：防止主将大幅快速转身时槽位目标点瞬间甩动导致穿插堆叠
-    if (bClampSlotYawRate && DeltaTime > KINDA_SMALL_NUMBER)
+    // 🔧 修改 - 根据开关决定槽位Yaw来源（即时/插值）
+    if (bUseInstantLeaderYawForSlot)
     {
-        const float MaxDelta = MaxSlotYawRateDegPerSec * DeltaTime;
-        const float RawDelta = FMath::FindDeltaAngleDegrees(PrevSlotYaw, NewSlotYaw);
-
-        const float ClampedDelta = FMath::Clamp(RawDelta, -MaxDelta, MaxDelta);
-        NewSlotYaw = FRotator::NormalizeAxis(PrevSlotYaw + ClampedDelta);
+        // 为什么即时：槽位位置跟随主将Yaw无延迟，避免低插值速度导致抖动
+        GhostSlotYawDegrees = LeaderYaw;
     }
+    else
+    {
+        // 🔧 修改 - 槽位Yaw：强制最小插值速度，避免你把 GhostRotationInterpSpeed 调低后出现抖动
+        const float SlotYawInterpSpeed = FMath::Max(GhostRotationInterpSpeed, MinGhostSlotYawInterpSpeed);
 
-    GhostSlotYawDegrees = NewSlotYaw;
+        // 先插值到“期望槽位Yaw”
+        const float PrevSlotYaw = GhostSlotYawDegrees;
+        float NewSlotYaw = InterpAngleExp(GhostSlotYawDegrees, LeaderYaw, DeltaTime, SlotYawInterpSpeed);
+
+        // ✨ 新增 - 限制槽位Yaw最大角速度：防止主将大幅快速转身时槽位目标点瞬间甩动导致穿插堆叠
+        if (bClampSlotYawRate && DeltaTime > KINDA_SMALL_NUMBER)
+        {
+            const float MaxDelta = MaxSlotYawRateDegPerSec * DeltaTime;
+            const float RawDelta = FMath::FindDeltaAngleDegrees(PrevSlotYaw, NewSlotYaw);
+
+            const float ClampedDelta = FMath::Clamp(RawDelta, -MaxDelta, MaxDelta);
+            NewSlotYaw = FRotator::NormalizeAxis(PrevSlotYaw + ClampedDelta);
+        }
+
+        GhostSlotYawDegrees = NewSlotYaw;
+    }
 
     // 计算槽位目标点（注意：中心点默认使用主将即时位置）
     const FVector2D SlotOffset = GetSlotLocalOffset();
@@ -1021,7 +973,6 @@ void UXBSoldierFollowComponent::SetFollowTarget(AActor* NewTarget)
         const float InitYaw = FRotator::NormalizeAxis(NewTarget->GetActorRotation().Yaw);
         GhostYawDegrees = InitYaw;
         GhostSlotYawDegrees = InitYaw;
-        GhostTargetRotation = FRotator(0.0f, GhostYawDegrees, 0.0f);
         bGhostInitialized = true;
 
         const FVector2D SlotOffset = GetSlotLocalOffset();
@@ -1178,15 +1129,6 @@ void UXBSoldierFollowComponent::SetMovementMode(bool bEnableWalking)
     {
         MoveComp->SetMovementMode(MOVE_Flying);
         MoveComp->GravityScale = 0.0f;
-    }
-}
-
-void UXBSoldierFollowComponent::SetRVOAvoidanceEnabled(bool bEnable)
-{
-    UCharacterMovementComponent* MoveComp = GetCachedMovementComponent();
-    if (MoveComp)
-    {
-        MoveComp->SetAvoidanceEnabled(false);
     }
 }
 
@@ -1411,108 +1353,6 @@ float UXBSoldierFollowComponent::GetDistanceToFormation() const
  * @return 是否已到达
  * @note  Z 由 CharacterMovement 的重力/贴地负责，这里不手动改Z，避免上下抖动与穿插地面
  */
-bool UXBSoldierFollowComponent::MoveTowardsTargetXY(const FVector& TargetPosition, float DeltaTime, float MoveSpeed)
-{
-    AActor* Owner = GetOwner();
-    if (!Owner || DeltaTime <= KINDA_SMALL_NUMBER)
-    {
-        return false;
-    }
-
-    // 为什么只处理XY：跟随/编队是平面队列逻辑，Z交给物理/导航贴地可避免台阶与坡面抖动
-    const FVector CurrentPosition = Owner->GetActorLocation();
-
-    const FVector2D CurrentXY(CurrentPosition.X, CurrentPosition.Y);
-    const FVector2D TargetXY(TargetPosition.X, TargetPosition.Y);
-
-    FVector2D Direction = TargetXY - CurrentXY;
-    const float Distance = Direction.Size();
-
-    // 到达阈值内直接对齐XY（不动Z）
-    if (Distance <= ArrivalThreshold)
-    {
-        Owner->SetActorLocation(FVector(TargetXY.X, TargetXY.Y, CurrentPosition.Z));
-        return true;
-    }
-
-    Direction.Normalize();
-
-    const float MoveDistance = MoveSpeed * DeltaTime;
-
-    FVector2D NewXY;
-    if (MoveDistance >= Distance)
-    {
-        NewXY = TargetXY;
-    }
-    else
-    {
-        NewXY = CurrentXY + Direction * MoveDistance;
-    }
-
-    // 只改XY：Z保持不变，避免“人为写Z”与移动组件贴地修正打架造成抖动
-    Owner->SetActorLocation(FVector(NewXY.X, NewXY.Y, CurrentPosition.Z));
-
-    return MoveDistance >= Distance;
-}
-
-/**
- * @brief 是否需要强制传送
- * @return 是否应该传送
- * @note  当前默认 bAllowTeleportDuringRecruit=false，因此通常不会触发（保持你原项目策略）
- */
-bool UXBSoldierFollowComponent::ShouldForceTeleport() const
-{
-    AActor* Owner = GetOwner();
-    UWorld* World = GetWorld();
-
-    if (!Owner || !World || !bAllowTeleportDuringRecruit)
-    {
-        return false;
-    }
-
-    const float CurrentTime = World->GetTimeSeconds();
-
-    // 距离过远：说明追赶成本太高，传送回编队避免掉队
-    const float Distance = GetDistanceToFormation();
-    if (Distance > ForceTeleportDistance)
-    {
-        return true;
-    }
-
-    // 超时：长时间追不上，避免永远拖尾
-    const float ElapsedTime = CurrentTime - RecruitTransitionStartTime;
-    if (RecruitTransitionTimeout > 0.0f && ElapsedTime > RecruitTransitionTimeout)
-    {
-        return true;
-    }
-
-    // 卡住：低速持续过久说明可能被碰撞/卡位阻塞
-    if (StuckDetectionTime > 0.0f && AccumulatedStuckTime > StuckDetectionTime)
-    {
-        return true;
-    }
-
-    return false;
-}
-
-/**
- * @brief 执行强制传送
- * @note  传送后直接切换到 Locked，确保立刻稳定贴合编队
- */
-void UXBSoldierFollowComponent::PerformForceTeleport()
-{
-    UE_LOG(LogXBSoldier, Warning, TEXT("跟随组件：执行强制传送（距离/超时/卡住触发）"));
-
-    TeleportToFormationPosition();
-    SetFollowMode(EXBFollowMode::Locked);
-
-    // 为什么要清理缓存：传送后不再是“追赶”语义，否则速度补偿可能造成瞬时加速
-    bLeaderIsSprinting = false;
-    CachedLeaderSpeed = 0.0f;
-
-    OnRecruitTransitionCompleted.Broadcast();
-}
-
 /**
  * @brief 获取槽位本地偏移
  * @return 槽位LocalOffset（X向后、Y向左右）
