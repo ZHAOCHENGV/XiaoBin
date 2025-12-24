@@ -230,7 +230,7 @@ bool UXBSoldierFollowComponent::IsRotationAligned(const FRotator& TargetRotation
  */
 void UXBSoldierFollowComponent::UpdateLockedMode(float DeltaTime)
 {
-     AActor* Owner = GetOwner();
+   AActor* Owner = GetOwner();
     AActor* Leader = FollowTargetRef.Get();
 
     if (!Owner || !Leader || !IsValid(Leader))
@@ -247,39 +247,38 @@ void UXBSoldierFollowComponent::UpdateLockedMode(float DeltaTime)
 
     const FVector TargetPosition = GetSmoothedFormationTarget();
     const FVector CurrentPosition = Owner->GetActorLocation();
-
     const float DistanceToSlot = FVector::Dist2D(CurrentPosition, TargetPosition);
 
-    // ========== 速度策略：有追赶，但不会“瞬间贴死” ==========
+    // ========== 速度策略 ==========
     float LeaderSpeed = 0.0f;
     if (CachedLeaderCharacter.IsValid())
     {
         LeaderSpeed = CachedLeaderCharacter->GetCurrentMoveSpeed();
     }
 
-    // 为什么允许一点额外追赶速度：避免主将移动时士兵完全“粘”在槽位上，没有跟随感
-    const float DesiredSpeed = FMath::Max(LeaderSpeed + LockedCatchUpExtraSpeed, 200.0f);
+    // 🔧 修改 - 目标速度：至少不低于 LockedFollowMoveSpeed，并允许一定追赶余量（保持跟随感但不“贴死”）
+    const float DesiredSpeed = FMath::Max(LockedFollowMoveSpeed, LeaderSpeed + LockedCatchUpExtraSpeed);
 
-    // 🔧 修改 - MaxWalkSpeed 插值，避免速度突变导致顿挫
+    // 速度插值：避免速度突跳产生顿挫
     const float NewMaxSpeed = (LockedSpeedInterpRate > 0.0f)
         ? FMath::FInterpTo(MoveComp->MaxWalkSpeed, DesiredSpeed, DeltaTime, LockedSpeedInterpRate)
         : DesiredSpeed;
 
     MoveComp->MaxWalkSpeed = NewMaxSpeed;
 
-    // ========== 位置误差驱动：死区 + 输入缩放 ==========
+    // ========== 误差驱动移动：死区 + 输入缩放 ==========
     if (DistanceToSlot > LockedDeadzoneDistance)
     {
-        FVector MoveDir = (TargetPosition - CurrentPosition).GetSafeNormal2D();
+        const FVector MoveDir = (TargetPosition - CurrentPosition).GetSafeNormal2D();
         if (!MoveDir.IsNearlyZero())
         {
-            // 为什么按误差缩放输入：误差越小越不“抢位置”，减少挤成团/抖腿
+            // 为什么按误差缩放输入：误差越小越不抢位，减少“挤成团”和抖腿
             const float InputAlpha = FMath::Clamp(DistanceToSlot / FMath::Max(LockedFullInputDistance, 1.0f), 0.0f, 1.0f);
             CharOwner->AddMovementInput(MoveDir, InputAlpha);
         }
     }
 
-    // ========== 朝向：锁定模式始终面向队伍前方（平滑） ==========
+    // ========== 朝向：锁定模式始终面向队伍前方 ==========
     if (bFollowRotation)
     {
         const FRotator TargetRotation = CalculateFormationWorldRotation();
@@ -296,9 +295,9 @@ void UXBSoldierFollowComponent::UpdateLockedMode(float DeltaTime)
  * @brief 更新招募过渡模式
  * @param DeltaTime 帧间隔
  * @note  🔧 修复点：
- *        1) 取消“接近槽位立即切 Aligning”的硬切策略，改为“到达确认时间”避免边界抖动
- *        2) 旋转采用“移动方向 -> 队伍前方”距离渐变混合，消除接近槽位时的顿挫感
- *        3) 保持移动由 CharacterMovement 驱动，速度用插值平滑
+ *        1) 取消“接近槽位立即切状态”的硬切，改为到达确认时间（滞回），消除顿挫
+ *        2) 旋转采用“移动方向 -> 队伍前方”的距离渐变混合，避免临界点突然转向
+ *        3) 位移由 CharacterMovement 驱动，速度用插值平滑，视觉更丝滑且有速度感
  */
 void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
 {
@@ -355,13 +354,15 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
         DesiredSpeed = SmoothedSpeedCache;
     }
 
-    // 🔧 修改 - 速度不要“立刻跳”，再做一次 MaxWalkSpeed 插值，提升稳定感
+    // 🔧 修改 - 再对 MaxWalkSpeed 做一次插值，减少“即将到位时速度变化”的顿挫
     const float NewMaxSpeed = FMath::FInterpTo(MoveComp->MaxWalkSpeed, DesiredSpeed, DeltaTime, 12.0f);
     MoveComp->MaxWalkSpeed = NewMaxSpeed;
 
-    // ========= 位移 =========
+    // ========= 位移与旋转 =========
     if (Distance > EffectiveArrivalThreshold)
     {
+        ArrivedTimeAccumulator = 0.0f;
+
         const FVector MoveDirection = (TargetPosition - CurrentPosition).GetSafeNormal2D();
         if (!MoveDirection.IsNearlyZero())
         {
@@ -372,19 +373,19 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
             {
                 const float BlendDist = FMath::Max(RecruitRotationBlendDistance, 1.0f);
 
-                // 为什么用距离混合：越接近槽位越应该对齐队伍朝向，否则靠近时“突然转向”会顿挫
+                // BlendAlpha：越接近槽位越趋向队伍前方
                 const float BlendAlpha = 1.0f - FMath::Clamp(Distance / BlendDist, 0.0f, 1.0f);
 
                 const float MoveYaw = MoveDirection.Rotation().Yaw;
                 const float FormationYaw = CalculateFormationWorldRotation().Yaw;
 
-                // 角度安全混合（避免 179 -> -179 抖动）
+                // 角度安全混合：避免 179->-179 抖动
                 const float YawDelta = FMath::FindDeltaAngleDegrees(MoveYaw, FormationYaw);
                 const float BlendedYaw = FRotator::NormalizeAxis(MoveYaw + YawDelta * BlendAlpha);
 
                 const FRotator TargetRot(0.0f, BlendedYaw, 0.0f);
 
-                // 转向速度也做渐变：远处更快朝移动方向，近处更柔和贴向队伍前方
+                // 转向速度也做渐变：远处更快朝移动方向，近处更柔和对齐队伍前方
                 const float RotSpeed = FMath::Lerp(MoveDirectionRotationSpeed, AlignmentRotationSpeed, BlendAlpha);
 
                 const FRotator NewRot = FMath::RInterpTo(Owner->GetActorRotation(), TargetRot, DeltaTime, RotSpeed);
@@ -394,18 +395,17 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
     }
     else
     {
-        // 在到达阈值内：不立刻切模式，累计确认时间，避免边界抖动导致顿挫
+        // 在到达阈值内：累计确认时间（滞回），避免边界抖动导致“顿挫/掉帧感”
         ArrivedTimeAccumulator += DeltaTime;
 
-        // 仍允许轻微补位（防止主将转身时目标点继续滑动）
-        const FVector MoveDirection = (TargetPosition - CurrentPosition).GetSafeNormal2D();
-        if (!MoveDirection.IsNearlyZero())
+        // 小幅补位（主将仍在移动/旋转时避免慢慢偏离）
+        const FVector MicroDir = (TargetPosition - CurrentPosition).GetSafeNormal2D();
+        if (!MicroDir.IsNearlyZero())
         {
-            // 为什么输入很小：阈值内只做“微调”，避免挤压
-            CharOwner->AddMovementInput(MoveDirection, 0.25f);
+            CharOwner->AddMovementInput(MicroDir, 0.25f);
         }
 
-        // 同时持续对齐到队伍前方（渐进，不突变）
+        // 持续对齐队伍前方（平滑）
         if (bFollowRotation)
         {
             const FRotator FormationRot = CalculateFormationWorldRotation();
@@ -413,7 +413,7 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
             Owner->SetActorRotation(FRotator(0.0f, NewRot.Yaw, 0.0f));
         }
 
-        // 达到确认时间 + 朝向对齐后，切到 Locked（无顿挫）
+        // 达到确认时间 + 朝向对齐后，切到 Locked（无硬切顿挫）
         if (ArrivedTimeAccumulator >= ArriveConfirmTime &&
             IsRotationAligned(CalculateFormationWorldRotation(), AlignmentToleranceDegrees))
         {
@@ -425,13 +425,12 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
             SetFollowMode(EXBFollowMode::Locked);
             OnRecruitTransitionCompleted.Broadcast();
 
-            // 清理将领缓存，避免后续速度补偿残留
             bLeaderIsSprinting = false;
             CachedLeaderSpeed = 0.0f;
         }
     }
 
-    // ========= 卡住检测（保留你原逻辑）=========
+    // ========= 卡住检测（保持你原逻辑）=========
     const FVector NewPosition = Owner->GetActorLocation();
     const float MovedDistance = FVector::Dist2D(NewPosition, LastPositionForStuckCheck);
 
@@ -449,7 +448,6 @@ void UXBSoldierFollowComponent::UpdateRecruitTransitionMode(float DeltaTime)
             LastPositionForStuckCheck = NewPosition;
         }
     }
-
     // 这里原本有 ShouldForceTeleport/PerformForceTeleport，但你当前 bAllowTeleportDuringRecruit 默认关闭
     // 若你后续希望启用“卡住/超时传送”，可在这里加上判断调用（不影响本次抖动修复核心）。
 }
@@ -919,39 +917,24 @@ void UXBSoldierFollowComponent::TeleportToFormationPosition()
 
     UE_LOG(LogXBSoldier, Log, TEXT("跟随组件：传送到编队位置，地面Z=%.1f"), GroundZ);
 }
-
+/**
+ * @brief 开始插值到编队位置
+ * @note  🔧 修改 - 直接复用招募过渡逻辑，并确保 bRecruitMovementActive 生效
+ *        这是编队更新补位的核心入口，必须能真正推动移动组件产生速度
+ */
 void UXBSoldierFollowComponent::StartInterpolateToFormation()
 {
+    // 为什么统一走招募过渡：能保证移动组件驱动、速度平滑、旋转混合一致
     SetCombatState(false);
     SetFollowMode(EXBFollowMode::RecruitTransition);
 
-    if (UWorld* World = GetWorld())
-    {
-        RecruitTransitionStartTime = World->GetTimeSeconds();
-    }
+    // 🔧 修改 - 重置到达确认计时，避免上一轮残留造成顿挫
+    ArrivedTimeAccumulator = 0.0f;
 
-    if (AActor* Owner = GetOwner())
-    {
-        LastPositionForStuckCheck = Owner->GetActorLocation();
-    }
-    AccumulatedStuckTime = 0.0f;
+    // 直接启动（遵从 RecruitStartDelay 配置）
+    StartRecruitTransition();
 
-    UCharacterMovementComponent* MoveComp = GetCachedMovementComponent();
-    if (MoveComp)
-    {
-        MoveComp->GravityScale = 1.0f;
-        MoveComp->SetComponentTickEnabled(true);
-        MoveComp->SetMovementMode(MOVE_Walking);
-        SmoothedSpeedCache = MoveComp->MaxWalkSpeed;
-    }
-
-    if (CachedLeaderCharacter.IsValid())
-    {
-        bLeaderIsSprinting = CachedLeaderCharacter->IsSprinting();
-        CachedLeaderSpeed = CachedLeaderCharacter->GetCurrentMoveSpeed();
-    }
-
-    UE_LOG(LogXBSoldier, Log, TEXT("跟随组件：StartInterpolateToFormation -> 进入平滑招募过渡"));
+    UE_LOG(LogXBSoldier, Log, TEXT("跟随组件：StartInterpolateToFormation -> 进入招募过渡补位（组件驱动）"));
 }
 
 void UXBSoldierFollowComponent::StartRecruitTransition()
@@ -1006,7 +989,7 @@ void UXBSoldierFollowComponent::StartRecruitTransition_Internal()
     UCharacterMovementComponent* MoveComp = GetCachedMovementComponent();
     if (MoveComp)
     {
-        // 为什么要保证 Walking：掉落/特殊状态后可能残留其他 Mode，导致速度与加速度不一致
+        // 为什么要保证 Walking：避免外部状态残留导致速度/摩擦/贴地不一致
         MoveComp->GravityScale = 1.0f;
         MoveComp->SetComponentTickEnabled(true);
         MoveComp->SetMovementMode(MOVE_Walking);
