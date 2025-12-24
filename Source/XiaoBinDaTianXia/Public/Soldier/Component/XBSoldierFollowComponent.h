@@ -149,7 +149,6 @@ protected:
 
     void UpdateLockedMode(float DeltaTime);
     void UpdateRecruitTransitionMode(float DeltaTime);
-    void UpdateAlignmentPhase(float DeltaTime);
 
     void UpdateGhostTarget(float DeltaTime);
     FVector GetSmoothedFormationTarget() const;
@@ -160,17 +159,11 @@ protected:
     FVector2D GetSlotLocalOffset() const;
     float GetGroundHeightAtLocation(const FVector2D& XYLocation, float FallbackZ) const;
 
-    bool MoveTowardsTargetXY(const FVector& TargetPosition, float DeltaTime, float MoveSpeed);
-
     UCharacterMovementComponent* GetCachedMovementComponent();
     UCapsuleComponent* GetCachedCapsuleComponent();
 
     void SetSoldierCollisionEnabled(bool bEnableCollision);
     void SetMovementMode(bool bEnableWalking);
-    void SetRVOAvoidanceEnabled(bool bEnable);
-
-    bool ShouldForceTeleport() const;
-    void PerformForceTeleport();
 
     float CalculateRecruitTransitionSpeed(float DistanceToTarget) const;
     float GetLeaderCurrentSpeed() const;
@@ -235,8 +228,6 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "招募启动延迟(秒)", ClampMin = "0.0", ToolTip = "士兵开始奔向槽位前的延迟，默认0立即移动。"))
     float RecruitStartDelay = 0.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "招募允许传送", ToolTip = "关闭后招募/补位过程绝不传送，始终走路过去。"))
-    bool bAllowTeleportDuringRecruit = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "移动时转向速度", ClampMin = "0.1", ToolTip = "追赶过程中朝向移动方向的旋转速度，越大越快朝向目标槽位。"))
     float MoveDirectionRotationSpeed = 15.0f;
@@ -307,18 +298,6 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit",
         meta = (DisplayName = "追赶时禁用碰撞", ToolTip = "开启可减少追赶过程卡住，但可能穿模；关闭更物理真实。"))
     bool bDisableCollisionDuringTransition = true;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit",
-        meta = (DisplayName = "强制传送距离", ClampMin = "500.0", ToolTip = "距离超过此值会直接传送回队列，过小可能产生瞬移感。"))
-    float ForceTeleportDistance = 5000.0f;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit",
-        meta = (DisplayName = "追赶超时时间", ClampMin = "0.0", ToolTip = "超过该时间仍未到位会触发传送，设为0可关闭超时传送。"))
-    float RecruitTransitionTimeout = 5.0f;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit",
-        meta = (DisplayName = "卡住检测时间", ClampMin = "0.0", ToolTip = "连续低速超过该时间视为卡住，会触发传送或重新定位。"))
-    float StuckDetectionTime = 1.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit",
         meta = (DisplayName = "卡住速度阈值", ClampMin = "0.0", ToolTip = "低于该速度会累计卡住时间，设为0关闭卡住检测。"))
@@ -464,8 +443,6 @@ protected:
 
     FVector GhostTargetLocation = FVector::ZeroVector;
 
-    // 🔧 修改 - 不再依赖完整Rotator插值来驱动槽位位置；使用Yaw-only插值避免角度跳变
-    FRotator GhostTargetRotation = FRotator::ZeroRotator;
     bool bGhostInitialized = false;
 
     FVector GhostSlotTargetLocation = FVector::ZeroVector;

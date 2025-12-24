@@ -31,6 +31,7 @@
 #include "TimerManager.h"
 #include "XBCollisionChannels.h"
 #include "AI/XBSoldierPerceptionSubsystem.h"
+#include "AI/XBSoldierAIController.h"
 #include "Particles/ParticleSystemComponent.h"
 #include "Soldier/Component/XBSoldierPoolSubsystem.h"
 
@@ -768,6 +769,12 @@ void AXBCharacterBase::OnCombatTimeout()
     ExitCombat();
 }
 
+/**
+ * @brief  主将攻击命中回调
+ * @param  HitTarget 命中的目标
+ * @return void
+ * @note   当命中敌方主将时，主动驱动士兵进入战斗并锁定目标，确保 AI 立即响应
+ */
 void AXBCharacterBase::OnAttackHit(AActor* HitTarget)
 {
     if (!HitTarget)
@@ -775,7 +782,34 @@ void AXBCharacterBase::OnAttackHit(AActor* HitTarget)
         return;
     }
 
+    // 🔧 修改 - 保持原有逻辑：命中任何目标都进入战斗
     EnterCombat();
+
+    // 🔧 修改 - 当命中敌方主将时，明确驱动士兵进入战斗并锁定目标
+    AXBCharacterBase* HitLeader = Cast<AXBCharacterBase>(HitTarget);
+    if (!HitLeader || !IsHostileTo(HitLeader))
+    {
+        return;
+    }
+
+    for (AXBSoldierCharacter* Soldier : Soldiers)
+    {
+        if (!Soldier || Soldier->GetSoldierState() == EXBSoldierState::Dead)
+        {
+            continue;
+        }
+
+        // 为什么先进入战斗：保证 AI/状态机切到 Combat，再设置目标才不会被跟随逻辑覆盖
+        Soldier->EnterCombat();
+        Soldier->CurrentAttackTarget = HitLeader;
+
+        if (AXBSoldierAIController* SoldierAI = Cast<AXBSoldierAIController>(Soldier->GetController()))
+        {
+            SoldierAI->SetTargetActor(HitLeader);
+        }
+    }
+
+    UE_LOG(LogXBCombat, Log, TEXT("主将命中敌方主将，士兵进入战斗并锁定目标: %s"), *HitLeader->GetName());
 }
 
 void AXBCharacterBase::RecallAllSoldiers()
