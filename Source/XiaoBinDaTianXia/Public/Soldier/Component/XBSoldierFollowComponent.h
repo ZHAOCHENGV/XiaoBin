@@ -4,13 +4,10 @@
 /**
  * @file XBSoldierFollowComponent.h
  * @brief 士兵跟随组件 - 实时锁定槽位
- * 
- * @note 🔧 修改记录:
- *       1. 🔧 修改 锁定模式完全实时同步位置和旋转
- *       2. ❌ 删除 不必要的速度计算
- *       3. 🔧 简化 只保留必要的配置
- *       4. ✨ 新增 将领速度感知，招募过渡时同步将领移动速度
- *       5. ✨ 新增 招募过渡时先朝向槽位移动，到达后再转向队伍前方
+ * @note  🔧 修改记录:
+ *        1. 🔧 修复 GhostRotationInterpSpeed 过低导致的抖动：槽位位置计算与幽灵旋转解耦
+ *        2. ✨ 新增 槽位使用即时Yaw/最小插值速度配置
+ *        3. ✨ 新增 幽灵Yaw缓存（Yaw-only）用于角度安全插值
  */
 
 #pragma once
@@ -24,9 +21,6 @@ class UXBFormationComponent;
 class UCharacterMovementComponent;
 class UCapsuleComponent;
 
-/**
- * @brief 跟随模式枚举
- */
 UENUM(BlueprintType)
 enum class EXBFollowMode : uint8
 {
@@ -35,16 +29,11 @@ enum class EXBFollowMode : uint8
     RecruitTransition   UMETA(DisplayName = "招募过渡")
 };
 
-// ✨ 新增 - 招募过渡子阶段枚举
-/**
- * @brief 招募过渡阶段枚举
- * @note 用于区分追赶和对齐两个阶段
- */
 UENUM(BlueprintType)
 enum class EXBRecruitTransitionPhase : uint8
 {
-    Moving      UMETA(DisplayName = "移动中"),      // 正在向槽位移动
-    Aligning    UMETA(DisplayName = "对齐中")       // 已到达，正在转向队伍前方
+    Moving      UMETA(DisplayName = "移动中"),
+    Aligning    UMETA(DisplayName = "对齐中")
 };
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCombatStateChangedDelegate, bool, bInCombat);
@@ -52,11 +41,11 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnRecruitTransitionCompleted);
 
 /**
  * @brief 士兵跟随组件
- * @note 核心设计：
- *       - 锁定模式：每帧直接设置位置到槽位，完全实时同步
- *       - 自由模式：战斗时脱离编队
- *       - 招募过渡：快速追赶到槽位，同步将领移动速度
- *       - ✨ 新增：招募时先朝向移动方向，到达后再对齐队伍朝向
+ * @note  核心设计：
+ *       - 锁定模式：持续贴合槽位（走过去而非瞬移）
+ *       - 自由模式：战斗中脱离编队
+ *       - 招募过渡：追赶到槽位，随后对齐队伍朝向
+ *       - 🔧 修复：槽位位置计算默认使用主将即时Yaw，避免低 GhostRotationInterpSpeed 引发抖动
  */
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent, DisplayName = "XB Soldier Follow"))
 class XIAOBINDATIANXIA_API UXBSoldierFollowComponent : public UActorComponent
@@ -67,7 +56,7 @@ public:
     UXBSoldierFollowComponent();
 
     virtual void BeginPlay() override;
-    virtual void TickComponent(float DeltaTime, ELevelTick TickType, 
+    virtual void TickComponent(float DeltaTime, ELevelTick TickType,
         FActorComponentTickFunction* ThisTickFunction) override;
 
     // ==================== 目标设置 ====================
@@ -109,10 +98,6 @@ public:
     UFUNCTION(BlueprintCallable, Category = "XB|Follow", meta = (DisplayName = "开始招募过渡", ToolTip = "开始以招募模式跟随：可选延迟、使用冲刺/加速配置，避免瞬移。"))
     void StartRecruitTransition();
 
-    /**
-     * @brief 内部启动招募过渡
-     * @note 内部使用，处理延迟后真正开始移动
-     */
     void StartRecruitTransition_Internal();
 
     // ==================== 战斗状态控制 ====================
@@ -140,7 +125,6 @@ public:
     UFUNCTION(BlueprintPure, Category = "XB|Follow", meta = (DisplayName = "获取当前移动速度"))
     float GetCurrentMoveSpeed() const { return CurrentMoveSpeed; }
 
-    // ✨ 新增 - 获取招募过渡阶段
     UFUNCTION(BlueprintPure, Category = "XB|Follow", meta = (DisplayName = "获取招募过渡阶段"))
     EXBRecruitTransitionPhase GetRecruitTransitionPhase() const { return CurrentRecruitPhase; }
 
@@ -149,13 +133,6 @@ public:
     UFUNCTION(BlueprintCallable, Category = "XB|Follow")
     void SetFollowSpeed(float NewSpeed) { RecruitTransitionSpeed = NewSpeed; }
 
-    // ✨ 新增 - 同步将领冲刺状态
-    /**
-     * @brief 通知将领冲刺状态变化
-     * @param bLeaderSprinting 将领是否正在冲刺
-     * @param LeaderCurrentSpeed 将领当前移动速度
-     * @note 招募过渡时，士兵需要同步将领的移动速度才能追上
-     */
     UFUNCTION(BlueprintCallable, Category = "XB|Follow", meta = (DisplayName = "同步将领冲刺状态"))
     void SyncLeaderSprintState(bool bLeaderSprinting, float LeaderCurrentSpeed);
 
@@ -170,65 +147,19 @@ public:
 protected:
     // ==================== 内部方法 ====================
 
-    /**
-     * @brief 更新锁定模式
-     * @note 🔧 核心：直接设置位置和旋转，完全实时同步
-     */
     void UpdateLockedMode(float DeltaTime);
-
-    /**
-     * @brief 更新招募过渡模式
-     * @note 🔧 修改 - 分为移动阶段和对齐阶段
-     */
     void UpdateRecruitTransitionMode(float DeltaTime);
-
-    // ✨ 新增 - 更新对齐阶段（到达槽位后转向队伍前方）
-    /**
-     * @brief 更新对齐阶段
-     * @param DeltaTime 帧间隔
-     * @note 到达槽位后，平滑转向队伍前方（将领朝向）
-     */
     void UpdateAlignmentPhase(float DeltaTime);
 
-    /**
-     * @brief 更新幽灵目标（位置与旋转插值）
-     * @param DeltaTime 帧间隔
-     * @note 🔧 使用插值后的幽灵位置/朝向计算槽位，避免瞬间转向导致摆尾过猛
-     */
     void UpdateGhostTarget(float DeltaTime);
-
-    /**
-     * @brief 获取当前平滑后的编队目标位置
-     * @note ✨ 优先使用幽灵目标对应的槽位位置，避免直接依赖将领位置导致堆叠
-     */
     FVector GetSmoothedFormationTarget() const;
 
-    /**
-     * @brief 计算编队世界位置
-     */
     FVector CalculateFormationWorldPosition() const;
-
-    /**
-     * @brief 计算编队世界旋转
-     */
     FRotator CalculateFormationWorldRotation() const;
 
-    /**
-     * @brief 获取槽位本地偏移
-     */
     FVector2D GetSlotLocalOffset() const;
-
-    /**
-     * @brief 获取指定XY位置的地面Z坐标
-     * @param XYLocation XY位置
-     * @param FallbackZ 检测失败时的回退Z值
-     * @return 地面Z坐标
-     */
     float GetGroundHeightAtLocation(const FVector2D& XYLocation, float FallbackZ) const;
 
-    /**
-     * @brief 移动到目标位置（只控制XY）
-     */
     bool MoveTowardsTargetXY(const FVector& TargetPosition, float DeltaTime, float MoveSpeed);
 
     UCharacterMovementComponent* GetCachedMovementComponent();
@@ -241,29 +172,9 @@ protected:
     bool ShouldForceTeleport() const;
     void PerformForceTeleport();
 
-    // ✨ 新增 - 计算招募过渡时的实际移动速度
-    /**
-     * @brief 计算招募过渡时的实际移动速度
-     * @param DistanceToTarget 到目标的距离
-     * @return 计算后的移动速度
-     * @note 综合考虑：基础速度 + 将领速度 + 距离加速 + 追赶补偿
-     */
     float CalculateRecruitTransitionSpeed(float DistanceToTarget) const;
-
-    // ✨ 新增 - 获取将领当前速度
-    /**
-     * @brief 获取将领当前移动速度
-     * @return 将领速度，如果无法获取则返回0
-     */
     float GetLeaderCurrentSpeed() const;
 
-    // ✨ 新增 - 检查旋转是否已对齐
-    /**
-     * @brief 检查当前朝向是否已对齐目标朝向
-     * @param TargetRotation 目标朝向
-     * @param ToleranceDegrees 容差角度
-     * @return 是否已对齐
-     */
     bool IsRotationAligned(const FRotator& TargetRotation, float ToleranceDegrees = 5.0f) const;
 
 protected:
@@ -327,77 +238,142 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "招募允许传送", ToolTip = "关闭后招募/补位过程绝不传送，始终走路过去。"))
     bool bAllowTeleportDuringRecruit = false;
 
-    // ✨ 新增 - 移动时朝向移动方向的转向速度
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "移动时转向速度", ClampMin = "0.1", ToolTip = "追赶过程中朝向移动方向的旋转速度，越大越快朝向目标槽位。"))
     float MoveDirectionRotationSpeed = 15.0f;
 
-    // 🔧 修改 - 重命名原有变量，用于对齐阶段
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "对齐阶段转向速度", ClampMin = "0.1", ToolTip = "到达槽位后，转向队伍前方的旋转速度。"))
     float AlignmentRotationSpeed = 10.0f;
 
-    // ✨ 新增 - 对齐容差角度
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "对齐容差角度", ClampMin = "1.0", ClampMax = "30.0", ToolTip = "朝向与队伍前方的角度差小于此值时，视为对齐完成。"))
     float AlignmentToleranceDegrees = 5.0f;
 
-    // ✨ 新增 - 锁定模式移动速度（可蓝图调节，防止瞬移）
+    // ==================== 锁定模式配置 ====================
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked", meta = (DisplayName = "锁定移动速度", ClampMin = "0.0", ToolTip = "锁定模式下的平移速度，过大可能导致抖动。"))
     float LockedFollowMoveSpeed = 600.0f;
 
-    // ✨ 新增 - 锁定模式转向速度
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked", meta = (DisplayName = "锁定转向速度", ClampMin = "0.1", ToolTip = "锁定模式朝向槽位的旋转速度，越大越快面对队列方向。"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked", meta = (DisplayName = "锁定转向速度", ClampMin = "0.1", ToolTip = "锁定模式朝向队伍前方的旋转速度，越大越快。"))
     float LockedRotationInterpSpeed = 8.0f;
 
-    // ✨ 新增 - 幽灵目标插值配置
+    // ==================== 幽灵目标插值配置 ====================
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Ghost", meta = (DisplayName = "幽灵位置插值速度", ClampMin = "0.1"))
     float GhostLocationInterpSpeed = 6.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Ghost", meta = (DisplayName = "幽灵旋转插值速度", ClampMin = "0.1"))
     float GhostRotationInterpSpeed = 8.0f;
 
-    // ✨ 新增 - 追赶补偿配置
-    /**
-     * @brief 追赶速度补偿倍率
-     * @note 当将领移动时，士兵需要额外的速度来追赶
-     *       公式：实际速度 = 基础速度 + 将领速度 × 补偿倍率
-     */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "追赶主将速度倍率", ClampMin = "1.0", ClampMax = "5.0", ToolTip = "士兵追赶时会叠加主将当前速度×该倍率，倍率越大越容易追上冲刺中的主将。"))
+    // 🔧 修改 - 抖动修复核心开关：槽位位置计算与幽灵旋转解耦
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Ghost",
+        meta = (DisplayName = "槽位使用即时Yaw",
+            ToolTip = "开启后：槽位位置计算使用将领即时Yaw（无旋转延迟），仅士兵朝向使用幽灵Yaw平滑。可彻底消除 GhostRotationInterpSpeed 过低导致的追逐抖动。"))
+    bool bUseInstantLeaderYawForSlot = true;
+
+    // ✨ 新增 - 当不使用即时Yaw时，给槽位Yaw一个最小插值速度防抖
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Ghost",
+        meta = (DisplayName = "槽位Yaw最小插值速度", ClampMin = "0.0",
+            ToolTip = "仅在关闭“槽位使用即时Yaw”时生效。防止槽位Yaw插值过慢导致槽位位置抖动。"))
+    float MinGhostSlotYawInterpSpeed = 12.0f;
+
+    // ✨ 新增 - 槽位中心点是否使用主将即时位置（推荐启用）
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Ghost",
+        meta = (DisplayName = "槽位中心使用主将即时位置",
+            ToolTip = "启用后：槽位目标点围绕主将即时位置旋转/平移，减少大旋转时的交叉穿插与堆叠。"))
+    bool bUseInstantLeaderLocationForSlotCenter = true;
+
+    // ✨ 新增 - 限制槽位Yaw角速度，避免大角度旋转时目标点甩动过猛导致士兵挤成一团
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Ghost",
+        meta = (DisplayName = "限制槽位Yaw角速度",
+            ToolTip = "启用后：每秒槽位Yaw最大变化受限，主将快速转身时编队旋转更可控，减少穿插堆叠。"))
+    bool bClampSlotYawRate = true;
+
+    
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Ghost",
+        meta = (DisplayName = "槽位Yaw最大角速度(度/秒)", ClampMin = "10.0", ClampMax = "1080.0",
+            ToolTip = "槽位目标点旋转的最大角速度。过小会显得编队转身很慢，过大会增加穿插概率。建议 180~360。"))
+    float MaxSlotYawRateDegPerSec = 360.0f;
+
+    // ==================== 追赶补偿配置 ====================
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit",
+        meta = (DisplayName = "追赶主将速度倍率", ClampMin = "1.0", ClampMax = "5.0",
+            ToolTip = "士兵追赶时会叠加主将当前速度×该倍率，倍率越大越容易追上冲刺中的主将。"))
     float CatchUpSpeedMultiplier = 1.5f;
 
-    // ✨ 新增 - 冲刺同步配置
-    /**
-     * @brief 是否同步将领冲刺状态
-     * @note 启用后，招募过渡时会检测将领是否冲刺并同步速度
-     */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "同步主将冲刺", ToolTip = "开启后，士兵追赶时会读取主将的冲刺状态与速度，自动提速。"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit",
+        meta = (DisplayName = "同步主将冲刺", ToolTip = "开启后，士兵追赶时会读取主将的冲刺状态与速度，自动提速。"))
     bool bSyncLeaderSprint = true;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "追赶时禁用碰撞", ToolTip = "开启可减少追赶过程卡住，但可能穿模；关闭更物理真实。"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit",
+        meta = (DisplayName = "追赶时禁用碰撞", ToolTip = "开启可减少追赶过程卡住，但可能穿模；关闭更物理真实。"))
     bool bDisableCollisionDuringTransition = true;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "强制传送距离", ClampMin = "500.0", ToolTip = "距离超过此值会直接传送回队列，过小可能产生瞬移感。"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit",
+        meta = (DisplayName = "强制传送距离", ClampMin = "500.0", ToolTip = "距离超过此值会直接传送回队列，过小可能产生瞬移感。"))
     float ForceTeleportDistance = 5000.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "追赶超时时间", ClampMin = "0.0", ToolTip = "超过该时间仍未到位会触发传送，设为0可关闭超时传送。"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit",
+        meta = (DisplayName = "追赶超时时间", ClampMin = "0.0", ToolTip = "超过该时间仍未到位会触发传送，设为0可关闭超时传送。"))
     float RecruitTransitionTimeout = 5.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "卡住检测时间", ClampMin = "0.0", ToolTip = "连续低速超过该时间视为卡住，会触发传送或重新定位。"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit",
+        meta = (DisplayName = "卡住检测时间", ClampMin = "0.0", ToolTip = "连续低速超过该时间视为卡住，会触发传送或重新定位。"))
     float StuckDetectionTime = 1.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit", meta = (DisplayName = "卡住速度阈值", ClampMin = "0.0", ToolTip = "低于该速度会累计卡住时间，设为0关闭卡住检测。"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit",
+        meta = (DisplayName = "卡住速度阈值", ClampMin = "0.0", ToolTip = "低于该速度会累计卡住时间，设为0关闭卡住检测。"))
     float StuckSpeedThreshold = 50.0f;
+
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked",
+    meta = (DisplayName = "锁定死区距离", ClampMin = "0.0",
+        ToolTip = "距离槽位小于该值时不再推动移动输入，保留轻微滞后感，避免像粘在主将身后。"))
+    float LockedDeadzoneDistance = 60.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked",
+        meta = (DisplayName = "锁定输入满量距离", ClampMin = "1.0",
+            ToolTip = "误差距离达到该值时移动输入强度为1，误差越小输入越小，减少微抖与挤压。"))
+    float LockedFullInputDistance = 300.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked",
+        meta = (DisplayName = "锁定速度插值率", ClampMin = "0.0",
+            ToolTip = "锁定模式下 MaxWalkSpeed 变化的平滑强度，避免速度突变造成顿挫。"))
+    float LockedSpeedInterpRate = 10.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Locked",
+        meta = (DisplayName = "锁定追赶额外速度", ClampMin = "0.0",
+            ToolTip = "锁定模式下，当偏离槽位较远时允许比主将更快，用于追赶但不会瞬间贴死。"))
+    float LockedCatchUpExtraSpeed = 600.0f;
+
+
+    // ✨ 新增 - 招募过渡的“旋转混合/到达确认”配置（放到 XB|Follow|Recruit 分类附近）
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit",
+        meta = (DisplayName = "招募旋转混合距离", ClampMin = "1.0",
+            ToolTip = "距离槽位小于该值时，士兵朝向会从“移动方向”逐渐混合到“队伍前方”，消除接近槽位的顿挫。"))
+    float RecruitRotationBlendDistance = 250.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Follow|Recruit",
+        meta = (DisplayName = "到达确认时间(秒)", ClampMin = "0.0", ClampMax = "1.0",
+            ToolTip = "需要在到达阈值内持续这么久才认为到位，避免边界抖动造成状态切换顿挫。"))
+    float ArriveConfirmTime = 0.08f;
+
+
+    // ✨ 新增 - 运行时状态（放到你的状态变量区域）
+
+    // 🔧 修改 - 用“到达累积时间”替代硬切阶段，避免接近槽位时的顿挫
+    float ArrivedTimeAccumulator = 0.0f;
 
     // ==================== 战斗状态 ====================
 
     UPROPERTY(BlueprintReadOnly, Category = "XB|Follow|Combat", meta = (DisplayName = "是否战斗中"))
     bool bIsInCombat = false;
 
-    // ==================== ✨ 新增：将领状态缓存 ====================
+    // ==================== 将领状态缓存 ====================
 
-    /** @brief 将领是否正在冲刺 */
     UPROPERTY(BlueprintReadOnly, Category = "XB|Follow", meta = (DisplayName = "将领正在冲刺"))
     bool bLeaderIsSprinting = false;
 
-    /** @brief 将领当前速度（缓存值，用于速度计算） */
     UPROPERTY(BlueprintReadOnly, Category = "XB|Follow", meta = (DisplayName = "将领当前速度"))
     float CachedLeaderSpeed = 0.0f;
 
@@ -408,27 +384,34 @@ protected:
     UPROPERTY(BlueprintReadOnly, Category = "XB|Follow", meta = (DisplayName = "当前移动速度"))
     float CurrentMoveSpeed = 0.0f;
 
-    // 速度平滑缓存（不暴露蓝图）
     float SmoothedSpeedCache = 0.0f;
 
     ECollisionResponse OriginalPawnResponse = ECR_Block;
     bool bCollisionModified = false;
 
-    // 招募过渡状态追踪
     float RecruitTransitionStartTime = 0.0f;
     FVector LastPositionForStuckCheck = FVector::ZeroVector;
     float AccumulatedStuckTime = 0.0f;
     bool bRecruitMovementActive = false;
 
-    // ✨ 新增 - 招募过渡阶段状态
     UPROPERTY(BlueprintReadOnly, Category = "XB|Follow", meta = (DisplayName = "招募过渡阶段"))
     EXBRecruitTransitionPhase CurrentRecruitPhase = EXBRecruitTransitionPhase::Moving;
 
-    // ✨ 新增 - 幽灵目标状态
+    // ==================== 幽灵目标状态 ====================
+
     FVector GhostTargetLocation = FVector::ZeroVector;
+
+    // 🔧 修改 - 不再依赖完整Rotator插值来驱动槽位位置；使用Yaw-only插值避免角度跳变
     FRotator GhostTargetRotation = FRotator::ZeroRotator;
     bool bGhostInitialized = false;
+
     FVector GhostSlotTargetLocation = FVector::ZeroVector;
+
+    // ✨ 新增 - 幽灵Yaw缓存（角度安全插值）
+    float GhostYawDegrees = 0.0f;
+
+    // ✨ 新增 - 槽位Yaw缓存（可选择即时或最小插值）
+    float GhostSlotYawDegrees = 0.0f;
 
     FTimerHandle DelayedRecruitStartHandle;
 };
