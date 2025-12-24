@@ -23,6 +23,7 @@
 
 UXBSoldierFollowComponent::UXBSoldierFollowComponent()
 {
+    
     PrimaryComponentTick.bCanEverTick = true;
     PrimaryComponentTick.bStartWithTickEnabled = true;
 }
