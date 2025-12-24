@@ -1575,6 +1575,13 @@ void AXBSoldierCharacter::EnterCombat()
         return;
     }
 
+    // 🔧 修改 - 战斗开始时同步避让参数，避免士兵相互重叠
+    if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+    {
+        MoveComp->AvoidanceConsiderationRadius = GetAvoidanceRadius();
+        MoveComp->AvoidanceWeight = GetAvoidanceWeight();
+    }
+
     if (FollowComponent)
     {
         FollowComponent->EnterCombatMode();

@@ -450,6 +450,7 @@ protected:
     float SmoothedSpeedCache = 0.0f;
 
     ECollisionResponse OriginalPawnResponse = ECR_Block;
+    ECollisionResponse OriginalSoldierResponse = ECR_Overlap;
     bool bCollisionModified = false;
 
     float RecruitTransitionStartTime = 0.0f;
