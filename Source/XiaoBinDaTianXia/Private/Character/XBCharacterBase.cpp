@@ -776,6 +776,16 @@ void AXBCharacterBase::OnAttackHit(AActor* HitTarget)
     }
 
     EnterCombat();
+
+    // 🔧 修改 - 当主将命中敌方主将时，触发双方士兵进入战斗
+    AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(HitTarget);
+    if (TargetLeader && IsHostileTo(TargetLeader))
+    {
+        TargetLeader->EnterCombat();
+
+        UE_LOG(LogXBCombat, Log, TEXT("主将 %s 命中敌方主将 %s，触发双方进入战斗"),
+            *GetName(), *TargetLeader->GetName());
+    }
 }
 
 void AXBCharacterBase::RecallAllSoldiers()
