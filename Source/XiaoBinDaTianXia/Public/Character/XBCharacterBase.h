@@ -333,10 +333,7 @@ protected:
     UPROPERTY(BlueprintReadOnly, Category = "战斗")
     TWeakObjectPtr<AXBCharacterBase> LastAttackedEnemyLeader;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "战斗", meta = (DisplayName = "战斗超时时间"))
-    float CombatTimeoutDuration = 5.0f;
 
-    FTimerHandle CombatTimeoutHandle;
 
     // ==================== 移动配置（共用） ====================
 
@@ -407,7 +404,7 @@ protected:
 
     void KillAllSoldiers();
 
-    // ==================== 逃跑配置 ====================
+    // ==================== AI配置 ====================
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "战斗", meta = (DisplayName = "逃跑时自动冲刺"))
     bool bSprintWhenDisengaging = true;
@@ -419,7 +416,13 @@ protected:
     float DisengageCooldown = 2.0f;
 
     float LastDisengageTime = 0.0f;
+    
     FTimerHandle DisengageSprintTimerHandle;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "战斗", meta = (DisplayName = "战斗超时时间"))
+    float CombatTimeoutDuration = 999.0f;
+
+    FTimerHandle CombatTimeoutHandle;
 
 private:
     UFUNCTION()

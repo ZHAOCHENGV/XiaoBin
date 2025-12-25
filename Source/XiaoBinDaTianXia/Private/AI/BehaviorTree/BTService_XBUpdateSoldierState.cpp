@@ -129,15 +129,16 @@ void UBTService_XBUpdateSoldierState::TickNode(UBehaviorTreeComponent& OwnerComp
         BlackboardComp->SetValueAsFloat(XBSoldierBBKeys::DistanceToLeader, DistToLeader);
         
         // 🔧 修改 - 通过行为接口判断是否应该撤退
+        float DisengageDistanceValue = Soldier->GetDisengageDistance();
         bool bShouldRetreat = false;
         if (BehaviorInterface)
         {
             bShouldRetreat = BehaviorInterface->ShouldDisengage();
-            bShouldRetreat = bShouldRetreat && (DistToLeader >= DisengageDistance);
+            bShouldRetreat = bShouldRetreat && (DistToLeader >= DisengageDistanceValue);
         }
         else
         {
-            bShouldRetreat = (DistToLeader >= DisengageDistance);
+            bShouldRetreat = (DistToLeader >= DisengageDistanceValue);
         }
         BlackboardComp->SetValueAsBool(XBSoldierBBKeys::ShouldRetreat, bShouldRetreat);
     }
