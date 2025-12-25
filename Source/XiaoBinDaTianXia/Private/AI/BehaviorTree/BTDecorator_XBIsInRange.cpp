@@ -11,6 +11,7 @@
 #include "AI/BehaviorTree/BTDecorator_XBIsInRange.h"
 #include "BehaviorTree/BlackboardComponent.h"
 #include "AIController.h"
+#include "Soldier/XBSoldierCharacter.h"
 
 UBTDecorator_XBIsInRange::UBTDecorator_XBIsInRange()
 {
@@ -50,9 +51,13 @@ bool UBTDecorator_XBIsInRange::CalculateRawConditionValue(UBehaviorTreeComponent
         return false;
     }
     
-    // 获取范围值
+    // 🔧 修改 - 优先使用士兵数据表中的攻击范围
     float Range = DefaultRange;
-    if (RangeKey.SelectedKeyName != NAME_None)
+    if (const AXBSoldierCharacter* Soldier = Cast<AXBSoldierCharacter>(ControlledPawn))
+    {
+        Range = Soldier->GetAttackRange();
+    }
+    else if (RangeKey.SelectedKeyName != NAME_None)
     {
         float BBRange = BlackboardComp->GetValueAsFloat(RangeKey.SelectedKeyName);
         if (BBRange > 0.0f)
