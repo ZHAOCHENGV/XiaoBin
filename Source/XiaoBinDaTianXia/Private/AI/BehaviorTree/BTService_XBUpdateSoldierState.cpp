@@ -131,10 +131,11 @@ void UBTService_XBUpdateSoldierState::TickNode(UBehaviorTreeComponent& OwnerComp
         if (BehaviorInterface)
         {
             bShouldRetreat = BehaviorInterface->ShouldDisengage();
+            bShouldRetreat = bShouldRetreat && (DistToLeader >= DisengageDistance);
         }
         else
         {
-            bShouldRetreat = (DistToLeader > DisengageDistance);
+            bShouldRetreat = (DistToLeader >= DisengageDistance);
         }
         BlackboardComp->SetValueAsBool(XBSoldierBBKeys::ShouldRetreat, bShouldRetreat);
     }

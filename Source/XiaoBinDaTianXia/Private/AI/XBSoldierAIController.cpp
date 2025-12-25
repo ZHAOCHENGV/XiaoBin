@@ -640,7 +640,7 @@ void AXBSoldierAIController::UpdateDistanceValuesSafe()
             // 从数据表读取脱离距离
             float DisengageDistance = 1000.0f; // 默认值
             // 后续可以从 Soldier 的 CachedTableRow 读取
-            BlackboardComp->SetValueAsBool(XBSoldierBBKeys::ShouldRetreat, DistToLeader > DisengageDistance);
+            BlackboardComp->SetValueAsBool(XBSoldierBBKeys::ShouldRetreat, DistToLeader >= DisengageDistance);
         }
     }
     

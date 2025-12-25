@@ -105,12 +105,32 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
     }
 
     // 🔧 修改 - 目标选择优先级：先敌方士兵，再敌方主将
-    auto SelectPriorityTarget = [Soldier](const FXBPerceptionResult& Result) -> AActor*
+    EXBFaction PreferredFaction = EXBFaction::Neutral;
+    bool bHasPreferredFaction = false;
+    if (AXBCharacterBase* Leader = Soldier->GetLeaderCharacter())
+    {
+        if (AXBCharacterBase* EnemyLeader = Leader->GetLastAttackedEnemyLeader())
+        {
+            if (!EnemyLeader->IsDead())
+            {
+                PreferredFaction = EnemyLeader->GetFaction();
+                bHasPreferredFaction = true;
+            }
+        }
+    }
+
+    auto SelectPriorityTarget = [Soldier, bHasPreferredFaction, PreferredFaction](const FXBPerceptionResult& Result) -> AActor*
     {
         if (!Soldier)
         {
             return nullptr;
         }
+
+        AActor* NearestPreferredSoldier = nullptr;
+        float NearestPreferredSoldierDistSq = MAX_FLT;
+
+        AActor* NearestPreferredLeader = nullptr;
+        float NearestPreferredLeaderDistSq = MAX_FLT;
 
         AActor* NearestSoldier = nullptr;
         float NearestSoldierDistSq = MAX_FLT;
@@ -127,6 +147,8 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
                 continue;
             }
 
+            EXBFaction CandidateFaction = EXBFaction::Neutral;
+
             if (AXBSoldierCharacter* EnemySoldier = Cast<AXBSoldierCharacter>(Candidate))
             {
                 if (EnemySoldier->GetSoldierState() == EXBSoldierState::Dead)
@@ -134,11 +156,25 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
                     continue;
                 }
 
+                CandidateFaction = EnemySoldier->GetFaction();
+
                 const float DistSq = FVector::DistSquared(SoldierLocation, EnemySoldier->GetActorLocation());
-                if (DistSq < NearestSoldierDistSq)
+                const bool bPreferred = bHasPreferredFaction && CandidateFaction == PreferredFaction;
+                if (bPreferred)
                 {
-                    NearestSoldierDistSq = DistSq;
-                    NearestSoldier = EnemySoldier;
+                    if (DistSq < NearestPreferredSoldierDistSq)
+                    {
+                        NearestPreferredSoldierDistSq = DistSq;
+                        NearestPreferredSoldier = EnemySoldier;
+                    }
+                }
+                else
+                {
+                    if (DistSq < NearestSoldierDistSq)
+                    {
+                        NearestSoldierDistSq = DistSq;
+                        NearestSoldier = EnemySoldier;
+                    }
                 }
                 continue;
             }
@@ -150,15 +186,37 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
                     continue;
                 }
 
+                CandidateFaction = EnemyLeader->GetFaction();
+
                 const float DistSq = FVector::DistSquared(SoldierLocation, EnemyLeader->GetActorLocation());
-                if (DistSq < NearestLeaderDistSq)
+                const bool bPreferred = bHasPreferredFaction && CandidateFaction == PreferredFaction;
+                if (bPreferred)
                 {
-                    NearestLeaderDistSq = DistSq;
-                    NearestLeader = EnemyLeader;
+                    if (DistSq < NearestPreferredLeaderDistSq)
+                    {
+                        NearestPreferredLeaderDistSq = DistSq;
+                        NearestPreferredLeader = EnemyLeader;
+                    }
+                }
+                else
+                {
+                    if (DistSq < NearestLeaderDistSq)
+                    {
+                        NearestLeaderDistSq = DistSq;
+                        NearestLeader = EnemyLeader;
+                    }
                 }
             }
         }
 
+        if (NearestPreferredSoldier)
+        {
+            return NearestPreferredSoldier;
+        }
+        if (NearestPreferredLeader)
+        {
+            return NearestPreferredLeader;
+        }
         return NearestSoldier ? NearestSoldier : NearestLeader;
     };
 
@@ -653,9 +711,9 @@ bool UXBSoldierBehaviorInterface::ShouldDisengage() const
     // 条件1：距离将领过远
     float DisengageDistance = Soldier->GetDisengageDistance();
     float DistToLeader = GetDistanceToLeader();
-    if (DistToLeader > DisengageDistance)
+    if (DistToLeader >= DisengageDistance)
     {
-        UE_LOG(LogXBAI, Verbose, TEXT("士兵 %s 距离将领过远: %.0f > %.0f"),
+        UE_LOG(LogXBAI, Verbose, TEXT("士兵 %s 距离将领过远: %.0f >= %.0f"),
             *Soldier->GetName(), DistToLeader, DisengageDistance);
         return true;
     }

@@ -221,6 +221,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "战斗")
     virtual void OnAttackHit(AActor* HitTarget);
 
+    UFUNCTION(BlueprintPure, Category = "战斗", meta = (DisplayName = "获取最近攻击的敌方主将"))
+    AXBCharacterBase* GetLastAttackedEnemyLeader() const { return LastAttackedEnemyLeader.Get(); }
+
     UFUNCTION(BlueprintPure, Category = "移动", meta = (DisplayName = "是否正在冲刺"))
     bool IsSprinting() const { return bIsSprinting; }
 
@@ -326,6 +329,9 @@ protected:
 
     UPROPERTY(BlueprintReadOnly, Category = "战斗")
     bool bIsInCombat = false;
+
+    UPROPERTY(BlueprintReadOnly, Category = "战斗")
+    TWeakObjectPtr<AXBCharacterBase> LastAttackedEnemyLeader;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "战斗", meta = (DisplayName = "战斗超时时间"))
     float CombatTimeoutDuration = 5.0f;

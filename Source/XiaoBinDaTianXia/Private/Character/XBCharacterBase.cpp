@@ -782,6 +782,7 @@ void AXBCharacterBase::OnAttackHit(AActor* HitTarget)
     AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(HitTarget);
     if (TargetLeader && IsHostileTo(TargetLeader))
     {
+        LastAttackedEnemyLeader = TargetLeader;
         TargetLeader->EnterCombat();
 
         UE_LOG(LogXBCombat, Log, TEXT("主将 %s 命中敌方主将 %s，触发双方进入战斗"),
