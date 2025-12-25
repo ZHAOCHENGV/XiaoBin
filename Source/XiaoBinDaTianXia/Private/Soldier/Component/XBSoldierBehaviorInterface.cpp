@@ -641,6 +641,15 @@ bool UXBSoldierBehaviorInterface::ShouldDisengage() const
         return false;
     }
 
+    // 🔧 修改 - 有有效目标时不脱离战斗，避免攻击中被强制切回跟随
+    if (AActor* CurrentTarget = Soldier->CurrentAttackTarget.Get())
+    {
+        if (IsTargetValid(CurrentTarget))
+        {
+            return false;
+        }
+    }
+
     // 条件1：距离将领过远
     float DisengageDistance = Soldier->GetDisengageDistance();
     float DistToLeader = GetDistanceToLeader();

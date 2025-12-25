@@ -1575,6 +1575,15 @@ void AXBSoldierCharacter::EnterCombat()
         return;
     }
 
+    // 🔧 修改 - 战斗状态启用行为树，跟随状态停用行为树
+    if (AXBSoldierAIController* SoldierAI = Cast<AXBSoldierAIController>(GetController()))
+    {
+        if (BehaviorTreeAsset)
+        {
+            SoldierAI->StartBehaviorTree(BehaviorTreeAsset);
+        }
+    }
+
     // 🔧 修改 - 战斗开始时同步避让参数，避免士兵相互重叠
     if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
     {
@@ -1610,6 +1619,12 @@ void AXBSoldierCharacter::ExitCombat()
     }
 
     CurrentAttackTarget = nullptr;
+
+    // 🔧 修改 - 退出战斗时关闭行为树，切回跟随逻辑
+    if (AXBSoldierAIController* SoldierAI = Cast<AXBSoldierAIController>(GetController()))
+    {
+        SoldierAI->StopBehaviorTreeLogic();
+    }
     
     if (FollowComponent)
     {
@@ -2259,7 +2274,14 @@ void AXBSoldierCharacter::InitializeAI()
     
     if (BehaviorTreeAsset)
     {
-        AICtrl->RunBehaviorTree(BehaviorTreeAsset);
+        // 🔧 修改 - 行为树仅在战斗状态时启动
+        if (CurrentState == EXBSoldierState::Combat)
+        {
+            if (AXBSoldierAIController* SoldierAI = Cast<AXBSoldierAIController>(AICtrl))
+            {
+                SoldierAI->StartBehaviorTree(BehaviorTreeAsset);
+            }
+        }
         
         if (UBlackboardComponent* BBComp = AICtrl->GetBlackboardComponent())
         {
