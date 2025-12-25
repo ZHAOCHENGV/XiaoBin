@@ -204,10 +204,14 @@ bool AXBSoldierAIController::StartBehaviorTree(UBehaviorTree* BehaviorTreeAsset)
     }
     
     RefreshBlackboardValuesSafe();
-    
-    BehaviorTreeComp->StartTree(*BehaviorTreeAsset);
-    
-    bool bSuccess = BehaviorTreeComp->IsRunning();
+
+    // 🔧 修改 - 使用 RunBehaviorTree 统一启动逻辑，确保 BrainComponent 正确初始化
+    bool bSuccess = RunBehaviorTree(BehaviorTreeAsset);
+
+    if (bSuccess && !BehaviorTreeComp)
+    {
+        BehaviorTreeComp = Cast<UBehaviorTreeComponent>(GetBrainComponent());
+    }
     
     if (bSuccess)
     {

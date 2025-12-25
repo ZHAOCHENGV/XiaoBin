@@ -45,21 +45,8 @@ EBTNodeResult::Type UBTTask_XBMoveToTarget::ExecuteTask(UBehaviorTreeComponent& 
         return EBTNodeResult::Failed;
     }
     
-    float StopDistance = DefaultStopDistance;
-    
-    if (AttackRangeKey.SelectedKeyName != NAME_None)
-    {
-        float BBRange = BlackboardComp->GetValueAsFloat(AttackRangeKey.SelectedKeyName);
-        if (BBRange > 0.0f)
-        {
-            StopDistance = BBRange;
-        }
-    }
-    else
-    {
-        // 🔧 修复 - 直接调用 GetAttackRange()
-        StopDistance = Soldier->GetAttackRange();
-    }
+    // 🔧 修改 - 停止距离使用士兵数据表攻击范围，不再依赖黑板
+    float StopDistance = Soldier->GetAttackRange();
     
     if (Soldier->GetSoldierType() == EXBSoldierType::Archer)
     {
@@ -124,21 +111,8 @@ void UBTTask_XBMoveToTarget::TickTask(UBehaviorTreeComponent& OwnerComp, uint8* 
         return;
     }
     
-    float StopDistance = DefaultStopDistance;
-    
-    if (AttackRangeKey.SelectedKeyName != NAME_None)
-    {
-        float BBRange = BlackboardComp->GetValueAsFloat(AttackRangeKey.SelectedKeyName);
-        if (BBRange > 0.0f)
-        {
-            StopDistance = BBRange;
-        }
-    }
-    else
-    {
-        // 🔧 修复 - 直接调用 GetAttackRange()
-        StopDistance = Soldier->GetAttackRange();
-    }
+    // 🔧 修改 - 停止距离使用士兵数据表攻击范围，不再依赖黑板
+    float StopDistance = Soldier->GetAttackRange();
     
     float CurrentDistance = FVector::Dist(Soldier->GetActorLocation(), Target->GetActorLocation());
     if (CurrentDistance <= StopDistance)

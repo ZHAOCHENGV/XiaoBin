@@ -92,6 +92,12 @@ void UBTService_XBUpdateSoldierState::TickNode(UBehaviorTreeComponent& OwnerComp
         float DistToTarget = FVector::Dist(SoldierLocation, CurrentTarget->GetActorLocation());
         BlackboardComp->SetValueAsFloat(XBSoldierBBKeys::DistanceToTarget, DistToTarget);
         BlackboardComp->SetValueAsVector(XBSoldierBBKeys::TargetLocation, CurrentTarget->GetActorLocation());
+
+        // 🔧 修改 - 目标有效时更新“看见敌人时间”，避免战斗中过早脱离
+        if (BehaviorInterface)
+        {
+            BehaviorInterface->RecordEnemySeen();
+        }
     }
     else
     {

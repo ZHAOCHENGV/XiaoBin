@@ -401,6 +401,15 @@ void UANS_XBMeleeDetection::ApplyDamageToTargets(const TArray<FHitResult>& HitRe
             continue;
         }
 
+        // 🔧 修改 - 主将命中主将时，触发士兵进入战斗
+        if (AXBCharacterBase* OwnerLeader = Cast<AXBCharacterBase>(OwnerActor))
+        {
+            if (AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(HitActor))
+            {
+                OwnerLeader->OnAttackHit(TargetLeader);
+            }
+        }
+
         // 目标是将领或其他有 ASC 的角色
         UAbilitySystemComponent* TargetASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(HitActor);
         if (!TargetASC)

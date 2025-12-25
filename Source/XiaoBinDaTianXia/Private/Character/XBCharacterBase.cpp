@@ -33,6 +33,7 @@
 #include "AI/XBSoldierPerceptionSubsystem.h"
 #include "Particles/ParticleSystemComponent.h"
 #include "Soldier/Component/XBSoldierPoolSubsystem.h"
+#include "AI/XBSoldierAIController.h"
 
 AXBCharacterBase::AXBCharacterBase()
 {
@@ -776,6 +777,16 @@ void AXBCharacterBase::OnAttackHit(AActor* HitTarget)
     }
 
     EnterCombat();
+
+    // 🔧 修改 - 当主将命中敌方主将时，触发双方士兵进入战斗
+    AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(HitTarget);
+    if (TargetLeader && IsHostileTo(TargetLeader))
+    {
+        TargetLeader->EnterCombat();
+
+        UE_LOG(LogXBCombat, Log, TEXT("主将 %s 命中敌方主将 %s，触发双方进入战斗"),
+            *GetName(), *TargetLeader->GetName());
+    }
 }
 
 void AXBCharacterBase::RecallAllSoldiers()
@@ -786,10 +797,16 @@ void AXBCharacterBase::RecallAllSoldiers()
     {
         if (Soldier && Soldier->GetSoldierState() != EXBSoldierState::Dead)
         {
-            Soldier->SetSoldierState(EXBSoldierState::Returning);
+            // 🔧 修改 - 召回时切换为跟随状态并关闭行为树
+            Soldier->SetSoldierState(EXBSoldierState::Following);
             Soldier->CurrentAttackTarget = nullptr;
 
-            if (AAIController* AICtrl = Cast<AAIController>(Soldier->GetController()))
+            if (AXBSoldierAIController* SoldierAI = Cast<AXBSoldierAIController>(Soldier->GetController()))
+            {
+                SoldierAI->StopBehaviorTreeLogic();
+                SoldierAI->StopMovement();
+            }
+            else if (AAIController* AICtrl = Cast<AAIController>(Soldier->GetController()))
             {
                 AICtrl->StopMovement();
             }

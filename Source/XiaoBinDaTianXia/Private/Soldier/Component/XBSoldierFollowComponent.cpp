@@ -20,6 +20,7 @@
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "XBCollisionChannels.h"
 
 UXBSoldierFollowComponent::UXBSoldierFollowComponent()
 {
@@ -1146,7 +1147,14 @@ void UXBSoldierFollowComponent::SetSoldierCollisionEnabled(bool bEnableCollision
         if (bCollisionModified)
         {
             Capsule->SetCollisionResponseToChannel(ECC_Pawn, OriginalPawnResponse);
+            Capsule->SetCollisionResponseToChannel(XBCollision::Soldier, OriginalSoldierResponse);
             bCollisionModified = false;
+        }
+
+        // 🔧 修改 - 战斗中开启士兵间阻挡，避免重叠
+        if (bIsInCombat)
+        {
+            Capsule->SetCollisionResponseToChannel(XBCollision::Soldier, ECR_Block);
         }
     }
     else
@@ -1154,7 +1162,9 @@ void UXBSoldierFollowComponent::SetSoldierCollisionEnabled(bool bEnableCollision
         if (!bCollisionModified)
         {
             OriginalPawnResponse = Capsule->GetCollisionResponseToChannel(ECC_Pawn);
+            OriginalSoldierResponse = Capsule->GetCollisionResponseToChannel(XBCollision::Soldier);
             Capsule->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+            Capsule->SetCollisionResponseToChannel(XBCollision::Soldier, ECR_Overlap);
             bCollisionModified = true;
         }
     }
@@ -1187,7 +1197,8 @@ void UXBSoldierFollowComponent::SetRVOAvoidanceEnabled(bool bEnable)
     UCharacterMovementComponent* MoveComp = GetCachedMovementComponent();
     if (MoveComp)
     {
-        MoveComp->SetAvoidanceEnabled(false);
+        // 🔧 修改 - 根据战斗状态切换RVO避让
+        MoveComp->SetAvoidanceEnabled(bEnable);
     }
 }
 
@@ -1202,7 +1213,23 @@ void UXBSoldierFollowComponent::SetCombatState(bool bInCombat)
 
     if (bInCombat)
     {
+        // 🔧 修改 - 战斗时开启碰撞与避让，避免士兵重叠
         SetSoldierCollisionEnabled(true);
+        SetRVOAvoidanceEnabled(true);
+    }
+    else
+    {
+        SetRVOAvoidanceEnabled(false);
+
+        // 🔧 修改 - 退出战斗后根据跟随模式恢复碰撞设置
+        if (bDisableCollisionDuringTransition && CurrentMode == EXBFollowMode::RecruitTransition)
+        {
+            SetSoldierCollisionEnabled(false);
+        }
+        else
+        {
+            SetSoldierCollisionEnabled(true);
+        }
     }
 
     SetMovementMode(true);

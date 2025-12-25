@@ -104,13 +104,73 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
         return false;
     }
 
+    // 🔧 修改 - 目标选择优先级：先敌方士兵，再敌方主将
+    auto SelectPriorityTarget = [Soldier](const FXBPerceptionResult& Result) -> AActor*
+    {
+        if (!Soldier)
+        {
+            return nullptr;
+        }
+
+        AActor* NearestSoldier = nullptr;
+        float NearestSoldierDistSq = MAX_FLT;
+
+        AActor* NearestLeader = nullptr;
+        float NearestLeaderDistSq = MAX_FLT;
+
+        const FVector SoldierLocation = Soldier->GetActorLocation();
+
+        for (AActor* Candidate : Result.DetectedEnemies)
+        {
+            if (!Candidate || !IsValid(Candidate))
+            {
+                continue;
+            }
+
+            if (AXBSoldierCharacter* EnemySoldier = Cast<AXBSoldierCharacter>(Candidate))
+            {
+                if (EnemySoldier->GetSoldierState() == EXBSoldierState::Dead)
+                {
+                    continue;
+                }
+
+                const float DistSq = FVector::DistSquared(SoldierLocation, EnemySoldier->GetActorLocation());
+                if (DistSq < NearestSoldierDistSq)
+                {
+                    NearestSoldierDistSq = DistSq;
+                    NearestSoldier = EnemySoldier;
+                }
+                continue;
+            }
+
+            if (AXBCharacterBase* EnemyLeader = Cast<AXBCharacterBase>(Candidate))
+            {
+                if (EnemyLeader->IsDead())
+                {
+                    continue;
+                }
+
+                const float DistSq = FVector::DistSquared(SoldierLocation, EnemyLeader->GetActorLocation());
+                if (DistSq < NearestLeaderDistSq)
+                {
+                    NearestLeaderDistSq = DistSq;
+                    NearestLeader = EnemyLeader;
+                }
+            }
+        }
+
+        return NearestSoldier ? NearestSoldier : NearestLeader;
+    };
+
     // 检查本地缓存是否有效
     float CurrentTime = GetWorld()->GetTimeSeconds();
     if (CurrentTime - PerceptionCacheTime < PerceptionCacheValidity)
     {
-        if (CachedPerceptionResult.NearestEnemy && IsValid(CachedPerceptionResult.NearestEnemy))
+        AActor* CachedTarget = SelectPriorityTarget(CachedPerceptionResult);
+        if (CachedTarget)
         {
-            OutEnemy = CachedPerceptionResult.NearestEnemy;
+            OutEnemy = CachedTarget;
+            RecordEnemySeen();
             return true;
         }
         return false;
@@ -143,11 +203,15 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
 
     PerceptionCacheTime = CurrentTime;
 
-    if (bFound && CachedPerceptionResult.NearestEnemy && IsValid(CachedPerceptionResult.NearestEnemy))
+    if (bFound)
     {
-        OutEnemy = CachedPerceptionResult.NearestEnemy;
-        RecordEnemySeen();
-        return true;
+        AActor* PriorityTarget = SelectPriorityTarget(CachedPerceptionResult);
+        if (PriorityTarget)
+        {
+            OutEnemy = PriorityTarget;
+            RecordEnemySeen();
+            return true;
+        }
     }
 
     return false;
@@ -226,10 +290,23 @@ EXBBehaviorResult UXBSoldierBehaviorInterface::ExecuteAttack(AActor* Target)
         // 如果只是冷却中，返回进行中
         if (AttackCooldownTimer > 0.0f && IsInAttackRange(Target))
         {
+            // 🔧 修改 - 冷却中也保持朝向目标并停止移动，避免在攻击范围内乱跑
+            FaceTarget(Target, GetWorld()->GetDeltaSeconds());
+            if (AAIController* AIController = Cast<AAIController>(Soldier->GetController()))
+            {
+                AIController->StopMovement();
+            }
             return EXBBehaviorResult::InProgress;
         }
         return EXBBehaviorResult::Failed;
     }
+
+    // 🔧 修改 - 进入攻击时停止移动并面向目标，保证攻击稳定触发
+    if (AAIController* AIController = Cast<AAIController>(Soldier->GetController()))
+    {
+        AIController->StopMovement();
+    }
+    FaceTarget(Target, GetWorld()->GetDeltaSeconds());
 
     // 播放攻击蒙太奇
     PlayAttackMontage();
@@ -241,6 +318,9 @@ EXBBehaviorResult UXBSoldierBehaviorInterface::ExecuteAttack(AActor* Target)
     // 应用伤害
     float Damage = Soldier->GetBaseDamage();
     ApplyDamageToTarget(Target, Damage);
+
+    // 🔧 修改 - 记录看见敌人，避免战斗状态被过早清理
+    RecordEnemySeen();
 
     UE_LOG(LogXBCombat, Verbose, TEXT("士兵 %s 攻击 %s，伤害: %.1f"),
         *Soldier->GetName(), *Target->GetName(), Damage);
@@ -559,6 +639,15 @@ bool UXBSoldierBehaviorInterface::ShouldDisengage() const
     if (!Soldier)
     {
         return false;
+    }
+
+    // 🔧 修改 - 有有效目标时不脱离战斗，避免攻击中被强制切回跟随
+    if (AActor* CurrentTarget = Soldier->CurrentAttackTarget.Get())
+    {
+        if (IsTargetValid(CurrentTarget))
+        {
+            return false;
+        }
     }
 
     // 条件1：距离将领过远
