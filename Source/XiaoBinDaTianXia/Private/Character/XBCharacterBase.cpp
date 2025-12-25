@@ -33,6 +33,7 @@
 #include "AI/XBSoldierPerceptionSubsystem.h"
 #include "Particles/ParticleSystemComponent.h"
 #include "Soldier/Component/XBSoldierPoolSubsystem.h"
+#include "AI/XBSoldierAIController.h"
 
 AXBCharacterBase::AXBCharacterBase()
 {
@@ -796,10 +797,16 @@ void AXBCharacterBase::RecallAllSoldiers()
     {
         if (Soldier && Soldier->GetSoldierState() != EXBSoldierState::Dead)
         {
-            Soldier->SetSoldierState(EXBSoldierState::Returning);
+            // 🔧 修改 - 召回时切换为跟随状态并关闭行为树
+            Soldier->SetSoldierState(EXBSoldierState::Following);
             Soldier->CurrentAttackTarget = nullptr;
 
-            if (AAIController* AICtrl = Cast<AAIController>(Soldier->GetController()))
+            if (AXBSoldierAIController* SoldierAI = Cast<AXBSoldierAIController>(Soldier->GetController()))
+            {
+                SoldierAI->StopBehaviorTreeLogic();
+                SoldierAI->StopMovement();
+            }
+            else if (AAIController* AICtrl = Cast<AAIController>(Soldier->GetController()))
             {
                 AICtrl->StopMovement();
             }
