@@ -392,7 +392,6 @@ bool AXBSoldierAIController::ValidateAllBlackboardKeys() const
         
         // 位置类型
         { XBSoldierBBKeys::TargetLocation,      EXBBlackboardKeyType::Vector, true },
-        { XBSoldierBBKeys::FormationPosition,   EXBBlackboardKeyType::Vector, true },
         
         // 🔧 修改 - 整数类型（SoldierState 使用 Int）
         { XBSoldierBBKeys::SoldierState,    EXBBlackboardKeyType::Int, true },
@@ -409,7 +408,6 @@ bool AXBSoldierAIController::ValidateAllBlackboardKeys() const
         { XBSoldierBBKeys::HasTarget,       EXBBlackboardKeyType::Bool, true },
         { XBSoldierBBKeys::IsInCombat,      EXBBlackboardKeyType::Bool, true },
         { XBSoldierBBKeys::ShouldRetreat,   EXBBlackboardKeyType::Bool, false },
-        { XBSoldierBBKeys::IsAtFormation,   EXBBlackboardKeyType::Bool, false },
         { XBSoldierBBKeys::CanAttack,       EXBBlackboardKeyType::Bool, true },
     };
     
@@ -487,16 +485,6 @@ void AXBSoldierAIController::SetSoldierState(uint8 NewState)
     BlackboardComp->SetValueAsBool(XBSoldierBBKeys::IsInCombat, bInCombat);
 }
 
-void AXBSoldierAIController::SetFormationPosition(const FVector& Position)
-{
-    if (!BlackboardComp)
-    {
-        return;
-    }
-    
-    BlackboardComp->SetValueAsVector(XBSoldierBBKeys::FormationPosition, Position);
-}
-
 void AXBSoldierAIController::SetAttackRange(float Range)
 {
     if (!BlackboardComp)
@@ -564,15 +552,11 @@ void AXBSoldierAIController::RefreshBlackboardValuesSafe()
     int32 SlotIndex = Soldier->GetFormationSlotIndex();
     BlackboardComp->SetValueAsInt(XBSoldierBBKeys::FormationSlot, SlotIndex);
     
-    FVector CurrentPosition = Soldier->GetActorLocation();
-    SetFormationPosition(CurrentPosition);
-    
     // 🔧 修复 - 直接调用 Getter 方法
     SetAttackRange(Soldier->GetAttackRange());
     SetVisionRange(Soldier->GetVisionRange());
     
     BlackboardComp->SetValueAsBool(XBSoldierBBKeys::CanAttack, true);
-    BlackboardComp->SetValueAsBool(XBSoldierBBKeys::IsAtFormation, true);
     BlackboardComp->SetValueAsFloat(XBSoldierBBKeys::DistanceToTarget, MAX_FLT);
     BlackboardComp->SetValueAsFloat(XBSoldierBBKeys::DistanceToLeader, 0.0f);
     BlackboardComp->SetValueAsBool(XBSoldierBBKeys::ShouldRetreat, false);
@@ -645,17 +629,6 @@ void AXBSoldierAIController::UpdateDistanceValuesSafe()
     }
     
     BlackboardComp->SetValueAsBool(XBSoldierBBKeys::CanAttack, Soldier->CanAttack());
-    
-    FVector FormationPos = Soldier->GetFormationWorldPositionSafe();
-    if (!FormationPos.IsZero() && !FormationPos.ContainsNaN())
-    {
-        SetFormationPosition(FormationPos);
-        
-        float DistToFormation = FVector::Dist2D(SoldierLocation, FormationPos);
-        // 从数据表读取到达阈值
-        float ArrivalThreshold = 50.0f; // 默认值
-        BlackboardComp->SetValueAsBool(XBSoldierBBKeys::IsAtFormation, DistToFormation <= ArrivalThreshold);
-    }
     
     // 🔧 修改 - 使用 Int 类型
     SetSoldierState(static_cast<uint8>(Soldier->GetSoldierState()));

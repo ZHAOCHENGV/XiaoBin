@@ -638,57 +638,6 @@ bool UXBSoldierBehaviorInterface::IsAtFormationPosition() const
     return Distance <= Soldier->GetArrivalThreshold();
 }
 
-// ==================== 弓手特殊行为实现 ====================
-
-bool UXBSoldierBehaviorInterface::ShouldRetreat(AActor* Target) const
-{
-    AXBSoldierCharacter* Soldier = GetOwnerSoldier();
-    if (!Soldier || !Target)
-    {
-        return false;
-    }
-
-    // 只有弓手需要后撤
-    if (Soldier->GetSoldierType() != EXBSoldierType::Archer)
-    {
-        return false;
-    }
-
-    UXBSoldierDataAccessor* DataAccessor = Soldier->GetDataAccessor();
-    if (!DataAccessor || !DataAccessor->IsInitialized())
-    {
-        return false;
-    }
-
-    const FXBArcherConfig& ArcherConfig = DataAccessor->GetRawData().ArcherConfig;
-    float DistToTarget = FVector::Dist(Soldier->GetActorLocation(), Target->GetActorLocation());
-
-    return DistToTarget < ArcherConfig.MinAttackDistance;
-}
-
-EXBBehaviorResult UXBSoldierBehaviorInterface::ExecuteRetreat(AActor* Target)
-{
-    AXBSoldierCharacter* Soldier = GetOwnerSoldier();
-    if (!Soldier || !Target)
-    {
-        return EXBBehaviorResult::Failed;
-    }
-
-    UXBSoldierDataAccessor* DataAccessor = Soldier->GetDataAccessor();
-    if (!DataAccessor || !DataAccessor->IsInitialized())
-    {
-        return EXBBehaviorResult::Failed;
-    }
-
-    const FXBArcherConfig& ArcherConfig = DataAccessor->GetRawData().ArcherConfig;
-
-    // 计算后撤方向和目标位置
-    FVector RetreatDirection = (Soldier->GetActorLocation() - Target->GetActorLocation()).GetSafeNormal2D();
-    FVector RetreatTarget = Soldier->GetActorLocation() + RetreatDirection * ArcherConfig.RetreatDistance;
-
-    return MoveToLocation(RetreatTarget, 10.0f);
-}
-
 // ==================== 决策辅助实现 ====================
 
 bool UXBSoldierBehaviorInterface::ShouldDisengage() const

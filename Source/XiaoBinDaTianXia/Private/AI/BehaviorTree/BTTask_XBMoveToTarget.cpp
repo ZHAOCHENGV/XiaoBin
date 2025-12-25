@@ -48,11 +48,6 @@ EBTNodeResult::Type UBTTask_XBMoveToTarget::ExecuteTask(UBehaviorTreeComponent& 
     // 🔧 修改 - 停止距离使用士兵数据表攻击范围，不再依赖黑板
     float StopDistance = Soldier->GetAttackRange();
     
-    if (Soldier->GetSoldierType() == EXBSoldierType::Archer)
-    {
-        StopDistance = FMath::Max(StopDistance, StopDistance * 0.9f);
-    }
-    
     float CurrentDistance = FVector::Dist(Soldier->GetActorLocation(), CurrentTarget->GetActorLocation());
     if (CurrentDistance <= StopDistance)
     {
@@ -120,19 +115,6 @@ void UBTTask_XBMoveToTarget::TickTask(UBehaviorTreeComponent& OwnerComp, uint8* 
         AIController->StopMovement();
         FinishLatentTask(OwnerComp, EBTNodeResult::Succeeded);
         return;
-    }
-    
-    if (Soldier->GetSoldierType() == EXBSoldierType::Archer)
-    {
-        float MinDistance = ArcherSafeDistance;
-        if (CurrentDistance < MinDistance)
-        {
-            FVector RetreatDirection = (Soldier->GetActorLocation() - Target->GetActorLocation()).GetSafeNormal();
-            FVector RetreatTarget = Soldier->GetActorLocation() + RetreatDirection * 150.0f;
-            
-            AIController->MoveToLocation(RetreatTarget, 10.0f, true, true, true, true);
-            return;
-        }
     }
     
     TargetUpdateTimer += DeltaSeconds;

@@ -51,6 +51,8 @@ EBTNodeResult::Type UBTTask_XBAttackTarget::ExecuteTask(UBehaviorTreeComponent& 
         UE_LOG(LogTemp, Verbose, TEXT("BTTask_AttackTarget: 目标为空"));
         return EBTNodeResult::Failed;
     }
+
+    Soldier->CurrentAttackTarget = Target;
     
     // ✨ 核心重构 - 通过 BehaviorInterface 执行攻击
     UXBSoldierBehaviorInterface* BehaviorInterface = Soldier->GetBehaviorInterface();

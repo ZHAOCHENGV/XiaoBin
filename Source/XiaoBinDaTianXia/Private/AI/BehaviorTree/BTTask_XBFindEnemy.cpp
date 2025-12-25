@@ -77,6 +77,7 @@ EBTNodeResult::Type UBTTask_XBFindEnemy::ExecuteTask(UBehaviorTreeComponent& Own
     
     if (NearestEnemy)
     {
+        Soldier->CurrentAttackTarget = NearestEnemy;
         BlackboardComp->SetValueAsVector(XBSoldierBBKeys::TargetLocation, NearestEnemy->GetActorLocation());
         BlackboardComp->SetValueAsBool(XBSoldierBBKeys::HasTarget, true);
         
@@ -86,6 +87,7 @@ EBTNodeResult::Type UBTTask_XBFindEnemy::ExecuteTask(UBehaviorTreeComponent& Own
     }
     else
     {
+        Soldier->CurrentAttackTarget = nullptr;
         BlackboardComp->SetValueAsBool(XBSoldierBBKeys::HasTarget, false);
     }
     

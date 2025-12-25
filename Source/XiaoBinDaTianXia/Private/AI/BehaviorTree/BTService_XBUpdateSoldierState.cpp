@@ -81,6 +81,7 @@ void UBTService_XBUpdateSoldierState::TickNode(UBehaviorTreeComponent& OwnerComp
         {
             BlackboardComp->SetValueAsObject(TargetKey.SelectedKeyName, nullptr);
             CurrentTarget = nullptr;
+            Soldier->CurrentAttackTarget = nullptr;
             UE_LOG(LogTemp, Verbose, TEXT("士兵 %s 的目标已失效"), *Soldier->GetName());
         }
     }
@@ -89,6 +90,7 @@ void UBTService_XBUpdateSoldierState::TickNode(UBehaviorTreeComponent& OwnerComp
     
     if (CurrentTarget)
     {
+        Soldier->CurrentAttackTarget = CurrentTarget;
         float DistToTarget = FVector::Dist(SoldierLocation, CurrentTarget->GetActorLocation());
         BlackboardComp->SetValueAsFloat(XBSoldierBBKeys::DistanceToTarget, DistToTarget);
         BlackboardComp->SetValueAsVector(XBSoldierBBKeys::TargetLocation, CurrentTarget->GetActorLocation());
@@ -139,14 +141,6 @@ void UBTService_XBUpdateSoldierState::TickNode(UBehaviorTreeComponent& OwnerComp
         }
         BlackboardComp->SetValueAsBool(XBSoldierBBKeys::ShouldRetreat, bShouldRetreat);
     }
-    
-    // ==================== 更新编队位置 ====================
-    
-    FVector FormationPos = Soldier->GetFormationWorldPosition();
-    BlackboardComp->SetValueAsVector(XBSoldierBBKeys::FormationPosition, FormationPos);
-    
-    float DistToFormation = FVector::Dist2D(SoldierLocation, FormationPos);
-    BlackboardComp->SetValueAsBool(XBSoldierBBKeys::IsAtFormation, DistToFormation <= 50.0f);
     
     // ==================== 更新攻击状态 ====================
     

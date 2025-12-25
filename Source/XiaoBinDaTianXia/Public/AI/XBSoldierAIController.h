@@ -121,9 +121,6 @@ public:
     UFUNCTION(BlueprintCallable, Category = "XB|AI", meta = (DisplayName = "设置状态"))
     void SetSoldierState(uint8 NewState);
 
-    UFUNCTION(BlueprintCallable, Category = "XB|AI", meta = (DisplayName = "设置编队位置"))
-    void SetFormationPosition(const FVector& Position);
-
     UFUNCTION(BlueprintCallable, Category = "XB|AI", meta = (DisplayName = "设置攻击范围"))
     void SetAttackRange(float Range);
 

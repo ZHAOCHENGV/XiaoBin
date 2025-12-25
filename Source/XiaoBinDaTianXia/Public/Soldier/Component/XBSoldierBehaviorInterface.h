@@ -166,24 +166,6 @@ public:
     UFUNCTION(BlueprintPure, Category = "XB|Behavior|Movement", meta = (DisplayName = "已到达编队位置"))
     bool IsAtFormationPosition() const;
 
-    // ==================== 弓手特殊行为 ====================
-
-    /**
-     * @brief 检查是否需要后撤
-     * @param Target 当前目标
-     * @return 是否需要后撤
-     */
-    UFUNCTION(BlueprintPure, Category = "XB|Behavior|Archer", meta = (DisplayName = "需要后撤"))
-    bool ShouldRetreat(AActor* Target) const;
-
-    /**
-     * @brief 执行后撤
-     * @param Target 后撤方向的参考目标
-     * @return 执行结果
-     */
-    UFUNCTION(BlueprintCallable, Category = "XB|Behavior|Archer", meta = (DisplayName = "执行后撤"))
-    EXBBehaviorResult ExecuteRetreat(AActor* Target);
-
     // ==================== 决策辅助 ====================
 
     /**

@@ -100,27 +100,6 @@ struct XIAOBINDATIANXIA_API FXBSoldierVisualConfig
     TSoftObjectPtr<UAnimMontage> DeathMontage;
 };
 
-/**
- * @brief 弓手特殊配置
- */
-USTRUCT(BlueprintType)
-struct XIAOBINDATIANXIA_API FXBArcherConfig
-{
-    GENERATED_BODY()
-
-    /** @brief 是否启用原地攻击（弓手特性：在攻击范围内不追踪） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "弓手", meta = (DisplayName = "启用原地攻击"))
-    bool bStationaryAttack = true;
-
-    /** @brief 最小攻击距离（过近时后撤） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "弓手", meta = (DisplayName = "最小攻击距离", ClampMin = "0.0"))
-    float MinAttackDistance = 100.0f;
-
-    /** @brief 后撤距离 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "弓手", meta = (DisplayName = "后撤距离", ClampMin = "0.0"))
-    float RetreatDistance = 150.0f;
-};
-
 // ============================================
 // ✨ 新增：数据访问器前向声明
 // ============================================
@@ -212,12 +191,6 @@ struct XIAOBINDATIANXIA_API FXBSoldierTableRow : public FTableRowBase
     /** @brief 视觉资源配置 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "视觉", meta = (DisplayName = "视觉配置"))
     FXBSoldierVisualConfig VisualConfig;
-
-    // ==================== 弓手特殊配置 ====================
-
-    /** @brief 弓手配置（仅对弓手类型生效） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "弓手", meta = (DisplayName = "弓手配置"))
-    FXBArcherConfig ArcherConfig;
 
     // ==================== ✨ 新增：便捷访问方法 ====================
 

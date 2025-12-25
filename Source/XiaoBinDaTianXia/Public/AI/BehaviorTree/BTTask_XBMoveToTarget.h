@@ -23,7 +23,6 @@
  * @note 功能说明:
  *       - 追踪并移动到指定目标
  *       - 到达攻击范围后停止
- *       - 弓手保持安全距离
  */
 UCLASS()
 class XIAOBINDATIANXIA_API UBTTask_XBMoveToTarget : public UBTTaskNode
@@ -57,10 +56,6 @@ protected:
     /** @brief 默认停止距离（攻击范围） */
     UPROPERTY(EditAnywhere, Category = "配置", meta = (DisplayName = "默认停止距离", ClampMin = "10.0"))
     float DefaultStopDistance = 150.0f;
-
-    /** @brief 弓手后撤时使用的额外距离 */
-    UPROPERTY(EditAnywhere, Category = "配置", meta = (DisplayName = "弓手安全距离", ClampMin = "0.0"))
-    float ArcherSafeDistance = 100.0f;
 
     /** @brief 目标位置更新间隔 */
     UPROPERTY(EditAnywhere, Category = "配置", meta = (DisplayName = "位置更新间隔", ClampMin = "0.1"))
