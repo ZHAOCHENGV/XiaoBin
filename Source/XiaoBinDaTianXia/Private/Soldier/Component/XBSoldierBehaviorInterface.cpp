@@ -95,7 +95,7 @@ void UXBSoldierBehaviorInterface::UpdateAttackCooldown(float DeltaTime)
  */
 bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
 {
-    OutEnemy = nullptr;
+   OutEnemy = nullptr;
 
     AXBSoldierCharacter* Soldier = GetOwnerSoldier();
     UXBSoldierPerceptionSubsystem* Perception = GetPerceptionSubsystem();
@@ -105,12 +105,19 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
         return false;
     }
 
-    // 🔧 修改 - 目标选择优先级：先敌方士兵，再敌方主将
+    // 获取当前跟随的主将（用于过滤）
+    AXBCharacterBase* MyLeader = Soldier->GetLeaderCharacter();
+    // 获取自身阵营
+    EXBFaction MyFaction = Soldier->GetFaction();
+
+    // 确定优先阵营（例如攻击了主将的敌人阵营）
     EXBFaction PreferredFaction = EXBFaction::Neutral;
     bool bHasPreferredFaction = false;
-    if (AXBCharacterBase* Leader = Soldier->GetLeaderCharacter())
+    
+    // 如果有主将，优先攻击主将的敌人
+    if (MyLeader)
     {
-        if (AXBCharacterBase* EnemyLeader = Leader->GetLastAttackedEnemyLeader())
+        if (AXBCharacterBase* EnemyLeader = MyLeader->GetLastAttackedEnemyLeader())
         {
             if (!EnemyLeader->IsDead())
             {
@@ -120,12 +127,10 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
         }
     }
 
-    auto SelectPriorityTarget = [Soldier, bHasPreferredFaction, PreferredFaction](const FXBPerceptionResult& Result) -> AActor*
+    // 定义筛选 Lambda
+    auto SelectPriorityTarget = [&](const FXBPerceptionResult& Result) -> AActor*
     {
-        if (!Soldier)
-        {
-            return nullptr;
-        }
+        if (!Soldier) return nullptr;
 
         AActor* NearestPreferredSoldier = nullptr;
         float NearestPreferredSoldierDistSq = MAX_FLT;
@@ -143,37 +148,58 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
 
         for (AActor* Candidate : Result.DetectedEnemies)
         {
-            if (!Candidate || !IsValid(Candidate))
-            {
-                continue;
-            }
+            // 1. 基础有效性检查
+            if (!Candidate || !IsValid(Candidate)) continue;
 
-            // 🔧 核心修复 [必须添加]：强制排除自己
-            // 防止感知系统误将自己包含在内，导致 "寻找敌人 -> 找到自己 -> 校验失败 -> 寻找敌人" 的死循环
-            if (Candidate == Soldier)
-            {
-                continue;
-            }
+            // 🔧 修复 1: 绝对过滤自身
+            if (Candidate == Soldier) continue;
+
+            // 🔧 修复 2: 绝对过滤自己跟随的主将
+            if (MyLeader && Candidate == MyLeader) continue;
 
             EXBFaction CandidateFaction = EXBFaction::Neutral;
+            bool bIsSoldier = false;
+            bool bIsLeader = false;
 
+            // 识别目标类型并获取阵营
             if (AXBSoldierCharacter* EnemySoldier = Cast<AXBSoldierCharacter>(Candidate))
             {
-                if (EnemySoldier->GetSoldierState() == EXBSoldierState::Dead)
-                {
-                    continue;
-                }
-
+                if (EnemySoldier->GetSoldierState() == EXBSoldierState::Dead) continue;
                 CandidateFaction = EnemySoldier->GetFaction();
+                bIsSoldier = true;
+            }
+            else if (AXBCharacterBase* EnemyLeader = Cast<AXBCharacterBase>(Candidate))
+            {
+                if (EnemyLeader->IsDead()) continue;
+                CandidateFaction = EnemyLeader->GetFaction();
+                bIsLeader = true;
+            }
+            else
+            {
+                // 不是士兵也不是主将，忽略
+                continue;
+            }
 
-                const float DistSq = FVector::DistSquared(SoldierLocation, EnemySoldier->GetActorLocation());
-                const bool bPreferred = bHasPreferredFaction && CandidateFaction == PreferredFaction;
+            // 🔧 修复 3: 核心敌对关系检查
+            // 如果不是敌对关系（比如是同阵营或中立），直接跳过
+            if (!UXBBlueprintFunctionLibrary::AreFactionsHostile(MyFaction, CandidateFaction))
+            {
+                continue;
+            }
+
+            // --- 距离计算与择优逻辑 ---
+            
+            const float DistSq = FVector::DistSquared(SoldierLocation, Candidate->GetActorLocation());
+            const bool bPreferred = bHasPreferredFaction && CandidateFaction == PreferredFaction;
+
+            if (bIsSoldier)
+            {
                 if (bPreferred)
                 {
                     if (DistSq < NearestPreferredSoldierDistSq)
                     {
                         NearestPreferredSoldierDistSq = DistSq;
-                        NearestPreferredSoldier = EnemySoldier;
+                        NearestPreferredSoldier = Candidate;
                     }
                 }
                 else
@@ -181,29 +207,18 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
                     if (DistSq < NearestSoldierDistSq)
                     {
                         NearestSoldierDistSq = DistSq;
-                        NearestSoldier = EnemySoldier;
+                        NearestSoldier = Candidate;
                     }
                 }
-                continue;
             }
-
-            if (AXBCharacterBase* EnemyLeader = Cast<AXBCharacterBase>(Candidate))
+            else if (bIsLeader)
             {
-                if (EnemyLeader->IsDead())
-                {
-                    continue;
-                }
-
-                CandidateFaction = EnemyLeader->GetFaction();
-
-                const float DistSq = FVector::DistSquared(SoldierLocation, EnemyLeader->GetActorLocation());
-                const bool bPreferred = bHasPreferredFaction && CandidateFaction == PreferredFaction;
                 if (bPreferred)
                 {
                     if (DistSq < NearestPreferredLeaderDistSq)
                     {
                         NearestPreferredLeaderDistSq = DistSq;
-                        NearestPreferredLeader = EnemyLeader;
+                        NearestPreferredLeader = Candidate;
                     }
                 }
                 else
@@ -211,21 +226,17 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
                     if (DistSq < NearestLeaderDistSq)
                     {
                         NearestLeaderDistSq = DistSq;
-                        NearestLeader = EnemyLeader;
+                        NearestLeader = Candidate;
                     }
                 }
             }
         }
 
-        if (NearestPreferredSoldier)
-        {
-            return NearestPreferredSoldier;
-        }
-        if (NearestPreferredLeader)
-        {
-            return NearestPreferredLeader;
-        }
-        return NearestSoldier ? NearestSoldier : NearestLeader;
+        // 返回优先级：优先阵营士兵 > 优先阵营主将 > 普通敌方士兵 > 普通敌方主将
+        if (NearestPreferredSoldier) return NearestPreferredSoldier;
+        if (NearestPreferredLeader) return NearestPreferredLeader;
+        if (NearestSoldier) return NearestSoldier;
+        return NearestLeader;
     };
 
     // 检查本地缓存是否有效
@@ -233,16 +244,17 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
     if (CurrentTime - PerceptionCacheTime < PerceptionCacheValidity)
     {
         AActor* CachedTarget = SelectPriorityTarget(CachedPerceptionResult);
+        // 只有当缓存中找到了符合条件（敌对且非自身）的目标时才返回
         if (CachedTarget)
         {
             OutEnemy = CachedTarget;
             RecordEnemySeen();
             return true;
         }
-        return false;
+        // 如果缓存里全是队友/死人/自己，则强制刷新感知
     }
 
-    // ✨ 新增 - 根据战斗状态决定查询优先级
+    // 根据战斗状态决定查询优先级
     EXBQueryPriority Priority = EXBQueryPriority::Normal;
     if (Soldier->GetSoldierState() == EXBSoldierState::Combat)
     {
@@ -255,14 +267,13 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
 
     float VisionRange = Soldier->GetVisionRange();
     FVector Location = Soldier->GetActorLocation();
-    EXBFaction Faction = Soldier->GetFaction();
-
-    // 🔧 修改 - 使用带优先级的查询接口
+    
+    // 执行感知查询
     bool bFound = Perception->QueryNearestEnemyWithPriority(
         Soldier,
         Location,
         VisionRange,
-        Faction,
+        MyFaction,
         Priority,
         CachedPerceptionResult
     );
