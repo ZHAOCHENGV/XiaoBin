@@ -114,7 +114,7 @@ bool UBTDecorator_XBIsInRange::CalculateRawConditionValue(UBehaviorTreeComponent
     const float SelfRadius = ControlledPawn->GetSimpleCollisionRadius();
     const float TargetRadius = Target->GetSimpleCollisionRadius();
     const float EffectiveRange = Range + SelfRadius + TargetRadius;
-    float Distance = FVector::Dist(ControlledPawn->GetActorLocation(), Target->GetActorLocation());
+    float Distance = FVector::Dist2D(ControlledPawn->GetActorLocation(), Target->GetActorLocation());
     
     // 判断是否在范围内
     bool bInRange = (Distance <= EffectiveRange);

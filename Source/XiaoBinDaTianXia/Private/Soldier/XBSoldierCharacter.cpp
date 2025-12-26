@@ -1734,7 +1734,7 @@ float AXBSoldierCharacter::GetDistanceToTarget(AActor* Target) const
     {
         return MAX_FLT;
     }
-    return FVector::Dist(GetActorLocation(), Target->GetActorLocation());
+    return FVector::Dist2D(GetActorLocation(), Target->GetActorLocation());
 }
 
 bool AXBSoldierCharacter::IsInAttackRange(AActor* Target) const

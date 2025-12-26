@@ -124,7 +124,7 @@ EBTNodeResult::Type UBTTask_XBMoveToTarget::ExecuteTask(UBehaviorTreeComponent& 
     float StopDistance = Soldier->GetAttackRange() + SoldierRadius + TargetRadius;
     
     // 计算与目标的当前距离
-    float CurrentDistance = FVector::Dist(Soldier->GetActorLocation(), CurrentTarget->GetActorLocation());
+    float CurrentDistance = FVector::Dist2D(Soldier->GetActorLocation(), CurrentTarget->GetActorLocation());
     // 若已进入攻击范围则直接成功
     if (CurrentDistance <= StopDistance)
     {
@@ -278,7 +278,7 @@ void UBTTask_XBMoveToTarget::TickTask(UBehaviorTreeComponent& OwnerComp, uint8* 
     float StopDistance = Soldier->GetAttackRange() + SoldierRadius + TargetRadius;
     
     // 计算当前距离
-    float CurrentDistance = FVector::Dist(Soldier->GetActorLocation(), Target->GetActorLocation());
+    float CurrentDistance = FVector::Dist2D(Soldier->GetActorLocation(), Target->GetActorLocation());
     // 若进入攻击范围则成功
     if (CurrentDistance <= StopDistance)
     {

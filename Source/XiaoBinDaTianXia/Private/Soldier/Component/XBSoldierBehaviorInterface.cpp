@@ -447,7 +447,7 @@ bool UXBSoldierBehaviorInterface::IsInAttackRange(AActor* Target) const
     const float AttackRange = Soldier->GetAttackRange();
     const float SelfRadius = Soldier->GetSimpleCollisionRadius();
     const float TargetRadius = Target->GetSimpleCollisionRadius();
-    const float Distance = FVector::Dist(Soldier->GetActorLocation(), Target->GetActorLocation());
+    const float Distance = FVector::Dist2D(Soldier->GetActorLocation(), Target->GetActorLocation());
 
     return Distance <= (AttackRange + SelfRadius + TargetRadius);
 }
