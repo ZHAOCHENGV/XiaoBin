@@ -12,6 +12,8 @@
 #include "BehaviorTree/BlackboardComponent.h"
 #include "AIController.h"
 #include "Soldier/XBSoldierCharacter.h"
+#include "Soldier/Component/XBSoldierBehaviorInterface.h"
+#include "Character/XBCharacterBase.h"
 
 // 🔧 修改 - 按要求补充构造函数头部注释与逐行注释
 /**
@@ -87,6 +89,31 @@ bool UBTDecorator_XBIsInRange::CalculateRawConditionValue(UBehaviorTreeComponent
         UE_LOG(LogTemp, Verbose, TEXT("范围检测: 目标为空，目标键=%s"), *TargetKey.SelectedKeyName.ToString());
         // 返回失败
         return false;
+    }
+
+    // 目标有效性检查（死亡/无效则清理）
+    if (const AXBSoldierCharacter* Soldier = Cast<AXBSoldierCharacter>(ControlledPawn))
+    {
+        if (UXBSoldierBehaviorInterface* BehaviorInterface = Soldier->GetBehaviorInterface())
+        {
+            if (!BehaviorInterface->IsTargetValid(Target))
+            {
+                BlackboardComp->SetValueAsObject(TargetKey.SelectedKeyName, nullptr);
+                BlackboardComp->SetValueAsBool(XBSoldierBBKeys::HasTarget, false);
+                UE_LOG(LogTemp, Verbose, TEXT("范围检测: 目标无效，清理目标并返回不在范围内"));
+                return false;
+            }
+        }
+    }
+    else if (const AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(Target))
+    {
+        if (TargetLeader->IsDead())
+        {
+            BlackboardComp->SetValueAsObject(TargetKey.SelectedKeyName, nullptr);
+            BlackboardComp->SetValueAsBool(XBSoldierBBKeys::HasTarget, false);
+            UE_LOG(LogTemp, Verbose, TEXT("范围检测: 主将目标死亡，清理目标并返回不在范围内"));
+            return false;
+        }
     }
     
     // 使用默认范围作为初始值
