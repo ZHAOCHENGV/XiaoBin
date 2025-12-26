@@ -114,10 +114,19 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
     EXBFaction PreferredFaction = EXBFaction::Neutral;
     bool bHasPreferredFaction = false;
     
-    // 如果有主将，优先攻击主将的敌人
+    // 如果有主将，优先攻击主将最近命中的敌方阵营
     if (MyLeader)
     {
-        if (AXBCharacterBase* EnemyLeader = MyLeader->GetLastAttackedEnemyLeader())
+        // 🔧 修改 - 优先使用主将最近攻击到的敌方阵营
+        EXBFaction LeaderEnemyFaction = EXBFaction::Neutral;
+        // 🔧 修改 - 若主将已有敌方阵营记录，则作为优先阵营
+        if (MyLeader->GetLastAttackedEnemyFaction(LeaderEnemyFaction))
+        {
+            PreferredFaction = LeaderEnemyFaction;
+            bHasPreferredFaction = true;
+        }
+        // 🔧 修改 - 若没有阵营记录，退回使用最近命中的敌方主将
+        else if (AXBCharacterBase* EnemyLeader = MyLeader->GetLastAttackedEnemyLeader())
         {
             if (!EnemyLeader->IsDead())
             {

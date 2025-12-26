@@ -224,6 +224,10 @@ public:
     UFUNCTION(BlueprintPure, Category = "战斗", meta = (DisplayName = "获取最近攻击的敌方主将"))
     AXBCharacterBase* GetLastAttackedEnemyLeader() const { return LastAttackedEnemyLeader.Get(); }
 
+    // 🔧 修改 - 记录主将最近攻击到的敌方阵营，用于士兵优先选敌
+    UFUNCTION(BlueprintPure, Category = "战斗", meta = (DisplayName = "获取最近攻击的敌方阵营"))
+    bool GetLastAttackedEnemyFaction(EXBFaction& OutFaction) const;
+
     UFUNCTION(BlueprintPure, Category = "移动", meta = (DisplayName = "是否正在冲刺"))
     bool IsSprinting() const { return bIsSprinting; }
 
@@ -255,6 +259,8 @@ public:
 
 protected:
     virtual void BeginPlay() override;
+    // 🔧 修改 - 退出时注销感知子系统注册
+    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
     virtual void PossessedBy(AController* NewController) override;
 
     virtual void InitializeAbilitySystem();
@@ -332,6 +338,14 @@ protected:
 
     UPROPERTY(BlueprintReadOnly, Category = "战斗")
     TWeakObjectPtr<AXBCharacterBase> LastAttackedEnemyLeader;
+
+    // 🔧 修改 - 记录主将最近攻击到的敌方阵营
+    UPROPERTY(BlueprintReadOnly, Category = "战斗")
+    bool bHasLastAttackedEnemyFaction = false;
+
+    // 🔧 修改 - 保存最近攻击到的敌方阵营
+    UPROPERTY(BlueprintReadOnly, Category = "战斗")
+    EXBFaction LastAttackedEnemyFaction = EXBFaction::Neutral;
 
 
 

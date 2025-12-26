@@ -73,6 +73,17 @@ void AXBCharacterBase::BeginPlay()
 {
     Super::BeginPlay();
 
+    // 🔧 修改 - 将主将注册到感知子系统，确保士兵可以感知到主将
+    if (UWorld* World = GetWorld())
+    {
+        // 🔧 修改 - 仅在子系统有效时执行注册
+        if (UXBSoldierPerceptionSubsystem* Perception = World->GetSubsystem<UXBSoldierPerceptionSubsystem>())
+        {
+            // 🔧 修改 - 使用主将阵营注册，便于阵营筛选
+            Perception->RegisterActor(this, Faction);
+        }
+    }
+
     InitializeAbilitySystem();
     SetupMovementComponent();
 
@@ -93,6 +104,31 @@ void AXBCharacterBase::BeginPlay()
     {
         InitializeFromDataTable(ConfigDataTable, ConfigRowName);
     }
+}
+
+/**
+ * @brief 结束播放时处理感知子系统注销
+ * @param EndPlayReason 结束原因
+ * @return 无
+ * @note 功能说明: 退出时将主将从感知子系统中移除
+ * @note 详细流程: 获取世界 -> 获取感知子系统 -> 注销 Actor -> 调用父类 EndPlay
+ * @note 注意事项: 需要在注销后再调用父类 EndPlay，避免访问已销毁对象
+ */
+void AXBCharacterBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+    // 🔧 修改 - 获取世界实例用于感知注销
+    if (UWorld* World = GetWorld())
+    {
+        // 🔧 修改 - 子系统有效时执行注销
+        if (UXBSoldierPerceptionSubsystem* Perception = World->GetSubsystem<UXBSoldierPerceptionSubsystem>())
+        {
+            // 🔧 修改 - 注销当前主将
+            Perception->UnregisterActor(this);
+        }
+    }
+
+    // 🔧 修改 - 调用父类 EndPlay
+    Super::EndPlay(EndPlayReason);
 }
 
 void AXBCharacterBase::Tick(float DeltaTime)
@@ -245,6 +281,29 @@ float AXBCharacterBase::GetCurrentMoveSpeed() const
         return CMC->MaxWalkSpeed;
     }
     return BaseMoveSpeed;
+}
+
+/**
+ * @brief 获取最近攻击的敌方阵营
+ * @param OutFaction 输出的敌方阵营
+ * @return 是否有有效的敌方阵营记录
+ * @note 功能说明: 将主将最近攻击到的敌方阵营暴露给士兵，用于优先选敌
+ * @note 详细流程: 检查是否有记录 -> 输出阵营 -> 返回结果
+ * @note 注意事项: 若没有记录，OutFaction 不会被修改
+ */
+bool AXBCharacterBase::GetLastAttackedEnemyFaction(EXBFaction& OutFaction) const
+{
+    // 🔧 修改 - 无记录时直接返回失败
+    if (!bHasLastAttackedEnemyFaction)
+    {
+        return false;
+    }
+
+    // 🔧 修改 - 输出记录的敌方阵营
+    OutFaction = LastAttackedEnemyFaction;
+
+    // 🔧 修改 - 返回成功
+    return true;
 }
 
 void AXBCharacterBase::UpdateSprint(float DeltaTime)
@@ -769,28 +828,57 @@ void AXBCharacterBase::OnCombatTimeout()
     ExitCombat();
 }
 
+/**
+ * @brief ??????????
+ * @param HitTarget ?????
+ * @return ?
+ * @note ????: ????????????/???????????
+ * @note ????: ???? -> ???? -> ????/?? -> ???? -> ????????
+ * @note ????: ???????????????
+ */
 void AXBCharacterBase::OnAttackHit(AActor* HitTarget)
 {
+    // ?? ?? - ???????
     if (!HitTarget)
     {
         return;
     }
 
+    // ?? ?? - ?????????
     EnterCombat();
 
-    // 🔧 修改 - 当主将命中敌方主将时，触发双方士兵进入战斗
+    // ?? ?? - ?????????
     AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(HitTarget);
     if (TargetLeader && IsHostileTo(TargetLeader))
     {
+        // ?? ?? - ????????????
         LastAttackedEnemyLeader = TargetLeader;
+        // ?? ?? - ????????????
+        bHasLastAttackedEnemyFaction = true;
+        LastAttackedEnemyFaction = TargetLeader->GetFaction();
+        // ?? ?? - ??????????
         TargetLeader->EnterCombat();
 
-        UE_LOG(LogXBCombat, Log, TEXT("主将 %s 命中敌方主将 %s，触发双方进入战斗"),
+        UE_LOG(LogXBCombat, Log, TEXT("?? %s ?????? %s??????????????"),
             *GetName(), *TargetLeader->GetName());
+        return;
+    }
+
+    // ?? ?? - ???????????
+    AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(HitTarget);
+    if (TargetSoldier && UXBBlueprintFunctionLibrary::AreFactionsHostile(Faction, TargetSoldier->GetFaction()))
+    {
+        // ?? ?? - ????????????
+        bHasLastAttackedEnemyFaction = true;
+        LastAttackedEnemyFaction = TargetSoldier->GetFaction();
+
+        UE_LOG(LogXBCombat, Log, TEXT("?? %s ?????? %s?????????????"),
+            *GetName(), *TargetSoldier->GetName());
     }
 }
 
 void AXBCharacterBase::RecallAllSoldiers()
+
 {
     ExitCombat();
 
