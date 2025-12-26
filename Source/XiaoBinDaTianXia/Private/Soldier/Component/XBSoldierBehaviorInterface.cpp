@@ -266,12 +266,12 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
 
         // 按照战略优先级返回结果：
         // 1. 优先阵营士兵 (集火清理杂兵)
-        // 2. 优先阵营主将 (集火敌方核心)
-        // 3. 普通敌方士兵 (就近原则)
+        // 2. 普通敌方士兵 (就近原则 - 始终优先于主将)
+        // 3. 优先阵营主将 (集火敌方核心)
         // 4. 普通敌方主将 (最后选择)
         if (NearestPreferredSoldier) return NearestPreferredSoldier;
-        if (NearestPreferredLeader) return NearestPreferredLeader;
         if (NearestSoldier) return NearestSoldier;
+        if (NearestPreferredLeader) return NearestPreferredLeader;
         return NearestLeader;
     };
 
@@ -307,7 +307,7 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
     FVector Location = Soldier->GetActorLocation();
     
     // 调用子系统执行空间查询，结果存入 CachedPerceptionResult
-    bool bFound = Perception->QueryNearestEnemyWithPriority(
+    Perception->QueryNearestEnemyWithPriority(
         Soldier,
         Location,
         VisionRange,
@@ -319,16 +319,13 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
     // 更新缓存时间戳
     PerceptionCacheTime = CurrentTime;
 
-    if (bFound)
+    // 对新的查询结果应用筛选逻辑
+    AActor* PriorityTarget = SelectPriorityTarget(CachedPerceptionResult);
+    if (PriorityTarget)
     {
-        // 对新的查询结果应用筛选逻辑
-        AActor* PriorityTarget = SelectPriorityTarget(CachedPerceptionResult);
-        if (PriorityTarget)
-        {
-            OutEnemy = PriorityTarget;
-            RecordEnemySeen(); // 更新"最后看见敌人时间"，用于脱战判断
-            return true;
-        }
+        OutEnemy = PriorityTarget;
+        RecordEnemySeen(); // 更新"最后看见敌人时间"，用于脱战判断
+        return true;
     }
 
     return false;
