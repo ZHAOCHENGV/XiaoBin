@@ -11,6 +11,7 @@
 #include "AI/BehaviorTree/BTDecorator_XBIsInRange.h"
 #include "BehaviorTree/BlackboardComponent.h"
 #include "AIController.h"
+#include "AI/XBSoldierAIController.h"
 #include "Soldier/XBSoldierCharacter.h"
 #include "Soldier/Component/XBSoldierBehaviorInterface.h"
 #include "Character/XBCharacterBase.h"
