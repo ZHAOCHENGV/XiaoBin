@@ -596,7 +596,10 @@ void AXBSoldierAIController::UpdateDistanceValuesSafe()
     {
         if (IsValid(Target) && !Target->IsPendingKillPending())
         {
-            float DistToTarget = FVector::Dist(SoldierLocation, Target->GetActorLocation());
+            const float SelfRadius = Soldier->GetSimpleCollisionRadius();
+            const float TargetRadius = Target->GetSimpleCollisionRadius();
+            float DistToTarget = FVector::Dist2D(SoldierLocation, Target->GetActorLocation());
+            DistToTarget = FMath::Max(0.0f, DistToTarget - (SelfRadius + TargetRadius));
             BlackboardComp->SetValueAsFloat(XBSoldierBBKeys::DistanceToTarget, DistToTarget);
             BlackboardComp->SetValueAsVector(XBSoldierBBKeys::TargetLocation, Target->GetActorLocation());
         }

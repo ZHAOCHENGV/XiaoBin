@@ -11,7 +11,10 @@
 #include "AI/BehaviorTree/BTDecorator_XBIsInRange.h"
 #include "BehaviorTree/BlackboardComponent.h"
 #include "AIController.h"
+#include "AI/XBSoldierAIController.h"
 #include "Soldier/XBSoldierCharacter.h"
+#include "Soldier/Component/XBSoldierBehaviorInterface.h"
+#include "Character/XBCharacterBase.h"
 
 // 🔧 修改 - 按要求补充构造函数头部注释与逐行注释
 /**
@@ -88,6 +91,31 @@ bool UBTDecorator_XBIsInRange::CalculateRawConditionValue(UBehaviorTreeComponent
         // 返回失败
         return false;
     }
+
+    // 目标有效性检查（死亡/无效则清理）
+    if (const AXBSoldierCharacter* Soldier = Cast<AXBSoldierCharacter>(ControlledPawn))
+    {
+        if (UXBSoldierBehaviorInterface* BehaviorInterface = Soldier->GetBehaviorInterface())
+        {
+            if (!BehaviorInterface->IsTargetValid(Target))
+            {
+                BlackboardComp->SetValueAsObject(TargetKey.SelectedKeyName, nullptr);
+                BlackboardComp->SetValueAsBool(XBSoldierBBKeys::HasTarget, false);
+                UE_LOG(LogTemp, Verbose, TEXT("范围检测: 目标无效，清理目标并返回不在范围内"));
+                return false;
+            }
+        }
+    }
+    else if (const AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(Target))
+    {
+        if (TargetLeader->IsDead())
+        {
+            BlackboardComp->SetValueAsObject(TargetKey.SelectedKeyName, nullptr);
+            BlackboardComp->SetValueAsBool(XBSoldierBBKeys::HasTarget, false);
+            UE_LOG(LogTemp, Verbose, TEXT("范围检测: 主将目标死亡，清理目标并返回不在范围内"));
+            return false;
+        }
+    }
     
     // 使用默认范围作为初始值
     float Range = DefaultRange;
@@ -110,15 +138,18 @@ bool UBTDecorator_XBIsInRange::CalculateRawConditionValue(UBehaviorTreeComponent
         }
     }
     
-    // 计算与目标的距离
-    float Distance = FVector::Dist(ControlledPawn->GetActorLocation(), Target->GetActorLocation());
+    // 计算与目标的距离（中心点）并考虑双方碰撞半径
+    const float SelfRadius = ControlledPawn->GetSimpleCollisionRadius();
+    const float TargetRadius = Target->GetSimpleCollisionRadius();
+    const float EffectiveRange = Range + SelfRadius + TargetRadius;
+    float Distance = FVector::Dist2D(ControlledPawn->GetActorLocation(), Target->GetActorLocation());
     
     // 判断是否在范围内
-    bool bInRange = (Distance <= Range);
+    bool bInRange = (Distance <= EffectiveRange);
     
     // 🔧 修改 - 输出调试日志
-    UE_LOG(LogTemp, Verbose, TEXT("范围检测: 目标=%s 距离=%.1f 范围=%.1f 结果=%s"),
-        *Target->GetName(), Distance, Range, bInRange ? TEXT("在范围内") : TEXT("超出范围"));
+    UE_LOG(LogTemp, Verbose, TEXT("范围检测: 目标=%s 距离=%.1f 范围=%.1f(含半径=%.1f) 结果=%s"),
+        *Target->GetName(), Distance, Range, EffectiveRange, bInRange ? TEXT("在范围内") : TEXT("超出范围"));
     
     // 根据检测类型返回结果
     switch (CheckType)

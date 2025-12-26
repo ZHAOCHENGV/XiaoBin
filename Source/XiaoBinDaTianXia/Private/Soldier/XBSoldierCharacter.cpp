@@ -1734,7 +1734,7 @@ float AXBSoldierCharacter::GetDistanceToTarget(AActor* Target) const
     {
         return MAX_FLT;
     }
-    return FVector::Dist(GetActorLocation(), Target->GetActorLocation());
+    return FVector::Dist2D(GetActorLocation(), Target->GetActorLocation());
 }
 
 bool AXBSoldierCharacter::IsInAttackRange(AActor* Target) const
@@ -1744,8 +1744,10 @@ bool AXBSoldierCharacter::IsInAttackRange(AActor* Target) const
         return false;
     }
 
-    float AttackRangeVal = GetAttackRange();
-    return GetDistanceToTarget(Target) <= AttackRangeVal;
+    const float AttackRangeVal = GetAttackRange();
+    const float SelfRadius = GetSimpleCollisionRadius();
+    const float TargetRadius = Target->GetSimpleCollisionRadius();
+    return GetDistanceToTarget(Target) <= (AttackRangeVal + SelfRadius + TargetRadius);
 }
 
 void AXBSoldierCharacter::ReturnToFormation()
