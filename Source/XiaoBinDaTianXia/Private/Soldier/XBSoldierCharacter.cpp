@@ -1744,8 +1744,10 @@ bool AXBSoldierCharacter::IsInAttackRange(AActor* Target) const
         return false;
     }
 
-    float AttackRangeVal = GetAttackRange();
-    return GetDistanceToTarget(Target) <= AttackRangeVal;
+    const float AttackRangeVal = GetAttackRange();
+    const float SelfRadius = GetSimpleCollisionRadius();
+    const float TargetRadius = Target->GetSimpleCollisionRadius();
+    return GetDistanceToTarget(Target) <= (AttackRangeVal + SelfRadius + TargetRadius);
 }
 
 void AXBSoldierCharacter::ReturnToFormation()
