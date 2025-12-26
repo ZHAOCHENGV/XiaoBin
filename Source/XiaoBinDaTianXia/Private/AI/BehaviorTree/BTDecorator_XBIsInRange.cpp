@@ -50,6 +50,8 @@ bool UBTDecorator_XBIsInRange::CalculateRawConditionValue(UBehaviorTreeComponent
     // 控制器为空则条件不成立
     if (!AIController)
     {
+        // 🔧 修改 - 输出调试日志
+        UE_LOG(LogTemp, Verbose, TEXT("范围检测: 控制器为空，无法判断目标距离"));
         // 返回失败
         return false;
     }
@@ -59,6 +61,8 @@ bool UBTDecorator_XBIsInRange::CalculateRawConditionValue(UBehaviorTreeComponent
     // Pawn 为空则条件不成立
     if (!ControlledPawn)
     {
+        // 🔧 修改 - 输出调试日志
+        UE_LOG(LogTemp, Verbose, TEXT("范围检测: Pawn为空，无法判断目标距离"));
         // 返回失败
         return false;
     }
@@ -68,6 +72,8 @@ bool UBTDecorator_XBIsInRange::CalculateRawConditionValue(UBehaviorTreeComponent
     // 黑板为空则条件不成立
     if (!BlackboardComp)
     {
+        // 🔧 修改 - 输出调试日志
+        UE_LOG(LogTemp, Verbose, TEXT("范围检测: 黑板为空，无法读取目标"));
         // 返回失败
         return false;
     }
@@ -77,6 +83,8 @@ bool UBTDecorator_XBIsInRange::CalculateRawConditionValue(UBehaviorTreeComponent
     // 目标为空则条件不成立
     if (!Target)
     {
+        // 🔧 修改 - 输出调试日志
+        UE_LOG(LogTemp, Verbose, TEXT("范围检测: 目标为空，目标键=%s"), *TargetKey.SelectedKeyName.ToString());
         // 返回失败
         return false;
     }
@@ -107,6 +115,10 @@ bool UBTDecorator_XBIsInRange::CalculateRawConditionValue(UBehaviorTreeComponent
     
     // 判断是否在范围内
     bool bInRange = (Distance <= Range);
+    
+    // 🔧 修改 - 输出调试日志
+    UE_LOG(LogTemp, Verbose, TEXT("范围检测: 目标=%s 距离=%.1f 范围=%.1f 结果=%s"),
+        *Target->GetName(), Distance, Range, bInRange ? TEXT("在范围内") : TEXT("超出范围"));
     
     // 根据检测类型返回结果
     switch (CheckType)
