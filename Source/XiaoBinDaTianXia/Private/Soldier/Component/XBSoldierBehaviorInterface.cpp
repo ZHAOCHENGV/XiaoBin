@@ -15,6 +15,7 @@
 #include "Soldier/Component/XBSoldierFollowComponent.h"
 #include "Data/XBSoldierDataAccessor.h"
 #include "Character/XBCharacterBase.h"
+#include "Utils/XBBlueprintFunctionLibrary.h"
 #include "AIController.h"
 #include "Navigation/PathFollowingComponent.h"  // ✨ 新增 - 包含枚举定义
 #include "NavigationSystem.h"
@@ -313,16 +314,30 @@ bool UXBSoldierBehaviorInterface::IsTargetValid(AActor* Target) const
         return false;
     }
 
+    AXBSoldierCharacter* Soldier = GetOwnerSoldier();
+    if (!Soldier)
+    {
+        return false;
+    }
+
     // 检查是否是士兵且已死亡
     if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(Target))
     {
-        return TargetSoldier->GetSoldierState() != EXBSoldierState::Dead;
+        if (TargetSoldier->GetSoldierState() == EXBSoldierState::Dead)
+        {
+            return false;
+        }
+        return UXBBlueprintFunctionLibrary::AreFactionsHostile(Soldier->GetFaction(), TargetSoldier->GetFaction());
     }
 
     // 检查是否是将领且已死亡
     if (AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(Target))
     {
-        return !TargetLeader->IsDead();
+        if (TargetLeader->IsDead())
+        {
+            return false;
+        }
+        return UXBBlueprintFunctionLibrary::AreFactionsHostile(Soldier->GetFaction(), TargetLeader->GetFaction());
     }
 
     return true;
@@ -366,8 +381,12 @@ EXBBehaviorResult UXBSoldierBehaviorInterface::ExecuteAttack(AActor* Target)
     }
     FaceTarget(Target, GetWorld()->GetDeltaSeconds());
 
-    // 播放攻击蒙太奇
-    PlayAttackMontage();
+    // 播放攻击蒙太奇（必须成功）
+    if (!PlayAttackMontage())
+    {
+        UE_LOG(LogXBCombat, Warning, TEXT("士兵 %s 攻击失败：未能播放攻击蒙太奇"), *Soldier->GetName());
+        return EXBBehaviorResult::Failed;
+    }
 
     // 设置攻击冷却
     float AttackInterval = Soldier->GetAttackInterval();
@@ -473,14 +492,28 @@ void UXBSoldierBehaviorInterface::ApplyDamageToTarget(AActor* Target, float Dama
         return;
     }
 
+    AXBSoldierCharacter* Soldier = GetOwnerSoldier();
+    if (!Soldier)
+    {
+        return;
+    }
+
     // 对士兵应用伤害
     if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(Target))
     {
+        if (!UXBBlueprintFunctionLibrary::AreFactionsHostile(Soldier->GetFaction(), TargetSoldier->GetFaction()))
+        {
+            return;
+        }
         TargetSoldier->TakeSoldierDamage(Damage, GetOwner());
     }
     // 对将领应用伤害（通过 GAS）
     else if (AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(Target))
     {
+        if (!UXBBlueprintFunctionLibrary::AreFactionsHostile(Soldier->GetFaction(), TargetLeader->GetFaction()))
+        {
+            return;
+        }
         // TODO: 通过 GAS 应用伤害
         UE_LOG(LogXBCombat, Verbose, TEXT("士兵攻击将领，伤害待 GAS 处理"));
     }
