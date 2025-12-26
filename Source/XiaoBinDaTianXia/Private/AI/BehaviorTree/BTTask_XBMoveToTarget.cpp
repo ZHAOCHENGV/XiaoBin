@@ -46,120 +46,93 @@ UBTTask_XBMoveToTarget::UBTTask_XBMoveToTarget()
  */
 EBTNodeResult::Type UBTTask_XBMoveToTarget::ExecuteTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory)
 {
-    // 获取 AI 控制器
+   // 获取 AI 控制器
     AAIController* AIController = OwnerComp.GetAIOwner();
-    // 控制器为空则任务失败
-    if (!AIController)
-    {
-        // 返回失败
-        return EBTNodeResult::Failed;
-    }
+    if (!AIController) return EBTNodeResult::Failed;
     
     // 获取受控士兵
     AXBSoldierCharacter* Soldier = Cast<AXBSoldierCharacter>(AIController->GetPawn());
-    // 士兵为空则任务失败
-    if (!Soldier)
-    {
-        // 返回失败
-        return EBTNodeResult::Failed;
-    }
+    if (!Soldier) return EBTNodeResult::Failed;
     
     // 获取黑板组件
     UBlackboardComponent* BlackboardComp = OwnerComp.GetBlackboardComponent();
-    // 黑板为空则任务失败
-    if (!BlackboardComp)
-    {
-        // 返回失败
-        return EBTNodeResult::Failed;
-    }
+    if (!BlackboardComp) return EBTNodeResult::Failed;
     
     // 从黑板读取当前目标
     AActor* CurrentTarget = Cast<AActor>(BlackboardComp->GetValueAsObject(TargetKey.SelectedKeyName));
-    // 目标为空则任务失败
-    if (!CurrentTarget)
+    if (!CurrentTarget) return EBTNodeResult::Failed;
+
+    // 🔧 修改: 增加目标死亡检查 (Fail Fast)
+    bool bTargetIsDead = false;
+    if (AXBSoldierCharacter* TS = Cast<AXBSoldierCharacter>(CurrentTarget))
     {
-        // 返回失败
-        return EBTNodeResult::Failed;
+        if (TS->IsDead() || TS->GetSoldierState() == EXBSoldierState::Dead) bTargetIsDead = true;
+    }
+    else if (AXBCharacterBase* TL = Cast<AXBCharacterBase>(CurrentTarget))
+    {
+        if (TL->IsDead()) bTargetIsDead = true;
     }
 
-    // 若目标为士兵则检查死亡状态
-    if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(CurrentTarget))
+    if (bTargetIsDead)
     {
-        // 目标士兵死亡则清理目标
-        if (TargetSoldier->GetSoldierState() == EXBSoldierState::Dead)
-        {
-            // 清空黑板目标
-            BlackboardComp->SetValueAsObject(TargetKey.SelectedKeyName, nullptr);
-            // 更新黑板为无目标
-            BlackboardComp->SetValueAsBool(XBSoldierBBKeys::HasTarget, false);
-            // 清空当前攻击目标缓存
-            Soldier->CurrentAttackTarget = nullptr;
-            // 返回失败
-            return EBTNodeResult::Failed;
-        }
-    }
-    // 若目标为主将则检查死亡状态
-    else if (AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(CurrentTarget))
-    {
-        // 目标主将死亡则清理目标
-        if (TargetLeader->IsDead())
-        {
-            // 清空黑板目标
-            BlackboardComp->SetValueAsObject(TargetKey.SelectedKeyName, nullptr);
-            // 更新黑板为无目标
-            BlackboardComp->SetValueAsBool(XBSoldierBBKeys::HasTarget, false);
-            // 清空当前攻击目标缓存
-            Soldier->CurrentAttackTarget = nullptr;
-            // 返回失败
-            return EBTNodeResult::Failed;
-        }
+        // 目标已死，立即清理数据并失败
+        BlackboardComp->SetValueAsObject(TargetKey.SelectedKeyName, nullptr);
+        BlackboardComp->SetValueAsBool(XBSoldierBBKeys::HasTarget, false);
+        Soldier->CurrentAttackTarget = nullptr;
+        return EBTNodeResult::Failed;
     }
     
-    // 设置移动时的视觉焦点为当前目标
+    // 设置移动时的视觉焦点
     AIController->SetFocus(CurrentTarget);
     
-    // 使用士兵攻击范围 + 碰撞半径作为停止距离
+    // 🔧 修改: 核心距离计算逻辑
+    // 获取半径
     const float SoldierRadius = Soldier->GetSimpleCollisionRadius();
     const float TargetRadius = CurrentTarget->GetSimpleCollisionRadius();
-    float StopDistance = Soldier->GetAttackRange() + SoldierRadius + TargetRadius;
+    const float AttackRange = Soldier->GetAttackRange();
     
-    // 计算与目标的当前距离
+    // 1. 绝对停止距离 (用于判断成功)：100% 攻击范围 + 接触半径
+    // 只要在这个距离内，就算到达，可以攻击
+    const float AbsoluteStopDistance = AttackRange + SoldierRadius + TargetRadius;
+    
+    // 2. 移动目标距离 (用于 MoveTo)：90% 攻击范围 + 接触半径
+    // 让士兵试图走得更近一点，留出误差缓冲 (Hysteresis)
+    // 解决 "离目标121但范围是120" 的死锁问题
+    const float MoveToDistance = (AttackRange * StopDistanceScale) + SoldierRadius + TargetRadius;
+    
+    // 计算当前距离
     float CurrentDistance = FVector::Dist2D(Soldier->GetActorLocation(), CurrentTarget->GetActorLocation());
-    // 若已进入攻击范围则直接成功
-    if (CurrentDistance <= StopDistance)
+    
+    // 🔧 修改: 使用"绝对距离"判断是否已到达 (条件宽松)
+    if (CurrentDistance <= AbsoluteStopDistance)
     {
-        // 清理焦点，避免残留
         AIController->ClearFocus(EAIFocusPriority::Gameplay);
-        // 🔧 修改 - 打印中文日志提示已在范围内
-        UE_LOG(LogTemp, Verbose, TEXT("士兵 %s 已在目标攻击范围内"), *Soldier->GetName());
-        // 返回成功
+        // 如果真的很近，就不移动了，直接成功
         return EBTNodeResult::Succeeded;
     }
     
-    // 下发移动请求
+    // 🔧 修改: 使用"移动目标距离"下发请求 (条件严格)
+    // 减去 5.0f 是为了保险，确保 NavMesh 寻路不会刚好停在边界外
     EPathFollowingRequestResult::Type MoveResult = AIController->MoveToActor(
         CurrentTarget,
-        FMath::Max(0.0f, StopDistance - 10.0f),
-        true,
-        true
+        FMath::Max(0.0f, MoveToDistance - 5.0f), 
+        true, // StopOnOverlap
+        true, // UsePathfinding
+        true, // CanStrafe
+        nullptr,
+        true  // AllowPartialPath
     );
     
-    // 请求成功则进入进行中
     if (MoveResult == EPathFollowingRequestResult::RequestSuccessful)
     {
-        // 重置目标更新计时器
         TargetUpdateTimer = 0.0f;
-        // 返回进行中
         return EBTNodeResult::InProgress;
     }
-    // 已在目标处则成功
     else if (MoveResult == EPathFollowingRequestResult::AlreadyAtGoal)
     {
-        // 返回成功
         return EBTNodeResult::Succeeded;
     }
     
-    // 其它情况视为失败
     return EBTNodeResult::Failed;
 }
 
@@ -178,130 +151,86 @@ void UBTTask_XBMoveToTarget::TickTask(UBehaviorTreeComponent& OwnerComp, uint8* 
 {
     // 获取 AI 控制器
     AAIController* AIController = OwnerComp.GetAIOwner();
-    // 控制器为空则结束任务
-    if (!AIController)
-    {
-        // 结束任务并标记失败
-        FinishLatentTask(OwnerComp, EBTNodeResult::Failed);
-        // 退出Tick
-        return;
-    }
+    if (!AIController) { FinishLatentTask(OwnerComp, EBTNodeResult::Failed); return; }
     
-    // 获取受控士兵
     AXBSoldierCharacter* Soldier = Cast<AXBSoldierCharacter>(AIController->GetPawn());
-    // 士兵为空则结束任务
-    if (!Soldier)
-    {
-        // 结束任务并标记失败
-        FinishLatentTask(OwnerComp, EBTNodeResult::Failed);
-        // 退出Tick
-        return;
-    }
+    if (!Soldier) { FinishLatentTask(OwnerComp, EBTNodeResult::Failed); return; }
     
-    // 获取黑板组件
     UBlackboardComponent* BlackboardComp = OwnerComp.GetBlackboardComponent();
-    // 黑板为空则结束任务
-    if (!BlackboardComp)
-    {
-        // 结束任务并标记失败
-        FinishLatentTask(OwnerComp, EBTNodeResult::Failed);
-        // 退出Tick
-        return;
-    }
+    if (!BlackboardComp) { FinishLatentTask(OwnerComp, EBTNodeResult::Failed); return; }
     
-    // 从黑板读取目标
     AActor* Target = Cast<AActor>(BlackboardComp->GetValueAsObject(TargetKey.SelectedKeyName));
-    // 目标为空则停止移动并失败
+    
+    // 1. 基础有效性检查
     if (!Target)
     {
-        // 停止移动
         AIController->StopMovement();
-        // 清理焦点
         AIController->ClearFocus(EAIFocusPriority::Gameplay);
-        // 结束任务并标记失败
         FinishLatentTask(OwnerComp, EBTNodeResult::Failed);
-        // 退出Tick
         return;
     }
 
-    // 若目标为士兵则检查死亡状态
-    if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(Target))
+    // 🔧 修改: 2. 增强的目标死亡检查 (关键修复: 目标死后立即停止移动)
+    bool bTargetIsDead = false;
+    if (AXBSoldierCharacter* TS = Cast<AXBSoldierCharacter>(Target))
     {
-        // 目标士兵死亡则清理并结束
-        if (TargetSoldier->GetSoldierState() == EXBSoldierState::Dead)
-        {
-            // 清空黑板目标
-            BlackboardComp->SetValueAsObject(TargetKey.SelectedKeyName, nullptr);
-            // 更新黑板为无目标
-            BlackboardComp->SetValueAsBool(XBSoldierBBKeys::HasTarget, false);
-            // 清空当前攻击目标缓存
-            Soldier->CurrentAttackTarget = nullptr;
-            // 停止移动
-            AIController->StopMovement();
-            // 清理焦点
-            AIController->ClearFocus(EAIFocusPriority::Gameplay);
-            // 结束任务并标记失败
-            FinishLatentTask(OwnerComp, EBTNodeResult::Failed);
-            // 退出Tick
-            return;
-        }
+        if (TS->IsDead() || TS->GetSoldierState() == EXBSoldierState::Dead) bTargetIsDead = true;
     }
-    // 若目标为主将则检查死亡状态
-    else if (AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(Target))
+    else if (AXBCharacterBase* TL = Cast<AXBCharacterBase>(Target))
     {
-        // 目标主将死亡则清理并结束
-        if (TargetLeader->IsDead())
-        {
-            // 清空黑板目标
-            BlackboardComp->SetValueAsObject(TargetKey.SelectedKeyName, nullptr);
-            // 更新黑板为无目标
-            BlackboardComp->SetValueAsBool(XBSoldierBBKeys::HasTarget, false);
-            // 清空当前攻击目标缓存
-            Soldier->CurrentAttackTarget = nullptr;
-            // 停止移动
-            AIController->StopMovement();
-            // 清理焦点
-            AIController->ClearFocus(EAIFocusPriority::Gameplay);
-            // 结束任务并标记失败
-            FinishLatentTask(OwnerComp, EBTNodeResult::Failed);
-            // 退出Tick
-            return;
-        }
+        if (TL->IsDead()) bTargetIsDead = true;
     }
-    
-    // 设置移动时焦点为目标
-    AIController->SetFocus(Target);
-    
-    // 使用士兵攻击范围 + 碰撞半径作为停止距离
-    const float SoldierRadius = Soldier->GetSimpleCollisionRadius();
-    const float TargetRadius = Target->GetSimpleCollisionRadius();
-    float StopDistance = Soldier->GetAttackRange() + SoldierRadius + TargetRadius;
-    
-    // 计算当前距离
-    float CurrentDistance = FVector::Dist2D(Soldier->GetActorLocation(), Target->GetActorLocation());
-    // 若进入攻击范围则成功
-    if (CurrentDistance <= StopDistance)
+
+    if (bTargetIsDead)
     {
-        // 停止移动
+        // 目标已死，清理黑板
+        BlackboardComp->SetValueAsObject(TargetKey.SelectedKeyName, nullptr);
+        BlackboardComp->SetValueAsBool(XBSoldierBBKeys::HasTarget, false);
+        Soldier->CurrentAttackTarget = nullptr;
+        
+        // 停止移动并返回失败
         AIController->StopMovement();
-        // 清理焦点
         AIController->ClearFocus(EAIFocusPriority::Gameplay);
-        // 结束任务并标记成功
-        FinishLatentTask(OwnerComp, EBTNodeResult::Succeeded);
-        // 退出Tick
+        FinishLatentTask(OwnerComp, EBTNodeResult::Failed);
         return;
     }
     
-    // 累加目标更新计时器
+    // 保持焦点
+    AIController->SetFocus(Target);
+    
+    // 🔧 修改: 3. 距离判定逻辑 (同 ExecuteTask)
+    const float SoldierRadius = Soldier->GetSimpleCollisionRadius();
+    const float TargetRadius = Target->GetSimpleCollisionRadius();
+    const float AttackRange = Soldier->GetAttackRange();
+    
+    // 宽松的判定距离 (100% Range)
+    const float AbsoluteStopDistance = AttackRange + SoldierRadius + TargetRadius;
+    // 严格的移动距离 (90% Range)
+    const float MoveToDistance = (AttackRange * StopDistanceScale) + SoldierRadius + TargetRadius;
+    
+    float CurrentDistance = FVector::Dist2D(Soldier->GetActorLocation(), Target->GetActorLocation());
+    
+    // 如果在宽松距离内，视为成功
+    if (CurrentDistance <= AbsoluteStopDistance)
+    {
+        AIController->StopMovement();
+        AIController->ClearFocus(EAIFocusPriority::Gameplay);
+        FinishLatentTask(OwnerComp, EBTNodeResult::Succeeded);
+        return;
+    }
+    
+    // 定期更新移动请求
     TargetUpdateTimer += DeltaSeconds;
-    // 达到更新间隔则刷新移动
     if (TargetUpdateTimer >= TargetUpdateInterval)
     {
-        // 重置计时器
         TargetUpdateTimer = 0.0f;
         
-        // 重新下发移动请求
-        AIController->MoveToActor(Target, FMath::Max(0.0f, StopDistance - 10.0f), true, true);
+        // 使用严格距离继续逼近
+        AIController->MoveToActor(
+            Target, 
+            FMath::Max(0.0f, MoveToDistance - 5.0f), 
+            true, true, true, nullptr, true
+        );
     }
 }
 

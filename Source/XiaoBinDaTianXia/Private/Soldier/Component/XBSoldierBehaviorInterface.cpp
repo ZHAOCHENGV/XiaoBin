@@ -148,6 +148,13 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
                 continue;
             }
 
+            // 🔧 核心修复 [必须添加]：强制排除自己
+            // 防止感知系统误将自己包含在内，导致 "寻找敌人 -> 找到自己 -> 校验失败 -> 寻找敌人" 的死循环
+            if (Candidate == Soldier)
+            {
+                continue;
+            }
+
             EXBFaction CandidateFaction = EXBFaction::Neutral;
 
             if (AXBSoldierCharacter* EnemySoldier = Cast<AXBSoldierCharacter>(Candidate))
@@ -316,6 +323,12 @@ bool UXBSoldierBehaviorInterface::IsTargetValid(AActor* Target) const
 
     AXBSoldierCharacter* Soldier = GetOwnerSoldier();
     if (!Soldier)
+    {
+        return false;
+    }
+
+    // 🔧 安全增强 [建议添加]：攻击目标绝不能是自己
+    if (Target == Soldier)
     {
         return false;
     }

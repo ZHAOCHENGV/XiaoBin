@@ -45,6 +45,10 @@ public:
     virtual FString GetStaticDescription() const override;
 
 protected:
+    // 🔧 新增: 停止距离的缩放因子 (0.9 表示走到攻击范围的 90% 处就停下，留出 10% 的误差缓冲)
+    UPROPERTY(EditAnywhere, Category = "配置", meta = (DisplayName = "停止距离缩放", ClampMin = "0.5", ClampMax = "0.95"))
+    float StopDistanceScale = 0.8f;
+    
     // 🔧 修改 - 简单注释: 目标键
     /** @brief 目标黑板键 */
     UPROPERTY(EditAnywhere, Category = "黑板", meta = (DisplayName = "目标键"))

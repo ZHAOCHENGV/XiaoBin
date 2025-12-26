@@ -118,28 +118,46 @@ void UBTService_XBUpdateSoldierState::TickNode(UBehaviorTreeComponent& OwnerComp
         CurrentTarget = Cast<AActor>(BlackboardComp->GetValueAsObject(TargetKey.SelectedKeyName));
     }
     
-    // 若启用校验则验证目标有效性
+   // 🔧 修改: 增加对 IsDead 的强校验
+    bool bTargetIsDead = false;
+    if (CurrentTarget)
+    {
+        if (AXBSoldierCharacter* TS = Cast<AXBSoldierCharacter>(CurrentTarget))
+        {
+            if (TS->IsDead() || TS->GetSoldierState() == EXBSoldierState::Dead) bTargetIsDead = true;
+        }
+        else if (AXBCharacterBase* TL = Cast<AXBCharacterBase>(CurrentTarget))
+        {
+            if (TL->IsDead()) bTargetIsDead = true;
+        }
+    }
+
     bool bTargetValid = false;
     bool bTargetBecameInvalid = false;
-    // 仅在目标与接口有效时校验
-    if (bCheckTargetValidity && CurrentTarget && BehaviorInterface)
+    
+    // 如果目标已死，强制视为无效
+    if (bTargetIsDead)
     {
-        // 调用接口验证目标
+        bTargetValid = false;
+        bTargetBecameInvalid = true; // 标记失效，触发下方寻敌逻辑
+    }
+    else if (bCheckTargetValidity && CurrentTarget && BehaviorInterface)
+    {
+        // 只有没死的时候才跑常规校验 (距离/视野等)
         bTargetValid = BehaviorInterface->IsTargetValid(CurrentTarget);
-        
-        // 目标无效则清理
-        if (!bTargetValid)
+        if (!bTargetValid) bTargetBecameInvalid = true;
+    }
+    
+    // 处理目标失效 (死亡或超出范围)
+    if (!bTargetValid && (bTargetIsDead || bCheckTargetValidity))
+    {
+        // 只有当前有目标时才执行清理，避免重复日志
+        if (CurrentTarget != nullptr)
         {
-            // 清空黑板目标
             BlackboardComp->SetValueAsObject(TargetKey.SelectedKeyName, nullptr);
-            // 清空当前目标指针
             CurrentTarget = nullptr;
-            // 清空攻击目标缓存
             Soldier->CurrentAttackTarget = nullptr;
-            // 标记目标已失效
-            bTargetBecameInvalid = true;
-            // 🔧 修改 - 打印中文日志提示目标失效
-            UE_LOG(LogTemp, Verbose, TEXT("士兵 %s 的目标已失效"), *Soldier->GetName());
+            UE_LOG(LogTemp, Log, TEXT("Service: 士兵 %s 的目标已失效(死亡或丢失)"), *Soldier->GetName());
         }
     }
     
@@ -149,32 +167,22 @@ void UBTService_XBUpdateSoldierState::TickNode(UBehaviorTreeComponent& OwnerComp
     // 若有目标则更新距离与位置
     if (CurrentTarget)
     {
-        // 同步当前攻击目标缓存
         Soldier->CurrentAttackTarget = CurrentTarget;
-        // 计算与目标距离
         const float SelfRadius = Soldier->GetSimpleCollisionRadius();
         const float TargetRadius = CurrentTarget->GetSimpleCollisionRadius();
         float DistToTarget = FVector::Dist2D(SoldierLocation, CurrentTarget->GetActorLocation());
+        // 计算边缘距离
         DistToTarget = FMath::Max(0.0f, DistToTarget - (SelfRadius + TargetRadius));
-        // 写入目标距离
+        
         BlackboardComp->SetValueAsFloat(XBSoldierBBKeys::DistanceToTarget, DistToTarget);
-        // 写入目标位置
         BlackboardComp->SetValueAsVector(XBSoldierBBKeys::TargetLocation, CurrentTarget->GetActorLocation());
 
-        // 目标有效时记录看见敌人时间
-        if (BehaviorInterface)
-        {
-            // 记录看见敌人
-            BehaviorInterface->RecordEnemySeen();
-        }
+        if (BehaviorInterface) BehaviorInterface->RecordEnemySeen();
     }
-    // 无目标则写入极大距离
     else
     {
-        // 写入最大距离
         BlackboardComp->SetValueAsFloat(XBSoldierBBKeys::DistanceToTarget, MAX_FLT);
     }
-    
     // ==================== 更新主将状态 ====================
     
     // 定义主将指针
@@ -249,24 +257,24 @@ void UBTService_XBUpdateSoldierState::TickNode(UBehaviorTreeComponent& OwnerComp
     
     // ==================== 自动寻找目标 ====================
     
-    // 若处于战斗且没有目标则自动寻敌
+    // 只有在战斗中，或者目标刚刚失效(比如刚打死一个)时，才自动寻找新目标
     if (bAutoFindTarget && !CurrentTarget && BehaviorInterface && (bInCombat || bTargetBecameInvalid))
     {
-        // 定义新目标指针
         AActor* NewTarget = nullptr;
-        // 调用寻敌接口
         if (BehaviorInterface->SearchForEnemy(NewTarget))
         {
-            // 若找到目标则写回黑板
+            // 🔧 核心修复：防止 Service 自动搜到自己
+            if (NewTarget == Soldier)
+            {
+                NewTarget = nullptr;
+            }
+            
             if (NewTarget && TargetKey.SelectedKeyName != NAME_None)
             {
-                // 写入新目标
                 BlackboardComp->SetValueAsObject(TargetKey.SelectedKeyName, NewTarget);
-                // 标记有目标
                 BlackboardComp->SetValueAsBool(XBSoldierBBKeys::HasTarget, true);
                 
-                // 🔧 修改 - 打印中文日志提示自动寻敌成功
-                UE_LOG(LogTemp, Log, TEXT("士兵 %s 自动找到新目标 %s"),
+                UE_LOG(LogTemp, Log, TEXT("士兵 %s 自动补位新目标 %s"),
                     *Soldier->GetName(), *NewTarget->GetName());
             }
         }
