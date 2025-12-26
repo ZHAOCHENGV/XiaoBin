@@ -90,13 +90,27 @@ void UXBSoldierBehaviorInterface::UpdateAttackCooldown(float DeltaTime)
 // ==================== 感知行为实现 ====================
 
 /**
- * @brief 搜索最近的敌人
- * @note ✨ 核心优化 - 通过感知子系统执行，支持缓存和批量处理
+ * @brief  搜索并获取最近的有效敌方目标
+ * @param  OutEnemy [输出] 找到的敌方 Actor 指针（未找到置空）
+ * @return bool 是否成功找到有效目标
+ * @note   详细流程分析:
+ * 1. 上下文获取：获取士兵自身、所属主将及感知子系统。
+ * 2. 优先权判定：检查主将的攻击历史，确定是否需要优先集火特定阵营。
+ * 3. 筛选器定义：构建 Lambda 筛选器，执行严格的有效性检查（过滤自身、主将、非敌对目标）并按优先级排序（优先阵营 > 敌方士兵 > 敌方主将）。
+ * 4. 缓存利用：优先尝试从上一次感知结果缓存中筛选目标，减少昂贵的空间查询开销。
+ * 5. 感知查询：若缓存无效或无结果，根据战斗状态（Combat/Idle）设定查询优先级，向子系统发起新的范围查询。
+ * 6. 最终择优：对新查询结果再次应用筛选器，返回最佳目标。
+ * * 架构注意事项:
+ * 1. 依赖 PerceptionSubsystem 进行空间查询，避免全场景遍历。
+ * 2. 使用 Lambda 闭包封装复杂的择优逻辑，保证缓存查询和新查询逻辑的一致性。
+ * 3. 严格的过滤逻辑（Self/Leader/Hostile）是防止 AI 逻辑死锁（如寻找自身）的关键防线。
  */
 bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
 {
-   OutEnemy = nullptr;
+    // 初始化输出参数，防止调用方使用未初始化的指针
+    OutEnemy = nullptr;
 
+    // 获取关键组件引用，若基础组件缺失则无法执行逻辑
     AXBSoldierCharacter* Soldier = GetOwnerSoldier();
     UXBSoldierPerceptionSubsystem* Perception = GetPerceptionSubsystem();
 
@@ -105,27 +119,27 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
         return false;
     }
 
-    // 获取当前跟随的主将（用于过滤）
+    // 缓存主将引用与自身阵营，用于后续筛选器中的高频访问
     AXBCharacterBase* MyLeader = Soldier->GetLeaderCharacter();
-    // 获取自身阵营
     EXBFaction MyFaction = Soldier->GetFaction();
 
-    // 确定优先阵营（例如攻击了主将的敌人阵营）
+    // 初始化优先攻击阵营数据，默认无优先阵营
     EXBFaction PreferredFaction = EXBFaction::Neutral;
     bool bHasPreferredFaction = false;
     
-    // 如果有主将，优先攻击主将最近命中的敌方阵营
+    // 实现"集火"逻辑：若跟随主将，则尝试同步主将的攻击目标
     if (MyLeader)
     {
-        // 🔧 修改 - 优先使用主将最近攻击到的敌方阵营
+        // 尝试获取主将最近攻击的敌方阵营，实现小队协同攻击
         EXBFaction LeaderEnemyFaction = EXBFaction::Neutral;
-        // 🔧 修改 - 若主将已有敌方阵营记录，则作为优先阵营
+        
+        // 优先策略 A：直接继承主将明确记录的敌方阵营
         if (MyLeader->GetLastAttackedEnemyFaction(LeaderEnemyFaction))
         {
             PreferredFaction = LeaderEnemyFaction;
             bHasPreferredFaction = true;
         }
-        // 🔧 修改 - 若没有阵营记录，退回使用最近命中的敌方主将
+        // 优先策略 B：若无阵营记录，回退到主将攻击的具体敌方武将所属阵营
         else if (AXBCharacterBase* EnemyLeader = MyLeader->GetLastAttackedEnemyLeader())
         {
             if (!EnemyLeader->IsDead())
@@ -136,11 +150,13 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
         }
     }
 
-    // 定义筛选 Lambda
+    // 定义目标筛选逻辑 (Lambda)，封装为独立函数以便在缓存检查和新查询中复用
+    // 逻辑目标：在一次遍历中找出四种优先级的最佳候选，避免多次排序带来的性能开销 (O(N))
     auto SelectPriorityTarget = [&](const FXBPerceptionResult& Result) -> AActor*
     {
         if (!Soldier) return nullptr;
 
+        // 维护四个最佳候选槽位，分别对应不同优先级
         AActor* NearestPreferredSoldier = nullptr;
         float NearestPreferredSoldierDistSq = MAX_FLT;
 
@@ -155,24 +171,28 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
 
         const FVector SoldierLocation = Soldier->GetActorLocation();
 
+        // 遍历感知到的所有潜在目标
         for (AActor* Candidate : Result.DetectedEnemies)
         {
-            // 1. 基础有效性检查
+            // 基础指针校验，过滤无效对象
             if (!Candidate || !IsValid(Candidate)) continue;
 
-            // 🔧 修复 1: 绝对过滤自身
+            // 🔧 关键修复 1: 绝对过滤自身
+            // 防止距离计算为 0 导致 AI 锁定自己为敌人的逻辑死循环
             if (Candidate == Soldier) continue;
 
-            // 🔧 修复 2: 绝对过滤自己跟随的主将
+            // 🔧 关键修复 2: 绝对过滤自己跟随的主将
+            // 防止感知系统误将友方主将纳入列表，导致"叛变"行为
             if (MyLeader && Candidate == MyLeader) continue;
 
             EXBFaction CandidateFaction = EXBFaction::Neutral;
             bool bIsSoldier = false;
             bool bIsLeader = false;
 
-            // 识别目标类型并获取阵营
+            // 根据目标类型（士兵/武将）提取阵营并标记类型
             if (AXBSoldierCharacter* EnemySoldier = Cast<AXBSoldierCharacter>(Candidate))
             {
+                // 忽略已死亡单位，防止鞭尸
                 if (EnemySoldier->GetSoldierState() == EXBSoldierState::Dead) continue;
                 CandidateFaction = EnemySoldier->GetFaction();
                 bIsSoldier = true;
@@ -185,22 +205,25 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
             }
             else
             {
-                // 不是士兵也不是主将，忽略
+                // 忽略非角色类型的 Actor（如可破坏物等，视项目需求而定）
                 continue;
             }
 
-            // 🔧 修复 3: 核心敌对关系检查
-            // 如果不是敌对关系（比如是同阵营或中立），直接跳过
+            // 🔧 关键修复 3: 核心敌对关系检查
+            // 感知系统可能返回范围内所有单位，此处必须严格校验敌对关系
             if (!UXBBlueprintFunctionLibrary::AreFactionsHostile(MyFaction, CandidateFaction))
             {
                 continue;
             }
 
-            // --- 距离计算与择优逻辑 ---
+            // --- 执行距离计算与择优更新 ---
             
+            // 使用距离平方比较，避免开方运算带来的性能损耗
             const float DistSq = FVector::DistSquared(SoldierLocation, Candidate->GetActorLocation());
+            // 判断是否属于主将正在攻击的"优先阵营"
             const bool bPreferred = bHasPreferredFaction && CandidateFaction == PreferredFaction;
 
+            // 根据单位类型和优先权更新对应的最近候选者
             if (bIsSoldier)
             {
                 if (bPreferred)
@@ -241,43 +264,49 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
             }
         }
 
-        // 返回优先级：优先阵营士兵 > 优先阵营主将 > 普通敌方士兵 > 普通敌方主将
+        // 按照战略优先级返回结果：
+        // 1. 优先阵营士兵 (集火清理杂兵)
+        // 2. 优先阵营主将 (集火敌方核心)
+        // 3. 普通敌方士兵 (就近原则)
+        // 4. 普通敌方主将 (最后选择)
         if (NearestPreferredSoldier) return NearestPreferredSoldier;
         if (NearestPreferredLeader) return NearestPreferredLeader;
         if (NearestSoldier) return NearestSoldier;
         return NearestLeader;
     };
 
-    // 检查本地缓存是否有效
+    // 性能优化：检查本地感知缓存是否在有效期内
+    // 避免每一帧都执行昂贵的空间查询 (QuadTree/Octree 查询)
     float CurrentTime = GetWorld()->GetTimeSeconds();
     if (CurrentTime - PerceptionCacheTime < PerceptionCacheValidity)
     {
         AActor* CachedTarget = SelectPriorityTarget(CachedPerceptionResult);
-        // 只有当缓存中找到了符合条件（敌对且非自身）的目标时才返回
+        // 只有当缓存中确实找到了符合严格筛选条件的目标时才返回
+        // 如果缓存里全是已死单位或友军，则视为缓存无效，需强制刷新
         if (CachedTarget)
         {
             OutEnemy = CachedTarget;
             RecordEnemySeen();
             return true;
         }
-        // 如果缓存里全是队友/死人/自己，则强制刷新感知
     }
 
-    // 根据战斗状态决定查询优先级
+    // 缓存未命中或失效，准备发起新的感知查询
+    // 根据士兵当前状态动态调整查询优先级，优化全局 AI 性能开销
     EXBQueryPriority Priority = EXBQueryPriority::Normal;
     if (Soldier->GetSoldierState() == EXBSoldierState::Combat)
     {
-        Priority = EXBQueryPriority::High;
+        Priority = EXBQueryPriority::High; // 战斗中需要高频更新
     }
     else if (Soldier->GetSoldierState() == EXBSoldierState::Idle)
     {
-        Priority = EXBQueryPriority::Low;
+        Priority = EXBQueryPriority::Low;  // 待机时降低频率
     }
 
     float VisionRange = Soldier->GetVisionRange();
     FVector Location = Soldier->GetActorLocation();
     
-    // 执行感知查询
+    // 调用子系统执行空间查询，结果存入 CachedPerceptionResult
     bool bFound = Perception->QueryNearestEnemyWithPriority(
         Soldier,
         Location,
@@ -287,15 +316,17 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
         CachedPerceptionResult
     );
 
+    // 更新缓存时间戳
     PerceptionCacheTime = CurrentTime;
 
     if (bFound)
     {
+        // 对新的查询结果应用筛选逻辑
         AActor* PriorityTarget = SelectPriorityTarget(CachedPerceptionResult);
         if (PriorityTarget)
         {
             OutEnemy = PriorityTarget;
-            RecordEnemySeen();
+            RecordEnemySeen(); // 更新"最后看见敌人时间"，用于脱战判断
             return true;
         }
     }

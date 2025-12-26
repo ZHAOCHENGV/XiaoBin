@@ -105,15 +105,6 @@ EBTNodeResult::Type UBTTask_XBFindEnemy::ExecuteTask(UBehaviorTreeComponent& Own
     AActor* NearestEnemy = nullptr;
     // 调用行为接口搜索敌人
     bool bFound = BehaviorInterface->SearchForEnemy(NearestEnemy);
-
-    // 🔧 核心修复：防止搜索到自己
-    // 如果感知系统没有过滤自己，这里必须强制检查
-    if (NearestEnemy == Soldier)
-    {
-        UE_LOG(LogXBAI, Warning, TEXT("寻敌任务: 警告 - 搜索到了自己，已强制忽略"));
-        NearestEnemy = nullptr;
-        bFound = false;
-    }
     
     // ==================== 更新黑板 ====================
     
@@ -146,6 +137,7 @@ EBTNodeResult::Type UBTTask_XBFindEnemy::ExecuteTask(UBehaviorTreeComponent& Own
         Soldier->CurrentAttackTarget = nullptr;
         // 更新是否有目标标记
         BlackboardComp->SetValueAsBool(XBSoldierBBKeys::HasTarget, false);
+        UE_LOG(LogXBAI, Warning, TEXT("寻敌任务: 无法寻找到目标"));
     }
     
     // 返回成功以继续行为树
