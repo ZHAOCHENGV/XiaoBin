@@ -118,8 +118,10 @@ EBTNodeResult::Type UBTTask_XBMoveToTarget::ExecuteTask(UBehaviorTreeComponent& 
     // 设置移动时的视觉焦点为当前目标
     AIController->SetFocus(CurrentTarget);
     
-    // 使用士兵攻击范围作为停止距离
-    float StopDistance = Soldier->GetAttackRange();
+    // 使用士兵攻击范围 + 碰撞半径作为停止距离
+    const float SoldierRadius = Soldier->GetSimpleCollisionRadius();
+    const float TargetRadius = CurrentTarget->GetSimpleCollisionRadius();
+    float StopDistance = Soldier->GetAttackRange() + SoldierRadius + TargetRadius;
     
     // 计算与目标的当前距离
     float CurrentDistance = FVector::Dist(Soldier->GetActorLocation(), CurrentTarget->GetActorLocation());
@@ -137,7 +139,7 @@ EBTNodeResult::Type UBTTask_XBMoveToTarget::ExecuteTask(UBehaviorTreeComponent& 
     // 下发移动请求
     EPathFollowingRequestResult::Type MoveResult = AIController->MoveToActor(
         CurrentTarget,
-        StopDistance - 10.0f,
+        FMath::Max(0.0f, StopDistance - 10.0f),
         true,
         true
     );
@@ -270,8 +272,10 @@ void UBTTask_XBMoveToTarget::TickTask(UBehaviorTreeComponent& OwnerComp, uint8* 
     // 设置移动时焦点为目标
     AIController->SetFocus(Target);
     
-    // 使用士兵攻击范围作为停止距离
-    float StopDistance = Soldier->GetAttackRange();
+    // 使用士兵攻击范围 + 碰撞半径作为停止距离
+    const float SoldierRadius = Soldier->GetSimpleCollisionRadius();
+    const float TargetRadius = Target->GetSimpleCollisionRadius();
+    float StopDistance = Soldier->GetAttackRange() + SoldierRadius + TargetRadius;
     
     // 计算当前距离
     float CurrentDistance = FVector::Dist(Soldier->GetActorLocation(), Target->GetActorLocation());
@@ -297,7 +301,7 @@ void UBTTask_XBMoveToTarget::TickTask(UBehaviorTreeComponent& OwnerComp, uint8* 
         TargetUpdateTimer = 0.0f;
         
         // 重新下发移动请求
-        AIController->MoveToActor(Target, StopDistance - 10.0f, true, true);
+        AIController->MoveToActor(Target, FMath::Max(0.0f, StopDistance - 10.0f), true, true);
     }
 }
 
