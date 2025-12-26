@@ -117,9 +117,11 @@ void UBTService_XBUpdateSoldierState::TickNode(UBehaviorTreeComponent& OwnerComp
         // 读取目标对象
         CurrentTarget = Cast<AActor>(BlackboardComp->GetValueAsObject(TargetKey.SelectedKeyName));
     }
+    const AActor* PreviousTarget = CurrentTarget;
     
     // 若启用校验则验证目标有效性
     bool bTargetValid = false;
+    bool bTargetBecameInvalid = false;
     // 仅在目标与接口有效时校验
     if (bCheckTargetValidity && CurrentTarget && BehaviorInterface)
     {
@@ -135,11 +137,19 @@ void UBTService_XBUpdateSoldierState::TickNode(UBehaviorTreeComponent& OwnerComp
             CurrentTarget = nullptr;
             // 清空攻击目标缓存
             Soldier->CurrentAttackTarget = nullptr;
+            // 标记目标已失效
+            bTargetBecameInvalid = true;
             // 🔧 修改 - 打印中文日志提示目标失效
             UE_LOG(LogTemp, Verbose, TEXT("士兵 %s 的目标已失效"), *Soldier->GetName());
         }
     }
     
+    // 若目标被外部清理也标记为失效
+    if (PreviousTarget && !CurrentTarget)
+    {
+        bTargetBecameInvalid = true;
+    }
+
     // 写入是否有目标标记
     BlackboardComp->SetValueAsBool(XBSoldierBBKeys::HasTarget, CurrentTarget != nullptr);
     
@@ -149,7 +159,10 @@ void UBTService_XBUpdateSoldierState::TickNode(UBehaviorTreeComponent& OwnerComp
         // 同步当前攻击目标缓存
         Soldier->CurrentAttackTarget = CurrentTarget;
         // 计算与目标距离
-        float DistToTarget = FVector::Dist(SoldierLocation, CurrentTarget->GetActorLocation());
+        const float SelfRadius = Soldier->GetSimpleCollisionRadius();
+        const float TargetRadius = CurrentTarget->GetSimpleCollisionRadius();
+        float DistToTarget = FVector::Dist2D(SoldierLocation, CurrentTarget->GetActorLocation());
+        DistToTarget = FMath::Max(0.0f, DistToTarget - (SelfRadius + TargetRadius));
         // 写入目标距离
         BlackboardComp->SetValueAsFloat(XBSoldierBBKeys::DistanceToTarget, DistToTarget);
         // 写入目标位置
@@ -244,7 +257,7 @@ void UBTService_XBUpdateSoldierState::TickNode(UBehaviorTreeComponent& OwnerComp
     // ==================== 自动寻找目标 ====================
     
     // 若处于战斗且没有目标则自动寻敌
-    if (bAutoFindTarget && bInCombat && !CurrentTarget && BehaviorInterface)
+    if (bAutoFindTarget && !CurrentTarget && BehaviorInterface && (bInCombat || bTargetBecameInvalid))
     {
         // 定义新目标指针
         AActor* NewTarget = nullptr;

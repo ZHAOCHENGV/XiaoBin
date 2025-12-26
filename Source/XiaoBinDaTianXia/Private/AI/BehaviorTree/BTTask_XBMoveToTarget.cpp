@@ -7,6 +7,7 @@
 #include "Soldier/XBSoldierCharacter.h"
 #include "AI/XBSoldierAIController.h"
 #include "Character/XBCharacterBase.h"
+#include "Soldier/Component/XBSoldierBehaviorInterface.h"
 #include "Navigation/PathFollowingComponent.h"
 
 // 🔧 修改 - 按要求补充构造函数头部注释与逐行注释
@@ -82,6 +83,22 @@ EBTNodeResult::Type UBTTask_XBMoveToTarget::ExecuteTask(UBehaviorTreeComponent& 
         return EBTNodeResult::Failed;
     }
 
+    // 若有行为接口则先校验目标有效性
+    if (UXBSoldierBehaviorInterface* BehaviorInterface = Soldier->GetBehaviorInterface())
+    {
+        if (!BehaviorInterface->IsTargetValid(CurrentTarget))
+        {
+            // 清空黑板目标
+            BlackboardComp->SetValueAsObject(TargetKey.SelectedKeyName, nullptr);
+            // 更新黑板为无目标
+            BlackboardComp->SetValueAsBool(XBSoldierBBKeys::HasTarget, false);
+            // 清空当前攻击目标缓存
+            Soldier->CurrentAttackTarget = nullptr;
+            // 返回失败
+            return EBTNodeResult::Failed;
+        }
+    }
+
     // 若目标为士兵则检查死亡状态
     if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(CurrentTarget))
     {
@@ -118,13 +135,17 @@ EBTNodeResult::Type UBTTask_XBMoveToTarget::ExecuteTask(UBehaviorTreeComponent& 
     // 设置移动时的视觉焦点为当前目标
     AIController->SetFocus(CurrentTarget);
     
-    // 使用士兵攻击范围作为停止距离
-    float StopDistance = Soldier->GetAttackRange();
+    // 使用士兵攻击范围 + 碰撞半径作为停止距离（以边缘距离为准）
+    const float AttackRange = Soldier->GetAttackRange();
+    const float SoldierRadius = Soldier->GetSimpleCollisionRadius();
+    const float TargetRadius = CurrentTarget->GetSimpleCollisionRadius();
+    const float RadiiSum = SoldierRadius + TargetRadius;
     
-    // 计算与目标的当前距离
-    float CurrentDistance = FVector::Dist(Soldier->GetActorLocation(), CurrentTarget->GetActorLocation());
+    // 计算与目标的当前距离（边缘距离）
+    const float CenterDistance = FVector::Dist2D(Soldier->GetActorLocation(), CurrentTarget->GetActorLocation());
+    const float EdgeDistance = FMath::Max(0.0f, CenterDistance - RadiiSum);
     // 若已进入攻击范围则直接成功
-    if (CurrentDistance <= StopDistance)
+    if (EdgeDistance <= AttackRange)
     {
         // 清理焦点，避免残留
         AIController->ClearFocus(EAIFocusPriority::Gameplay);
@@ -137,7 +158,7 @@ EBTNodeResult::Type UBTTask_XBMoveToTarget::ExecuteTask(UBehaviorTreeComponent& 
     // 下发移动请求
     EPathFollowingRequestResult::Type MoveResult = AIController->MoveToActor(
         CurrentTarget,
-        StopDistance - 10.0f,
+        FMath::Max(0.0f, AttackRange + RadiiSum - 10.0f),
         true,
         true
     );
@@ -222,6 +243,28 @@ void UBTTask_XBMoveToTarget::TickTask(UBehaviorTreeComponent& OwnerComp, uint8* 
         return;
     }
 
+    // 若有行为接口则先校验目标有效性
+    if (UXBSoldierBehaviorInterface* BehaviorInterface = Soldier->GetBehaviorInterface())
+    {
+        if (!BehaviorInterface->IsTargetValid(Target))
+        {
+            // 清空黑板目标
+            BlackboardComp->SetValueAsObject(TargetKey.SelectedKeyName, nullptr);
+            // 更新黑板为无目标
+            BlackboardComp->SetValueAsBool(XBSoldierBBKeys::HasTarget, false);
+            // 清空当前攻击目标缓存
+            Soldier->CurrentAttackTarget = nullptr;
+            // 停止移动
+            AIController->StopMovement();
+            // 清理焦点
+            AIController->ClearFocus(EAIFocusPriority::Gameplay);
+            // 结束任务并标记失败
+            FinishLatentTask(OwnerComp, EBTNodeResult::Failed);
+            // 退出Tick
+            return;
+        }
+    }
+
     // 若目标为士兵则检查死亡状态
     if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(Target))
     {
@@ -270,13 +313,17 @@ void UBTTask_XBMoveToTarget::TickTask(UBehaviorTreeComponent& OwnerComp, uint8* 
     // 设置移动时焦点为目标
     AIController->SetFocus(Target);
     
-    // 使用士兵攻击范围作为停止距离
-    float StopDistance = Soldier->GetAttackRange();
+    // 使用士兵攻击范围 + 碰撞半径作为停止距离（以边缘距离为准）
+    const float AttackRange = Soldier->GetAttackRange();
+    const float SoldierRadius = Soldier->GetSimpleCollisionRadius();
+    const float TargetRadius = Target->GetSimpleCollisionRadius();
+    const float RadiiSum = SoldierRadius + TargetRadius;
     
-    // 计算当前距离
-    float CurrentDistance = FVector::Dist(Soldier->GetActorLocation(), Target->GetActorLocation());
+    // 计算当前距离（边缘距离）
+    const float CenterDistance = FVector::Dist2D(Soldier->GetActorLocation(), Target->GetActorLocation());
+    const float EdgeDistance = FMath::Max(0.0f, CenterDistance - RadiiSum);
     // 若进入攻击范围则成功
-    if (CurrentDistance <= StopDistance)
+    if (EdgeDistance <= AttackRange)
     {
         // 停止移动
         AIController->StopMovement();
@@ -297,7 +344,7 @@ void UBTTask_XBMoveToTarget::TickTask(UBehaviorTreeComponent& OwnerComp, uint8* 
         TargetUpdateTimer = 0.0f;
         
         // 重新下发移动请求
-        AIController->MoveToActor(Target, StopDistance - 10.0f, true, true);
+        AIController->MoveToActor(Target, FMath::Max(0.0f, AttackRange + RadiiSum - 10.0f), true, true);
     }
 }
 
