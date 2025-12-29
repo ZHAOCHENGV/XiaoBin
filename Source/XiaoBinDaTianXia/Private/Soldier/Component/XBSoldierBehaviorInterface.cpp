@@ -266,12 +266,12 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
 
         // 按照战略优先级返回结果：
         // 1. 优先阵营士兵 (集火清理杂兵)
-        // 2. 优先阵营主将 (集火敌方核心)
-        // 3. 普通敌方士兵 (就近原则)
+        // 2. 普通敌方士兵 (就近原则 - 始终优先于主将)
+        // 3. 优先阵营主将 (集火敌方核心)
         // 4. 普通敌方主将 (最后选择)
         if (NearestPreferredSoldier) return NearestPreferredSoldier;
-        if (NearestPreferredLeader) return NearestPreferredLeader;
         if (NearestSoldier) return NearestSoldier;
+        if (NearestPreferredLeader) return NearestPreferredLeader;
         return NearestLeader;
     };
 
@@ -296,7 +296,8 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
     EXBQueryPriority Priority = EXBQueryPriority::Normal;
     if (Soldier->GetSoldierState() == EXBSoldierState::Combat)
     {
-        Priority = EXBQueryPriority::High; // 战斗中需要高频更新
+        // 🔧 修改 - 战斗中使用立即查询，避免队列延迟导致“找不到新目标”
+        Priority = EXBQueryPriority::Immediate;
     }
     else if (Soldier->GetSoldierState() == EXBSoldierState::Idle)
     {
@@ -307,7 +308,7 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
     FVector Location = Soldier->GetActorLocation();
     
     // 调用子系统执行空间查询，结果存入 CachedPerceptionResult
-    bool bFound = Perception->QueryNearestEnemyWithPriority(
+    Perception->QueryNearestEnemyWithPriority(
         Soldier,
         Location,
         VisionRange,
@@ -319,15 +320,38 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
     // 更新缓存时间戳
     PerceptionCacheTime = CurrentTime;
 
-    if (bFound)
+    // 对新的查询结果应用筛选逻辑
+    AActor* PriorityTarget = SelectPriorityTarget(CachedPerceptionResult);
+    if (PriorityTarget)
     {
-        // 对新的查询结果应用筛选逻辑
-        AActor* PriorityTarget = SelectPriorityTarget(CachedPerceptionResult);
-        if (PriorityTarget)
+        OutEnemy = PriorityTarget;
+        RecordEnemySeen(); // 更新"最后看见敌人时间"，用于脱战判断
+        return true;
+    }
+
+    // 🔧 修改 - 战斗中启用阵营回退查询：主将命中后共享敌方阵营信息
+    if (Soldier->GetSoldierState() == EXBSoldierState::Combat && bHasPreferredFaction)
+    {
+        // 🔧 修改 - 节流回退查询，避免频繁遍历阵营列表
+        if (CurrentTime - LastFactionFallbackTime >= FactionFallbackInterval)
         {
-            OutEnemy = PriorityTarget;
-            RecordEnemySeen(); // 更新"最后看见敌人时间"，用于脱战判断
-            return true;
+            LastFactionFallbackTime = CurrentTime;
+
+            FXBPerceptionResult FallbackResult;
+            if (Perception->QueryNearestEnemyByFaction(
+                    Soldier,
+                    Location,
+                    VisionRange,
+                    PreferredFaction,
+                    FallbackResult,
+                    true))
+            {
+                CachedPerceptionResult = FallbackResult;
+                PerceptionCacheTime = CurrentTime;
+                OutEnemy = FallbackResult.NearestEnemy;
+                RecordEnemySeen();
+                return OutEnemy != nullptr;
+            }
         }
     }
 

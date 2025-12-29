@@ -132,6 +132,11 @@ EBTNodeResult::Type UBTTask_XBMoveToTarget::ExecuteTask(UBehaviorTreeComponent& 
     {
         return EBTNodeResult::Succeeded;
     }
+
+    // 🔧 修改: 无法寻路到目标时清理目标，触发后续自动寻敌
+    BlackboardComp->SetValueAsObject(TargetKey.SelectedKeyName, nullptr);
+    BlackboardComp->SetValueAsBool(XBSoldierBBKeys::HasTarget, false);
+    Soldier->CurrentAttackTarget = nullptr;
     
     return EBTNodeResult::Failed;
 }
