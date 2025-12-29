@@ -309,6 +309,8 @@ public:
         FXBPerceptionResult& OutResult
     );
 
+    // ❌ 删除 - 不再使用感知子系统的阵营回退查询
+
     // ==================== Actor 注册 ====================
 
     /**
@@ -726,4 +728,3 @@ protected:
     /** @brief 合并的查询映射（查询位置 -> 等待结果的查询列表） */
     TMap<FIntVector, TArray<FXBPerceptionQueryEnhanced>> PendingMergedQueries;
 };
-
