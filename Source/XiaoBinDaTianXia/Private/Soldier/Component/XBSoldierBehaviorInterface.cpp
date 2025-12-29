@@ -740,8 +740,8 @@ EXBBehaviorResult UXBSoldierBehaviorInterface::ExecuteAttack(AActor* Target)
     // 🔧 修改 - 记录看见敌人，避免战斗状态被过早清理
     RecordEnemySeen();
 
-    UE_LOG(LogXBCombat, Verbose, TEXT("士兵 %s 攻击 %s，伤害: %.1f"),
-        *Soldier->GetName(), *Target->GetName(), Damage);
+    UE_LOG(LogXBCombat, Verbose, TEXT("士兵 %s 攻击 %s，等待近战Tag结算"),
+        *Soldier->GetName(), *Target->GetName());
 
     // 广播行为完成
     OnBehaviorCompleted.Broadcast(FName("Attack"), EXBBehaviorResult::Success);

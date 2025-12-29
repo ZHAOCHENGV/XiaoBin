@@ -73,7 +73,9 @@ void UXBGameplayAbility_Attack::ActivateAbility(const FGameplayAbilitySpecHandle
         }
     }
 
-    AActor* TargetActor = TriggerEventData->Target ? const_cast<AActor*>(TriggerEventData->Target) : nullptr;
+    // 🔧 修改 - 通过 Get() 获取指针，避免直接对 TObjectPtr 做 const_cast
+    const AActor* TargetActorConst = TriggerEventData->Target.Get();
+    AActor* TargetActor = const_cast<AActor*>(TargetActorConst);
     if (!TargetActor)
     {
         if (AXBSoldierCharacter* SourceSoldier = Cast<AXBSoldierCharacter>(SourceActor))
