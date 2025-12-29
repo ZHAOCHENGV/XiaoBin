@@ -18,13 +18,13 @@
 #include "Engine/DataTable.h"
 #include "Army/XBSoldierTypes.h"
 #include "Data/XBLeaderDataTable.h"
+#include "Combat/XBProjectile.h"
 #include "XBSoldierDataTable.generated.h"
 
 class UBehaviorTree;
 class USkeletalMesh;
 class UAnimInstance;
 class UAnimMontage;
-class AXBProjectile;
 class UGameplayEffect;
 
 // ============================================
