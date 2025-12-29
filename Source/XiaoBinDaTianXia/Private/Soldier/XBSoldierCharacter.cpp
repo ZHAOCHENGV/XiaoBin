@@ -40,6 +40,8 @@
 #include "DrawDebugHelpers.h"
 #include "TimerManager.h"
 #include "XBCollisionChannels.h"
+#include "GAS/XBAbilitySystemComponent.h"
+#include "GAS/Abilities/XBGameplayAbility_Attack.h"
 
 AXBSoldierCharacter::AXBSoldierCharacter()
 {
@@ -67,6 +69,10 @@ AXBSoldierCharacter::AXBSoldierCharacter()
     FollowComponent = CreateDefaultSubobject<UXBSoldierFollowComponent>(TEXT("FollowComponent"));
     DebugComponent = CreateDefaultSubobject<UXBSoldierDebugComponent>(TEXT("DebugComponent"));
     BehaviorInterface = CreateDefaultSubobject<UXBSoldierBehaviorInterface>(TEXT("BehaviorInterface"));
+
+    // ✨ 新增 - 士兵ASC用于近战Tag触发GA
+    AbilitySystemComponent = CreateDefaultSubobject<UXBAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
+    MeleeHitAbilityClass = UXBGameplayAbility_Attack::StaticClass();
     
     ZzzEffectComponent = CreateDefaultSubobject<UNiagaraComponent>(TEXT("ZzzEffectComponent"));
     ZzzEffectComponent->SetupAttachment(RootComponent);
@@ -118,6 +124,17 @@ void AXBSoldierCharacter::BeginPlay()
 {
     Super::BeginPlay();
 
+    // 🔧 修改 - 初始化ASC信息，确保GA可被触发
+    if (AbilitySystemComponent)
+    {
+        AbilitySystemComponent->InitAbilityActorInfo(this, this);
+    }
+
+    // 🔧 修改 - 使用数据表配置刷新近战GA
+    RefreshMeleeHitAbilityFromData();
+
+    // 🔧 修改 - 近战GA授予由 RefreshMeleeHitAbilityFromData 统一处理
+
     if (!ZzzEffectAsset.IsNull() && ZzzEffectComponent)
     {
         if (UNiagaraSystem* LoadedEffect = ZzzEffectAsset.LoadSynchronous())
@@ -162,6 +179,46 @@ void AXBSoldierCharacter::BeginPlay()
         static_cast<int32>(Faction), 
         static_cast<int32>(CurrentState),
         bStartAsDormant ? TEXT("是") : TEXT("否"));
+}
+
+UAbilitySystemComponent* AXBSoldierCharacter::GetAbilitySystemComponent() const
+{
+    return AbilitySystemComponent;
+}
+
+void AXBSoldierCharacter::RefreshMeleeHitAbilityFromData()
+{
+    if (!IsDataAccessorValid())
+    {
+        return;
+    }
+
+    // 🔧 修改 - 从数据表读取普攻GA作为近战命中GA
+    const TSubclassOf<UGameplayAbility> DataAttackGA = DataAccessor->GetRawData().BasicAttack.AbilityClass;
+    if (DataAttackGA)
+    {
+        MeleeHitAbilityClass = DataAttackGA;
+    }
+
+    if (!AbilitySystemComponent)
+    {
+        return;
+    }
+
+    AbilitySystemComponent->InitAbilityActorInfo(this, this);
+
+    if (!HasAuthority() || !MeleeHitAbilityClass)
+    {
+        return;
+    }
+
+    if (!AbilitySystemComponent->FindAbilitySpecFromClass(MeleeHitAbilityClass))
+    {
+        FGameplayAbilitySpec HitSpec(MeleeHitAbilityClass, 1, INDEX_NONE, this);
+        AbilitySystemComponent->GiveAbility(HitSpec);
+        UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 刷新近战GA: %s"),
+            *GetName(), *MeleeHitAbilityClass->GetName());
+    }
 }
 
 void AXBSoldierCharacter::Tick(float DeltaTime)
@@ -1156,6 +1213,9 @@ void AXBSoldierCharacter::InitializeFromDataTable(UDataTable* DataTable, FName R
 
     BehaviorTreeAsset = DataAccessor->GetBehaviorTree();
     ApplyVisualConfig();
+
+    // 🔧 修改 - 数据表初始化完成后刷新近战GA配置
+    RefreshMeleeHitAbilityFromData();
 
     UE_LOG(LogXBSoldier, Log, TEXT("士兵初始化成功: %s (类型=%s, 血量=%.1f)"), 
         *RowName.ToString(),
