@@ -208,6 +208,29 @@ void AXBCharacterBase::InitializeFromDataTable(UDataTable* DataTable, FName RowN
     GrowthConfigCache.DamageMultiplierPerSoldier = LeaderRow->DamageMultiplierPerSoldier;
     GrowthConfigCache.MaxDamageMultiplier = LeaderRow->MaxDamageMultiplier;
 
+    // 🔧 修改 - 从数据表加载动画蓝图与死亡蒙太奇，体现数据驱动
+    if (!LeaderRow->AnimClass.IsNull())
+    {
+        AnimClass = LeaderRow->AnimClass.LoadSynchronous();
+        if (USkeletalMeshComponent* MeshComp = GetMesh())
+        {
+            if (AnimClass)
+            {
+                MeshComp->SetAnimInstanceClass(AnimClass);
+            }
+        }
+    }
+
+    if (!LeaderRow->DeathMontage.IsNull())
+    {
+        DeathMontage = LeaderRow->DeathMontage.LoadSynchronous();
+    }
+
+    UE_LOG(LogXBCharacter, Log, TEXT("主将 %s 视觉配置加载完成: AnimClass=%s, DeathMontage=%s"),
+        *GetName(),
+        AnimClass ? *AnimClass->GetName() : TEXT("无"),
+        DeathMontage ? *DeathMontage->GetName() : TEXT("无"));
+
     if (CombatComponent)
     {
         CombatComponent->InitializeFromDataTable(DataTable, RowName);

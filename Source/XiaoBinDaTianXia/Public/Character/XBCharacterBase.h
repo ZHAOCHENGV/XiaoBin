@@ -396,6 +396,9 @@ protected:
 
     // ==================== 死亡系统 ====================
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "视觉", meta = (DisplayName = "动画蓝图类"))
+    TSubclassOf<UAnimInstance> AnimClass;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "死亡", meta = (DisplayName = "死亡蒙太奇"))
     TObjectPtr<UAnimMontage> DeathMontage;
 
