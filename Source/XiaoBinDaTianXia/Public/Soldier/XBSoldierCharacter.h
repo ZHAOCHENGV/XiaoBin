@@ -281,14 +281,7 @@ public:
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier", meta = (DisplayName = "执行攻击"))
     bool PerformAttack(AActor* Target);
 
-protected:
-    /**
-     * @brief  刷新近战命中GA配置
-     * @note   详细流程分析: 读取数据表普攻配置 -> 覆盖近战GA -> 初始化ASC并授予能力
-     *         性能/架构注意事项: 仅在初始化阶段调用，避免运行时重复授予
-     */
-    void RefreshMeleeHitAbilityFromData();
-
+public:
     UFUNCTION(BlueprintPure, Category = "XB|Soldier", meta = (DisplayName = "获取当前血量"))
     float GetCurrentHealth() const { return CurrentHealth; }
 
@@ -372,7 +365,7 @@ protected:
 
     // ==================== 公开访问的战斗状态 ====================
 
-    UPROPERTY(BlueprintReadOnly, Category = "状态")
+    UPROPERTY(BlueprintReadOnly, Category = "状态", meta = (DisplayName = "当前攻击目标"))
     TWeakObjectPtr<AActor> CurrentAttackTarget;
 
     // ==================== AI系统友元 ====================
@@ -381,7 +374,6 @@ protected:
 
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|Behavior", meta = (DisplayName = "获取行为接口"))
     UXBSoldierBehaviorInterface* GetBehaviorInterface() const { return BehaviorInterface; }
-
 
     // ==================== ✨ 新增：动画系统接口 ====================
 
@@ -404,6 +396,14 @@ protected:
      */
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|Animation", meta = (DisplayName = "应该播放移动动画"))
     bool ShouldPlayMoveAnimation() const;
+
+protected:
+    /**
+     * @brief  刷新近战命中GA配置
+     * @note   详细流程分析: 读取数据表普攻配置 -> 覆盖近战GA -> 初始化ASC并授予能力
+     *         性能/架构注意事项: 仅在初始化阶段调用，避免运行时重复授予
+     */
+    void RefreshMeleeHitAbilityFromData();
 protected:
 
     // ✨ 新增 - 配置跟随并开始移动

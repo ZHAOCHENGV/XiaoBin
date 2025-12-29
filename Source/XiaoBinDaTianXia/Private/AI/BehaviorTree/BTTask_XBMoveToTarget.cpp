@@ -8,6 +8,7 @@
 #include "AI/XBSoldierAIController.h"
 #include "Character/XBCharacterBase.h"
 #include "Navigation/PathFollowingComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
 
 // 🔧 修改 - 按要求补充构造函数头部注释与逐行注释
 /**
