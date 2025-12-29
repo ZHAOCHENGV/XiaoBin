@@ -730,9 +730,12 @@ EXBBehaviorResult UXBSoldierBehaviorInterface::ExecuteAttack(AActor* Target)
     float AttackInterval = Soldier->GetAttackInterval();
     AttackCooldownTimer = AttackInterval;
 
-    // 应用伤害
-    float Damage = Soldier->GetBaseDamage();
-    ApplyDamageToTarget(Target, Damage);
+    // 🔧 修改 - 近战伤害由蒙太奇Tag触发GA处理，避免提前结算
+    // 弓手不使用该Tag，伤害应由投射物命中时处理
+    if (Soldier->GetSoldierType() == EXBSoldierType::Archer)
+    {
+        UE_LOG(LogXBCombat, Verbose, TEXT("弓手攻击不走近战Tag: %s"), *Soldier->GetName());
+    }
 
     // 🔧 修改 - 记录看见敌人，避免战斗状态被过早清理
     RecordEnemySeen();
