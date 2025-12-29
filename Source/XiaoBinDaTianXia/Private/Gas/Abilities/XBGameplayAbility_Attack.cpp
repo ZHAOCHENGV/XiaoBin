@@ -181,10 +181,7 @@ void UXBGameplayAbility_Attack::ActivateAbility(const FGameplayAbilitySpecHandle
         // 🔧 修改 - 参考 ANS_XBMeleeDetection 的GAS伤害路径
         FGameplayEffectContextHandle ContextHandle = SourceASC->MakeEffectContext();
         ContextHandle.AddSourceObject(SourceActor);
-        if (TriggerEventData && TriggerEventData->ContextHandle.IsValid())
-        {
-            ContextHandle.Append(TriggerEventData->ContextHandle);
-        }
+        // 🔧 修改 - UE版本差异导致ContextHandle无Append接口，保持基础上下文
 
         FGameplayEffectSpecHandle SpecHandle = SourceASC->MakeOutgoingSpec(DamageEffectClass, 1.0f, ContextHandle);
         if (!SpecHandle.IsValid())
