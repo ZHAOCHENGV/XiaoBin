@@ -1621,6 +1621,16 @@ void AXBSoldierCharacter::SetSoldierState(EXBSoldierState NewState)
     EXBSoldierState OldState = CurrentState;
     CurrentState = NewState;
 
+    // 🔧 修改 - 跟随状态下强制关闭行为树，避免非战斗逻辑运行
+    if (NewState == EXBSoldierState::Following)
+    {
+        if (AXBSoldierAIController* SoldierAI = Cast<AXBSoldierAIController>(GetController()))
+        {
+            SoldierAI->StopBehaviorTreeLogic();
+            UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 跟随状态停止行为树"), *GetName());
+        }
+    }
+
     if (AAIController* AICtrl = Cast<AAIController>(GetController()))
     {
         if (UBlackboardComponent* BBComp = AICtrl->GetBlackboardComponent())
