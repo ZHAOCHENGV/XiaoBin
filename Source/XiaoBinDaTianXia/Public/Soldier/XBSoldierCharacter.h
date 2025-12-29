@@ -281,6 +281,14 @@ public:
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier", meta = (DisplayName = "执行攻击"))
     bool PerformAttack(AActor* Target);
 
+protected:
+    /**
+     * @brief  刷新近战命中GA配置
+     * @note   详细流程分析: 读取数据表普攻配置 -> 覆盖近战GA -> 初始化ASC并授予能力
+     *         性能/架构注意事项: 仅在初始化阶段调用，避免运行时重复授予
+     */
+    void RefreshMeleeHitAbilityFromData();
+
     UFUNCTION(BlueprintPure, Category = "XB|Soldier", meta = (DisplayName = "获取当前血量"))
     float GetCurrentHealth() const { return CurrentHealth; }
 
