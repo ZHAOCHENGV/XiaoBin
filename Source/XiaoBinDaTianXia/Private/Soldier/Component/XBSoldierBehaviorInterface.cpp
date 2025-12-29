@@ -99,12 +99,14 @@ void UXBSoldierBehaviorInterface::UpdateAttackCooldown(float DeltaTime)
  * 2. 优先权判定：若主将刚攻击敌人，则记录敌方阵营作为“优先阵营”。
  * 3. 缓存利用：若缓存未过期，直接从缓存列表中选择优先目标。
  * 4. 直接扫描：不使用感知子系统，直接遍历世界中的敌方单位（士兵/主将），按优先阵营与距离挑选。
- * 5. 目标回退：优先阵营无可用目标时，回退到任意敌对阵营，避免目标长期为空。
- * 6. 最终择优：优先士兵、再主将；更新缓存与“最后看见敌人时间”。
+ * 5. 拥挤规避：统计友军对目标的集中度，对拥挤目标施加惩罚，减少扎堆卡位。
+ * 6. 目标回退：优先阵营无可用目标时，回退到任意敌对阵营，避免目标长期为空。
+ * 7. 最终择优：优先士兵、再主将；更新缓存与“最后看见敌人时间”。
  * * 架构注意事项:
  * 1. 战斗态优先使用直接扫描以保证实时性，避免队列延迟导致“断目标”。
  * 2. 通过优先阵营约束缩小扫描范围，降低遍历成本。
  * 3. 严格的过滤逻辑（Self/Leader/Hostile/Dead）是防止 AI 逻辑死锁的关键防线。
+ * 4. 拥挤惩罚使用轻量级统计，避免昂贵的空间查询。
  */
 bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
 {
@@ -359,6 +361,74 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
     AActor* SoldierActor = Soldier;
     AActor* LeaderActor = MyLeader;
 
+    // 🔧 修改 - 仅在战斗态启用“拥挤规避”统计，减少非战斗时的开销
+    const bool bEnableCrowdAvoidance = (Soldier->GetSoldierState() == EXBSoldierState::Combat);
+    TMap<AActor*, int32> TargetAttackers;
+    if (bEnableCrowdAvoidance)
+    {
+        // 🔧 修改 - 统计友军正在攻击的目标数量，降低目标拥挤度
+        for (TActorIterator<AXBSoldierCharacter> It(World); It; ++It)
+        {
+            AXBSoldierCharacter* Friendly = *It;
+            if (!Friendly || Friendly->GetSoldierState() == EXBSoldierState::Dead)
+            {
+                continue;
+            }
+
+            if (Friendly->GetFaction() != MyFaction)
+            {
+                continue;
+            }
+
+            AActor* FriendlyTarget = Friendly->CurrentAttackTarget.Get();
+            if (!FriendlyTarget || !IsValid(FriendlyTarget))
+            {
+                continue;
+            }
+
+            // 🔧 修改 - 仅统计敌方目标，避免把友军聚集当作拥挤
+            EXBFaction TargetFaction = EXBFaction::Neutral;
+            if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(FriendlyTarget))
+            {
+                TargetFaction = TargetSoldier->GetFaction();
+            }
+            else if (AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(FriendlyTarget))
+            {
+                TargetFaction = TargetLeader->GetFaction();
+            }
+            else
+            {
+                continue;
+            }
+
+            if (!UXBBlueprintFunctionLibrary::AreFactionsHostile(MyFaction, TargetFaction))
+            {
+                continue;
+            }
+
+            TargetAttackers.FindOrAdd(FriendlyTarget) += 1;
+        }
+    }
+
+    auto GetCrowdPenalty = [&](AActor* Candidate) -> float
+    {
+        if (!bEnableCrowdAvoidance || !Candidate)
+        {
+            return 0.0f;
+        }
+
+        const int32* AttackerCount = TargetAttackers.Find(Candidate);
+        if (!AttackerCount || *AttackerCount <= 0)
+        {
+            return 0.0f;
+        }
+
+        // 🔧 修改 - 以士兵半径为尺度进行惩罚，避免大量士兵挤到同一目标
+        const float AvoidanceRadius = Soldier->GetSimpleCollisionRadius();
+        const float CrowdPenaltyWeight = FMath::Max(200.0f, AvoidanceRadius * AvoidanceRadius);
+        return static_cast<float>(*AttackerCount) * CrowdPenaltyWeight;
+    };
+
     // 🔧 修改 - 先扫描士兵列表，确保“优先士兵”原则
     for (TActorIterator<AXBSoldierCharacter> It(World); It; ++It)
     {
@@ -390,6 +460,7 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
             continue;
         }
 
+        // 🔧 修改 - 先用真实距离过滤，再叠加拥挤惩罚用于排序
         const float DistSq = FVector::DistSquared(SoldierLocation, Candidate->GetActorLocation());
         if (DistSq > VisionRangeSq)
         {
@@ -397,7 +468,7 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
         }
 
         CachedPerceptionResult.DetectedEnemies.Add(Candidate);
-        UpdateBestCandidate(Candidate, bPreferred, true, DistSq);
+        UpdateBestCandidate(Candidate, bPreferred, true, DistSq + GetCrowdPenalty(Candidate));
     }
 
     // 🔧 修改 - 再扫描主将列表，作为次级目标
@@ -431,6 +502,7 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
             continue;
         }
 
+        // 🔧 修改 - 先用真实距离过滤，再叠加拥挤惩罚用于排序
         const float DistSq = FVector::DistSquared(SoldierLocation, Candidate->GetActorLocation());
         if (DistSq > VisionRangeSq)
         {
@@ -438,7 +510,7 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
         }
 
         CachedPerceptionResult.DetectedEnemies.Add(Candidate);
-        UpdateBestCandidate(Candidate, bPreferred, false, DistSq);
+        UpdateBestCandidate(Candidate, bPreferred, false, DistSq + GetCrowdPenalty(Candidate));
     }
 
     // 🔧 修改 - 当优先阵营没有任何可用目标时，允许回退到任意敌对阵营
@@ -470,6 +542,7 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
                 continue;
             }
 
+            // 🔧 修改 - 先用真实距离过滤，再叠加拥挤惩罚用于排序
             const float DistSq = FVector::DistSquared(SoldierLocation, Candidate->GetActorLocation());
             if (DistSq > VisionRangeSq)
             {
@@ -477,7 +550,7 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
             }
 
             CachedPerceptionResult.DetectedEnemies.Add(Candidate);
-            UpdateBestCandidate(Candidate, false, true, DistSq);
+            UpdateBestCandidate(Candidate, false, true, DistSq + GetCrowdPenalty(Candidate));
         }
 
         for (TActorIterator<AXBCharacterBase> It(World); It; ++It)
@@ -504,6 +577,7 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
                 continue;
             }
 
+            // 🔧 修改 - 先用真实距离过滤，再叠加拥挤惩罚用于排序
             const float DistSq = FVector::DistSquared(SoldierLocation, Candidate->GetActorLocation());
             if (DistSq > VisionRangeSq)
             {
@@ -511,7 +585,7 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
             }
 
             CachedPerceptionResult.DetectedEnemies.Add(Candidate);
-            UpdateBestCandidate(Candidate, false, false, DistSq);
+            UpdateBestCandidate(Candidate, false, false, DistSq + GetCrowdPenalty(Candidate));
         }
     }
 
