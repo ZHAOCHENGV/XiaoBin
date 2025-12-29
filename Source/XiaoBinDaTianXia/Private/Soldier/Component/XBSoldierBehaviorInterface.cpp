@@ -355,16 +355,20 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
         }
     };
 
+    // 🔧 修改 - 使用 AActor 指针进行比较，避免不同类型指针直接比较导致编译报错
+    AActor* SoldierActor = Soldier;
+    AActor* LeaderActor = MyLeader;
+
     // 🔧 修改 - 先扫描士兵列表，确保“优先士兵”原则
     for (TActorIterator<AXBSoldierCharacter> It(World); It; ++It)
     {
         AXBSoldierCharacter* Candidate = *It;
-        if (!Candidate || Candidate == Soldier)
+        if (!Candidate || Candidate == SoldierActor)
         {
             continue;
         }
 
-        if (MyLeader && Candidate == MyLeader)
+        if (LeaderActor && Candidate == LeaderActor)
         {
             continue;
         }
@@ -400,12 +404,12 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
     for (TActorIterator<AXBCharacterBase> It(World); It; ++It)
     {
         AXBCharacterBase* Candidate = *It;
-        if (!Candidate || Candidate == Soldier)
+        if (!Candidate || Candidate == SoldierActor)
         {
             continue;
         }
 
-        if (MyLeader && Candidate == MyLeader)
+        if (LeaderActor && Candidate == LeaderActor)
         {
             continue;
         }
@@ -445,12 +449,12 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
         for (TActorIterator<AXBSoldierCharacter> It(World); It; ++It)
         {
             AXBSoldierCharacter* Candidate = *It;
-            if (!Candidate || Candidate == Soldier)
+            if (!Candidate || Candidate == SoldierActor)
             {
                 continue;
             }
 
-            if (MyLeader && Candidate == MyLeader)
+            if (LeaderActor && Candidate == LeaderActor)
             {
                 continue;
             }
@@ -479,12 +483,12 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
         for (TActorIterator<AXBCharacterBase> It(World); It; ++It)
         {
             AXBCharacterBase* Candidate = *It;
-            if (!Candidate || Candidate == Soldier)
+            if (!Candidate || Candidate == SoldierActor)
             {
                 continue;
             }
 
-            if (MyLeader && Candidate == MyLeader)
+            if (LeaderActor && Candidate == LeaderActor)
             {
                 continue;
             }
