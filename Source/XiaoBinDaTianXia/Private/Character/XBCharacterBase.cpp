@@ -208,6 +208,41 @@ void AXBCharacterBase::InitializeFromDataTable(UDataTable* DataTable, FName RowN
     GrowthConfigCache.DamageMultiplierPerSoldier = LeaderRow->DamageMultiplierPerSoldier;
     GrowthConfigCache.MaxDamageMultiplier = LeaderRow->MaxDamageMultiplier;
 
+    // 🔧 修改 - 从数据表加载骨骼网格/动画蓝图/死亡蒙太奇，体现数据驱动
+    if (!LeaderRow->SkeletalMesh.IsNull())
+    {
+        if (USkeletalMesh* LoadedMesh = LeaderRow->SkeletalMesh.LoadSynchronous())
+        {
+            if (USkeletalMeshComponent* MeshComp = GetMesh())
+            {
+                MeshComp->SetSkeletalMesh(LoadedMesh);
+            }
+        }
+    }
+
+    if (!LeaderRow->AnimClass.IsNull())
+    {
+        AnimClass = LeaderRow->AnimClass.LoadSynchronous();
+        if (USkeletalMeshComponent* MeshComp = GetMesh())
+        {
+            if (AnimClass)
+            {
+                MeshComp->SetAnimInstanceClass(AnimClass);
+            }
+        }
+    }
+
+    if (!LeaderRow->DeathMontage.IsNull())
+    {
+        DeathMontage = LeaderRow->DeathMontage.LoadSynchronous();
+    }
+
+    UE_LOG(LogXBCharacter, Log, TEXT("主将 %s 视觉配置加载完成: Mesh=%s, AnimClass=%s, DeathMontage=%s"),
+        *GetName(),
+        GetMesh() && GetMesh()->GetSkeletalMeshAsset() ? *GetMesh()->GetSkeletalMeshAsset()->GetName() : TEXT("无"),
+        AnimClass ? *AnimClass->GetName() : TEXT("无"),
+        DeathMontage ? *DeathMontage->GetName() : TEXT("无"));
+
     if (CombatComponent)
     {
         CombatComponent->InitializeFromDataTable(DataTable, RowName);
@@ -712,6 +747,23 @@ void AXBCharacterBase::EnterCombat()
 
     if (bIsInCombat)
     {
+        // 🔧 修改 - 战斗中重新触发时保持战斗定时器逻辑
+        CancelNoEnemyDisengage();
+        bHasEnemiesInCombat = true;
+        // 🔧 修改 - 战斗中二次触发时同步士兵状态，避免士兵因超距回队后无法再次入战
+        for (AXBSoldierCharacter* Soldier : Soldiers)
+        {
+            if (Soldier && Soldier->GetSoldierState() != EXBSoldierState::Dead)
+            {
+                if (Soldier->GetSoldierState() != EXBSoldierState::Combat)
+                {
+                    Soldier->EnterCombat();
+                    UE_LOG(LogXBCombat, Verbose, TEXT("将领 %s 同步士兵 %s 再次进入战斗"),
+                        *GetName(), *Soldier->GetName());
+                }
+            }
+        }
+
         GetWorldTimerManager().ClearTimer(CombatTimeoutHandle);
         GetWorldTimerManager().SetTimer(
             CombatTimeoutHandle,
@@ -724,6 +776,10 @@ void AXBCharacterBase::EnterCombat()
     }
 
     bIsInCombat = true;
+    bHasEnemiesInCombat = true;
+
+    // 🔧 修改 - 进入战斗时取消无敌人脱战计时
+    CancelNoEnemyDisengage();
 
     if (UWorld* World = GetWorld())
     {
@@ -760,8 +816,10 @@ void AXBCharacterBase::ExitCombat()
     }
 
     bIsInCombat = false;
+    bHasEnemiesInCombat = false;
 
     GetWorldTimerManager().ClearTimer(CombatTimeoutHandle);
+    CancelNoEnemyDisengage();
 
     if (UWorld* World = GetWorld())
     {
@@ -828,6 +886,35 @@ void AXBCharacterBase::OnCombatTimeout()
     ExitCombat();
 }
 
+// 🔧 修改 - 无敌人延迟脱战调度
+void AXBCharacterBase::ScheduleNoEnemyDisengage()
+{
+    if (!bIsInCombat)
+    {
+        return;
+    }
+
+    if (NoEnemyDisengageDelay <= 0.0f)
+    {
+        ExitCombat();
+        return;
+    }
+
+    GetWorldTimerManager().ClearTimer(NoEnemyDisengageHandle);
+    GetWorldTimerManager().SetTimer(
+        NoEnemyDisengageHandle,
+        this,
+        &AXBCharacterBase::ExitCombat,
+        NoEnemyDisengageDelay,
+        false
+    );
+}
+
+void AXBCharacterBase::CancelNoEnemyDisengage()
+{
+    GetWorldTimerManager().ClearTimer(NoEnemyDisengageHandle);
+}
+
 /**
  * @brief ??????????
  * @param HitTarget ?????
@@ -851,6 +938,9 @@ void AXBCharacterBase::OnAttackHit(AActor* HitTarget)
     AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(HitTarget);
     if (TargetLeader && IsHostileTo(TargetLeader))
     {
+        // 🔧 修改 - 命中敌方主将时取消脱战计时，保持战斗
+        CancelNoEnemyDisengage();
+        bHasEnemiesInCombat = true;
         // ?? ?? - ????????????
         LastAttackedEnemyLeader = TargetLeader;
         // ?? ?? - ????????????
@@ -868,6 +958,9 @@ void AXBCharacterBase::OnAttackHit(AActor* HitTarget)
     AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(HitTarget);
     if (TargetSoldier && UXBBlueprintFunctionLibrary::AreFactionsHostile(Faction, TargetSoldier->GetFaction()))
     {
+        // 🔧 修改 - 命中敌方士兵时取消脱战计时，保持战斗
+        CancelNoEnemyDisengage();
+        bHasEnemiesInCombat = true;
         // ?? ?? - ????????????
         bHasLastAttackedEnemyFaction = true;
         LastAttackedEnemyFaction = TargetSoldier->GetFaction();
@@ -953,6 +1046,10 @@ void AXBCharacterBase::HandleDeath()
     {
         Capsule->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     }
+
+    // 🔧 修改 - 死亡后缩小体型（用于尸体表现与路径通行）
+    SetActorScale3D(FVector(DeathScale));
+    UE_LOG(LogXBCharacter, Log, TEXT("%s: 死亡后缩放为 %.2f"), *GetName(), DeathScale);
 
     if (AbilitySystemComponent)
     {
@@ -1055,7 +1152,8 @@ void AXBCharacterBase::SpawnDroppedSoldiers()
                 DropSoldierClass = TargetLeader->GetSoldierActorClass();
             }
             
-            UE_LOG(LogXBCharacter, Log, TEXT("掉落士兵将自动入列到击杀者 %s"), *TargetLeader->GetName());
+            UE_LOG(LogXBCharacter, Log, TEXT("掉落士兵将自动入列到击杀者 %s，行名: %s"), 
+                *TargetLeader->GetName(), *DropSoldierRowName.ToString());
         }
         else
         {
@@ -1083,7 +1181,12 @@ void AXBCharacterBase::SpawnDroppedSoldiers()
     }
 
     FVector SpawnOrigin = GetActorLocation();
-    const FXBDropArcConfig& ArcConfig = SoldierDropConfig.ArcConfig;
+    // 🔧 修改 - 若有击杀者，强制落地自动入列
+    FXBDropArcConfig ArcConfig = SoldierDropConfig.ArcConfig;
+    if (TargetLeader)
+    {
+        ArcConfig.bAutoRecruitOnLanding = true;
+    }
 
     UXBSoldierPoolSubsystem* PoolSubsystem = World->GetSubsystem<UXBSoldierPoolSubsystem>();
 

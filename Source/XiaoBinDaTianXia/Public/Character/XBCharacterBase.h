@@ -29,6 +29,7 @@ class UDataTable;
 struct FXBSoldierTableRow;
 class AXBSoldierCharacter;
 class UAnimMontage;
+class USkeletalMesh;
 class UXBWorldHealthBarComponent;
 class UXBMagnetFieldComponent;
 class UXBFormationComponent;
@@ -380,6 +381,9 @@ protected:
     UPROPERTY(BlueprintReadOnly, Category = "成长")
     FXBGrowthConfigCache GrowthConfigCache;
 
+    UPROPERTY(BlueprintReadOnly, Category = "战斗", meta = (DisplayName = "战斗中有敌人"))
+    bool bHasEnemiesInCombat = false;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "掉落", meta = (DisplayName = "士兵掉落配置"))
     FXBSoldierDropConfig SoldierDropConfig;
 
@@ -396,6 +400,9 @@ protected:
 
     // ==================== 死亡系统 ====================
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "视觉", meta = (DisplayName = "动画蓝图类"))
+    TSubclassOf<UAnimInstance> AnimClass;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "死亡", meta = (DisplayName = "死亡蒙太奇"))
     TObjectPtr<UAnimMontage> DeathMontage;
 
@@ -404,6 +411,9 @@ protected:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "死亡", meta = (DisplayName = "蒙太奇结束后开始计时"))
     bool bDelayAfterMontage = true;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "死亡", meta = (DisplayName = "死亡缩放比例", ClampMin = "0.1"))
+    float DeathScale = 0.2f;
 
     UPROPERTY(BlueprintReadOnly, Category = "死亡")
     bool bIsDead = false;
@@ -436,7 +446,17 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "战斗", meta = (DisplayName = "战斗超时时间"))
     float CombatTimeoutDuration = 999.0f;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "战斗", meta = (DisplayName = "无敌人脱战延迟", ClampMin = "0.0"))
+    float NoEnemyDisengageDelay = 3.0f;
+
     FTimerHandle CombatTimeoutHandle;
+
+    FTimerHandle NoEnemyDisengageHandle;
+
+public:
+    void ScheduleNoEnemyDisengage();
+
+    void CancelNoEnemyDisengage();
 
 private:
     UFUNCTION()
