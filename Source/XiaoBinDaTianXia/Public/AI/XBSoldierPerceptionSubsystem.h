@@ -309,26 +309,7 @@ public:
         FXBPerceptionResult& OutResult
     );
 
-    /**
-     * @brief  根据指定敌方阵营快速查询最近敌人
-     * @param  Querier 查询发起者
-     * @param  Location 查询位置
-     * @param  Radius 查询半径
-     * @param  TargetFaction 目标敌方阵营
-     * @param  OutResult 输出结果
-     * @param  bPreferSoldiers 是否优先士兵
-     * @return 是否找到目标
-     * @note   详细流程分析: 获取查询者阵营 -> 快速遍历阵营注册列表 -> 过滤死亡/无效 -> 优先士兵择近
-     *         性能/架构注意事项: 仅在战斗态回退时调用，避免频繁遍历所有阵营 Actor
-     */
-    bool QueryNearestEnemyByFaction(
-        AActor* Querier,
-        const FVector& Location,
-        float Radius,
-        EXBFaction TargetFaction,
-        FXBPerceptionResult& OutResult,
-        bool bPreferSoldiers = true
-    );
+    // ❌ 删除 - 不再使用感知子系统的阵营回退查询
 
     // ==================== Actor 注册 ====================
 

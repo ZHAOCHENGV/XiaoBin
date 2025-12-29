@@ -250,9 +250,4 @@ protected:
     /** @brief 感知缓存有效期 */
     static constexpr float PerceptionCacheValidity = 0.1f;
 
-    // ✨ 新增 - 阵营回退查询冷却（避免战斗中频繁遍历阵营列表）
-    static constexpr float FactionFallbackInterval = 0.2f;
-
-    // ✨ 新增 - 上次阵营回退查询时间
-    float LastFactionFallbackTime = 0.0f;
 };
