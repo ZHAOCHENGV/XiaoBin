@@ -712,6 +712,20 @@ void AXBCharacterBase::EnterCombat()
 
     if (bIsInCombat)
     {
+        // 🔧 修改 - 战斗中二次触发时同步士兵状态，避免士兵因超距回队后无法再次入战
+        for (AXBSoldierCharacter* Soldier : Soldiers)
+        {
+            if (Soldier && Soldier->GetSoldierState() != EXBSoldierState::Dead)
+            {
+                if (Soldier->GetSoldierState() != EXBSoldierState::Combat)
+                {
+                    Soldier->EnterCombat();
+                    UE_LOG(LogXBCombat, Verbose, TEXT("将领 %s 同步士兵 %s 再次进入战斗"),
+                        *GetName(), *Soldier->GetName());
+                }
+            }
+        }
+
         GetWorldTimerManager().ClearTimer(CombatTimeoutHandle);
         GetWorldTimerManager().SetTimer(
             CombatTimeoutHandle,
