@@ -1073,7 +1073,8 @@ void AXBCharacterBase::SpawnDroppedSoldiers()
                 DropSoldierClass = TargetLeader->GetSoldierActorClass();
             }
             
-            UE_LOG(LogXBCharacter, Log, TEXT("掉落士兵将自动入列到击杀者 %s"), *TargetLeader->GetName());
+            UE_LOG(LogXBCharacter, Log, TEXT("掉落士兵将自动入列到击杀者 %s，行名: %s"), 
+                *TargetLeader->GetName(), *DropSoldierRowName.ToString());
         }
         else
         {
@@ -1101,7 +1102,12 @@ void AXBCharacterBase::SpawnDroppedSoldiers()
     }
 
     FVector SpawnOrigin = GetActorLocation();
-    const FXBDropArcConfig& ArcConfig = SoldierDropConfig.ArcConfig;
+    // 🔧 修改 - 若有击杀者，强制落地自动入列
+    FXBDropArcConfig ArcConfig = SoldierDropConfig.ArcConfig;
+    if (TargetLeader)
+    {
+        ArcConfig.bAutoRecruitOnLanding = true;
+    }
 
     UXBSoldierPoolSubsystem* PoolSubsystem = World->GetSubsystem<UXBSoldierPoolSubsystem>();
 
