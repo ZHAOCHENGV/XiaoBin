@@ -46,7 +46,8 @@ void UXBProjectilePoolSubsystem::ReleaseProjectile(AXBProjectile* Projectile)
     Projectile->ResetForPooling();
     Projectile->SetActorLocation(RecycleLocation);
 
-    RecycledProjectiles.FindOrAdd(ProjectileClass).Add(Projectile);
+    // 🔧 修改 - 通过桶结构存储，兼容UHT对TMap值类型的限制
+    RecycledProjectiles.FindOrAdd(ProjectileClass).Projectiles.Add(Projectile);
 
     Stats.ReleaseCount += 1;
     Stats.PoolSize += 1;
@@ -64,11 +65,11 @@ AXBProjectile* UXBProjectilePoolSubsystem::AcquireProjectile(TSubclassOf<AXBProj
     }
 
     AXBProjectile* Projectile = nullptr;
-    if (TArray<AXBProjectile*>* Pool = RecycledProjectiles.Find(ProjectileClass))
+    if (FXBProjectilePoolBucket* Pool = RecycledProjectiles.Find(ProjectileClass))
     {
-        if (Pool->Num() > 0)
+        if (Pool->Projectiles.Num() > 0)
         {
-            Projectile = Pool->Pop();
+            Projectile = Pool->Projectiles.Pop();
         }
     }
 

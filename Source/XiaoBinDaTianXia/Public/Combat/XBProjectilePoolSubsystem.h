@@ -35,6 +35,19 @@ struct FXBProjectilePoolStats
 };
 
 /**
+ * @brief 投射物池桶
+ * @note 用于规避 UHT 对 TMap<..., TArray<...>> 的限制
+ */
+USTRUCT(BlueprintType)
+struct FXBProjectilePoolBucket
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadOnly, Category = "对象池", meta = (DisplayName = "投射物列表"))
+    TArray<AXBProjectile*> Projectiles;
+};
+
+/**
  * @brief 投射物对象池子系统
  * 
  * @note 设计理念:
@@ -78,7 +91,7 @@ public:
 protected:
     /** @brief 回收的投射物列表（按类分桶） */
     UPROPERTY(meta = (DisplayName = "回收列表"))
-    TMap<TSubclassOf<AXBProjectile>, TArray<AXBProjectile*>> RecycledProjectiles;
+    TMap<TSubclassOf<AXBProjectile>, FXBProjectilePoolBucket> RecycledProjectiles;
 
     /** @brief 统计数据 */
     UPROPERTY(meta = (DisplayName = "统计数据"))
