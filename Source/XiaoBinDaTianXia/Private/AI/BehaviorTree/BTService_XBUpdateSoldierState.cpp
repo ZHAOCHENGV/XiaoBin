@@ -238,8 +238,9 @@ void UBTService_XBUpdateSoldierState::TickNode(UBehaviorTreeComponent& OwnerComp
         // 若需要撤退且正在战斗则退出战斗
         if (bShouldRetreat && Soldier->GetSoldierState() == EXBSoldierState::Combat)
         {
-            // 强制退出战斗
+            // 🔧 修改 - 距离过远时强制回队列并切换为跟随状态
             Soldier->ExitCombat();
+            Soldier->ReturnToFormation();
         }
     }
     

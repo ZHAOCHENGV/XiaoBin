@@ -954,6 +954,10 @@ void AXBCharacterBase::HandleDeath()
         Capsule->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     }
 
+    // 🔧 修改 - 死亡后缩小体型（用于尸体表现与路径通行）
+    SetActorScale3D(FVector(DeathScale));
+    UE_LOG(LogXBCharacter, Log, TEXT("%s: 死亡后缩放为 %.2f"), *GetName(), DeathScale);
+
     if (AbilitySystemComponent)
     {
         AbilitySystemComponent->CancelAllAbilities();
