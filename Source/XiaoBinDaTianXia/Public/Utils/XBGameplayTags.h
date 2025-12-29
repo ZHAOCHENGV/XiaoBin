@@ -63,6 +63,7 @@ public:
     FGameplayTag Event_Building_Exit;
     FGameplayTag Event_Hit;
     FGameplayTag Event_Damage;
+    FGameplayTag Event_Attack_MeleeHit;
 
     // ============ 阵营 Tags ============
     FGameplayTag Faction_Neutral;
