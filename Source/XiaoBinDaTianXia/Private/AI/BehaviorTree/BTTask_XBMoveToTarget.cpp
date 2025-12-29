@@ -8,6 +8,7 @@
 #include "AI/XBSoldierAIController.h"
 #include "Character/XBCharacterBase.h"
 #include "Navigation/PathFollowingComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
 
 // 🔧 修改 - 按要求补充构造函数头部注释与逐行注释
 /**
@@ -126,12 +127,18 @@ EBTNodeResult::Type UBTTask_XBMoveToTarget::ExecuteTask(UBehaviorTreeComponent& 
     if (MoveResult == EPathFollowingRequestResult::RequestSuccessful)
     {
         TargetUpdateTimer = 0.0f;
+        StuckTimer = 0.0f;
         return EBTNodeResult::InProgress;
     }
     else if (MoveResult == EPathFollowingRequestResult::AlreadyAtGoal)
     {
         return EBTNodeResult::Succeeded;
     }
+
+    // 🔧 修改: 无法寻路到目标时清理目标，触发后续自动寻敌
+    BlackboardComp->SetValueAsObject(TargetKey.SelectedKeyName, nullptr);
+    BlackboardComp->SetValueAsBool(XBSoldierBBKeys::HasTarget, false);
+    Soldier->CurrentAttackTarget = nullptr;
     
     return EBTNodeResult::Failed;
 }
@@ -215,10 +222,38 @@ void UBTTask_XBMoveToTarget::TickTask(UBehaviorTreeComponent& OwnerComp, uint8* 
     {
         AIController->StopMovement();
         AIController->ClearFocus(EAIFocusPriority::Gameplay);
+        StuckTimer = 0.0f;
         FinishLatentTask(OwnerComp, EBTNodeResult::Succeeded);
         return;
     }
-    
+
+    // 🔧 修改 - 卡住检测：速度过低且距离未达标，触发目标切换
+    if (UCharacterMovementComponent* MoveComp = Soldier->GetCharacterMovement())
+    {
+        const float CurrentSpeed = MoveComp->Velocity.Size2D();
+        if (CurrentSpeed <= MinMoveSpeed)
+        {
+            StuckTimer += DeltaSeconds;
+        }
+        else
+        {
+            StuckTimer = 0.0f;
+        }
+    }
+
+    if (StuckTimer >= StuckTimeThreshold)
+    {
+        UE_LOG(LogXBAI, Warning, TEXT("移动任务卡住，切换新目标: %s"), *Soldier->GetName());
+        BlackboardComp->SetValueAsObject(TargetKey.SelectedKeyName, nullptr);
+        BlackboardComp->SetValueAsBool(XBSoldierBBKeys::HasTarget, false);
+        Soldier->CurrentAttackTarget = nullptr;
+        AIController->StopMovement();
+        AIController->ClearFocus(EAIFocusPriority::Gameplay);
+        StuckTimer = 0.0f;
+        FinishLatentTask(OwnerComp, EBTNodeResult::Failed);
+        return;
+    }
+
     // 定期更新移动请求
     TargetUpdateTimer += DeltaSeconds;
     if (TargetUpdateTimer >= TargetUpdateInterval)

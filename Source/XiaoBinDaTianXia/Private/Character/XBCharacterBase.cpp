@@ -712,6 +712,20 @@ void AXBCharacterBase::EnterCombat()
 
     if (bIsInCombat)
     {
+        // 🔧 修改 - 战斗中二次触发时同步士兵状态，避免士兵因超距回队后无法再次入战
+        for (AXBSoldierCharacter* Soldier : Soldiers)
+        {
+            if (Soldier && Soldier->GetSoldierState() != EXBSoldierState::Dead)
+            {
+                if (Soldier->GetSoldierState() != EXBSoldierState::Combat)
+                {
+                    Soldier->EnterCombat();
+                    UE_LOG(LogXBCombat, Verbose, TEXT("将领 %s 同步士兵 %s 再次进入战斗"),
+                        *GetName(), *Soldier->GetName());
+                }
+            }
+        }
+
         GetWorldTimerManager().ClearTimer(CombatTimeoutHandle);
         GetWorldTimerManager().SetTimer(
             CombatTimeoutHandle,
@@ -954,6 +968,10 @@ void AXBCharacterBase::HandleDeath()
         Capsule->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     }
 
+    // 🔧 修改 - 死亡后缩小体型（用于尸体表现与路径通行）
+    SetActorScale3D(FVector(DeathScale));
+    UE_LOG(LogXBCharacter, Log, TEXT("%s: 死亡后缩放为 %.2f"), *GetName(), DeathScale);
+
     if (AbilitySystemComponent)
     {
         AbilitySystemComponent->CancelAllAbilities();
@@ -1055,7 +1073,8 @@ void AXBCharacterBase::SpawnDroppedSoldiers()
                 DropSoldierClass = TargetLeader->GetSoldierActorClass();
             }
             
-            UE_LOG(LogXBCharacter, Log, TEXT("掉落士兵将自动入列到击杀者 %s"), *TargetLeader->GetName());
+            UE_LOG(LogXBCharacter, Log, TEXT("掉落士兵将自动入列到击杀者 %s，行名: %s"), 
+                *TargetLeader->GetName(), *DropSoldierRowName.ToString());
         }
         else
         {
@@ -1083,7 +1102,12 @@ void AXBCharacterBase::SpawnDroppedSoldiers()
     }
 
     FVector SpawnOrigin = GetActorLocation();
-    const FXBDropArcConfig& ArcConfig = SoldierDropConfig.ArcConfig;
+    // 🔧 修改 - 若有击杀者，强制落地自动入列
+    FXBDropArcConfig ArcConfig = SoldierDropConfig.ArcConfig;
+    if (TargetLeader)
+    {
+        ArcConfig.bAutoRecruitOnLanding = true;
+    }
 
     UXBSoldierPoolSubsystem* PoolSubsystem = World->GetSubsystem<UXBSoldierPoolSubsystem>();
 
