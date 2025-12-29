@@ -747,6 +747,9 @@ void AXBCharacterBase::EnterCombat()
 
     if (bIsInCombat)
     {
+        // 🔧 修改 - 战斗中重新触发时保持战斗定时器逻辑
+        CancelNoEnemyDisengage();
+        bHasEnemiesInCombat = true;
         // 🔧 修改 - 战斗中二次触发时同步士兵状态，避免士兵因超距回队后无法再次入战
         for (AXBSoldierCharacter* Soldier : Soldiers)
         {
@@ -773,6 +776,10 @@ void AXBCharacterBase::EnterCombat()
     }
 
     bIsInCombat = true;
+    bHasEnemiesInCombat = true;
+
+    // 🔧 修改 - 进入战斗时取消无敌人脱战计时
+    CancelNoEnemyDisengage();
 
     if (UWorld* World = GetWorld())
     {
@@ -809,8 +816,10 @@ void AXBCharacterBase::ExitCombat()
     }
 
     bIsInCombat = false;
+    bHasEnemiesInCombat = false;
 
     GetWorldTimerManager().ClearTimer(CombatTimeoutHandle);
+    CancelNoEnemyDisengage();
 
     if (UWorld* World = GetWorld())
     {
@@ -877,6 +886,35 @@ void AXBCharacterBase::OnCombatTimeout()
     ExitCombat();
 }
 
+// 🔧 修改 - 无敌人延迟脱战调度
+void AXBCharacterBase::ScheduleNoEnemyDisengage()
+{
+    if (!bIsInCombat)
+    {
+        return;
+    }
+
+    if (NoEnemyDisengageDelay <= 0.0f)
+    {
+        ExitCombat();
+        return;
+    }
+
+    GetWorldTimerManager().ClearTimer(NoEnemyDisengageHandle);
+    GetWorldTimerManager().SetTimer(
+        NoEnemyDisengageHandle,
+        this,
+        &AXBCharacterBase::ExitCombat,
+        NoEnemyDisengageDelay,
+        false
+    );
+}
+
+void AXBCharacterBase::CancelNoEnemyDisengage()
+{
+    GetWorldTimerManager().ClearTimer(NoEnemyDisengageHandle);
+}
+
 /**
  * @brief ??????????
  * @param HitTarget ?????
@@ -900,6 +938,9 @@ void AXBCharacterBase::OnAttackHit(AActor* HitTarget)
     AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(HitTarget);
     if (TargetLeader && IsHostileTo(TargetLeader))
     {
+        // 🔧 修改 - 命中敌方主将时取消脱战计时，保持战斗
+        CancelNoEnemyDisengage();
+        bHasEnemiesInCombat = true;
         // ?? ?? - ????????????
         LastAttackedEnemyLeader = TargetLeader;
         // ?? ?? - ????????????
@@ -917,6 +958,9 @@ void AXBCharacterBase::OnAttackHit(AActor* HitTarget)
     AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(HitTarget);
     if (TargetSoldier && UXBBlueprintFunctionLibrary::AreFactionsHostile(Faction, TargetSoldier->GetFaction()))
     {
+        // 🔧 修改 - 命中敌方士兵时取消脱战计时，保持战斗
+        CancelNoEnemyDisengage();
+        bHasEnemiesInCombat = true;
         // ?? ?? - ????????????
         bHasLastAttackedEnemyFaction = true;
         LastAttackedEnemyFaction = TargetSoldier->GetFaction();

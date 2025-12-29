@@ -381,6 +381,9 @@ protected:
     UPROPERTY(BlueprintReadOnly, Category = "成长")
     FXBGrowthConfigCache GrowthConfigCache;
 
+    UPROPERTY(BlueprintReadOnly, Category = "战斗", meta = (DisplayName = "战斗中有敌人"))
+    bool bHasEnemiesInCombat = false;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "掉落", meta = (DisplayName = "士兵掉落配置"))
     FXBSoldierDropConfig SoldierDropConfig;
 
@@ -443,7 +446,17 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "战斗", meta = (DisplayName = "战斗超时时间"))
     float CombatTimeoutDuration = 999.0f;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "战斗", meta = (DisplayName = "无敌人脱战延迟", ClampMin = "0.0"))
+    float NoEnemyDisengageDelay = 3.0f;
+
     FTimerHandle CombatTimeoutHandle;
+
+    FTimerHandle NoEnemyDisengageHandle;
+
+public:
+    void ScheduleNoEnemyDisengage();
+
+    void CancelNoEnemyDisengage();
 
 private:
     UFUNCTION()
