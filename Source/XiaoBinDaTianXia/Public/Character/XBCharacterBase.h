@@ -405,6 +405,9 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "死亡", meta = (DisplayName = "蒙太奇结束后开始计时"))
     bool bDelayAfterMontage = true;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "死亡", meta = (DisplayName = "死亡缩放比例", ClampMin = "0.1"))
+    float DeathScale = 0.2f;
+
     UPROPERTY(BlueprintReadOnly, Category = "死亡")
     bool bIsDead = false;
 
