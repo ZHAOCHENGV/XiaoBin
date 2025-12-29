@@ -170,6 +170,10 @@ void FXBGameplayTags::InitializeNativeTags()
         FName("Event.Damage"), 
         FString("受伤事件"));
 
+    GameplayTags.Event_Attack_MeleeHit = Manager.AddNativeGameplayTag(
+        FName("Event.Attack.MeleeHit"),
+        FString("近战命中事件"));
+
     // ============ 阵营 Tags ============
     GameplayTags.Faction_Neutral = Manager.AddNativeGameplayTag(
         FName("Faction.Neutral"), 
