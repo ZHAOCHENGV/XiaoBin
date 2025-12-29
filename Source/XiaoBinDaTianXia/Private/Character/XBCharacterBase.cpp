@@ -840,6 +840,11 @@ void AXBCharacterBase::ExitCombat()
     OnCombatStateChanged.Broadcast(false);
 }
 
+void AXBCharacterBase::SetHasEnemiesInCombat(bool bInCombat)
+{
+    bHasEnemiesInCombat = bInCombat;
+}
+
 void AXBCharacterBase::DisengageFromCombat()
 {
     float CurrentTime = GetWorld()->GetTimeSeconds();

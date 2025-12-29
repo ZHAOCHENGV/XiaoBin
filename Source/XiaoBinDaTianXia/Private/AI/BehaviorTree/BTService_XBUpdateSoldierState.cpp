@@ -239,7 +239,6 @@ void UBTService_XBUpdateSoldierState::TickNode(UBehaviorTreeComponent& OwnerComp
         if (bShouldRetreat && Soldier->GetSoldierState() == EXBSoldierState::Combat)
         {
             // 🔧 修改 - 仅处理超距回队，脱战延迟由将领统一调度
-            const float DisengageDistanceValue = Soldier->GetDisengageDistance();
             if (DistToLeader >= DisengageDistanceValue)
             {
                 Soldier->ExitCombat();
@@ -291,9 +290,9 @@ void UBTService_XBUpdateSoldierState::TickNode(UBehaviorTreeComponent& OwnerComp
     {
         if (AXBCharacterBase* LeaderCharacter = Soldier->GetLeaderCharacter())
         {
-            if (LeaderCharacter->bHasEnemiesInCombat)
+            if (LeaderCharacter->HasEnemiesInCombat())
             {
-                LeaderCharacter->bHasEnemiesInCombat = false;
+                LeaderCharacter->SetHasEnemiesInCombat(false);
                 LeaderCharacter->ScheduleNoEnemyDisengage();
                 UE_LOG(LogXBAI, Log, TEXT("士兵 %s 通知主将 %s：无敌人，开始脱战计时"), 
                     *Soldier->GetName(), *LeaderCharacter->GetName());

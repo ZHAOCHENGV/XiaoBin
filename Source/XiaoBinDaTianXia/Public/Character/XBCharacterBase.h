@@ -219,6 +219,12 @@ public:
     UFUNCTION(BlueprintPure, Category = "战斗")
     bool IsInCombat() const { return bIsInCombat; }
 
+    UFUNCTION(BlueprintPure, Category = "战斗", meta = (DisplayName = "战斗中有敌人"))
+    bool HasEnemiesInCombat() const { return bHasEnemiesInCombat; }
+
+    UFUNCTION(BlueprintCallable, Category = "战斗", meta = (DisplayName = "设置战斗敌人状态"))
+    void SetHasEnemiesInCombat(bool bInCombat);
+
     UFUNCTION(BlueprintCallable, Category = "战斗")
     virtual void OnAttackHit(AActor* HitTarget);
 
