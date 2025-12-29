@@ -136,4 +136,8 @@ struct XIAOBINDATIANXIA_API FXBLeaderTableRow : public FTableRowBase
     /** @brief 死亡蒙太奇 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "视觉配置", meta = (DisplayName = "死亡蒙太奇"))
     TSoftObjectPtr<UAnimMontage> DeathMontage;
+
+    /** @brief 主将骨骼网格 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "视觉配置", meta = (DisplayName = "主将骨骼网格"))
+    TSoftObjectPtr<USkeletalMesh> SkeletalMesh;
 };

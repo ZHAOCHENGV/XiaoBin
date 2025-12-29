@@ -208,7 +208,18 @@ void AXBCharacterBase::InitializeFromDataTable(UDataTable* DataTable, FName RowN
     GrowthConfigCache.DamageMultiplierPerSoldier = LeaderRow->DamageMultiplierPerSoldier;
     GrowthConfigCache.MaxDamageMultiplier = LeaderRow->MaxDamageMultiplier;
 
-    // 🔧 修改 - 从数据表加载动画蓝图与死亡蒙太奇，体现数据驱动
+    // 🔧 修改 - 从数据表加载骨骼网格/动画蓝图/死亡蒙太奇，体现数据驱动
+    if (!LeaderRow->SkeletalMesh.IsNull())
+    {
+        if (USkeletalMesh* LoadedMesh = LeaderRow->SkeletalMesh.LoadSynchronous())
+        {
+            if (USkeletalMeshComponent* MeshComp = GetMesh())
+            {
+                MeshComp->SetSkeletalMesh(LoadedMesh);
+            }
+        }
+    }
+
     if (!LeaderRow->AnimClass.IsNull())
     {
         AnimClass = LeaderRow->AnimClass.LoadSynchronous();
@@ -226,8 +237,9 @@ void AXBCharacterBase::InitializeFromDataTable(UDataTable* DataTable, FName RowN
         DeathMontage = LeaderRow->DeathMontage.LoadSynchronous();
     }
 
-    UE_LOG(LogXBCharacter, Log, TEXT("主将 %s 视觉配置加载完成: AnimClass=%s, DeathMontage=%s"),
+    UE_LOG(LogXBCharacter, Log, TEXT("主将 %s 视觉配置加载完成: Mesh=%s, AnimClass=%s, DeathMontage=%s"),
         *GetName(),
+        GetMesh() && GetMesh()->GetSkeletalMeshAsset() ? *GetMesh()->GetSkeletalMeshAsset()->GetName() : TEXT("无"),
         AnimClass ? *AnimClass->GetName() : TEXT("无"),
         DeathMontage ? *DeathMontage->GetName() : TEXT("无"));
 

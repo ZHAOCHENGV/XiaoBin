@@ -29,6 +29,7 @@ class UDataTable;
 struct FXBSoldierTableRow;
 class AXBSoldierCharacter;
 class UAnimMontage;
+class USkeletalMesh;
 class UXBWorldHealthBarComponent;
 class UXBMagnetFieldComponent;
 class UXBFormationComponent;
