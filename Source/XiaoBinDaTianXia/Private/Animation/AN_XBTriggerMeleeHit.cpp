@@ -15,8 +15,8 @@
 
 UAN_XBTriggerMeleeHit::UAN_XBTriggerMeleeHit()
 {
-    // 🔧 修改 - 默认使用近战命中事件Tag
-    EventTag = FXBGameplayTags::Get().Event_Attack_MeleeHit;
+    // 🔧 修改 - 使用显式请求Tag，避免初始化顺序导致Tag无效
+    EventTag = FGameplayTag::RequestGameplayTag(FName("Event.Attack.MeleeHit"), false);
 }
 
 FString UAN_XBTriggerMeleeHit::GetNotifyName_Implementation() const
@@ -54,8 +54,13 @@ void UAN_XBTriggerMeleeHit::Notify(USkeletalMeshComponent* MeshComp, UAnimSequen
 
     if (!EventTag.IsValid())
     {
-        UE_LOG(LogXBCombat, Warning, TEXT("近战命中Tag无效，跳过触发"));
-        return;
+        // 🔧 修改 - 再次尝试请求Tag，避免运行时未初始化导致无效
+        EventTag = FGameplayTag::RequestGameplayTag(FName("Event.Attack.MeleeHit"), false);
+        if (!EventTag.IsValid())
+        {
+            UE_LOG(LogXBCombat, Warning, TEXT("近战命中Tag无效，跳过触发"));
+            return;
+        }
     }
 
     // 🔧 修改 - 构建GameplayEvent数据，优先填入当前目标
@@ -73,7 +78,10 @@ void UAN_XBTriggerMeleeHit::Notify(USkeletalMeshComponent* MeshComp, UAnimSequen
     if (UAbilitySystemComponent* ASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(OwnerActor))
     {
         ASC->HandleGameplayEvent(EventTag, &EventData);
-        UE_LOG(LogXBCombat, Verbose, TEXT("近战命中Tag触发GA事件: %s"), *EventTag.ToString());
+        UE_LOG(LogXBCombat, Verbose, TEXT("近战命中Tag触发GA事件: %s, Owner=%s, Target=%s"),
+            *EventTag.ToString(),
+            *OwnerActor->GetName(),
+            EventData.Target ? *EventData.Target->GetName() : TEXT("无"));
         return;
     }
 

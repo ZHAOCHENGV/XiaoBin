@@ -190,6 +190,7 @@ void AXBSoldierCharacter::RefreshMeleeHitAbilityFromData()
 {
     if (!IsDataAccessorValid())
     {
+        UE_LOG(LogXBSoldier, Warning, TEXT("刷新近战GA失败：DataAccessor无效，Soldier=%s"), *GetName());
         return;
     }
 
@@ -198,10 +199,17 @@ void AXBSoldierCharacter::RefreshMeleeHitAbilityFromData()
     if (DataAttackGA)
     {
         MeleeHitAbilityClass = DataAttackGA;
+        UE_LOG(LogXBSoldier, Log, TEXT("读取数据表近战GA成功: %s, Soldier=%s"),
+            *MeleeHitAbilityClass->GetName(), *GetName());
+    }
+    else
+    {
+        UE_LOG(LogXBSoldier, Warning, TEXT("数据表未配置近战GA，Soldier=%s"), *GetName());
     }
 
     if (!AbilitySystemComponent)
     {
+        UE_LOG(LogXBSoldier, Warning, TEXT("刷新近战GA失败：ASC无效，Soldier=%s"), *GetName());
         return;
     }
 
@@ -209,6 +217,7 @@ void AXBSoldierCharacter::RefreshMeleeHitAbilityFromData()
 
     if (!HasAuthority() || !MeleeHitAbilityClass)
     {
+        UE_LOG(LogXBSoldier, Verbose, TEXT("刷新近战GA跳过：无权限或GA无效，Soldier=%s"), *GetName());
         return;
     }
 
@@ -217,6 +226,11 @@ void AXBSoldierCharacter::RefreshMeleeHitAbilityFromData()
         FGameplayAbilitySpec HitSpec(MeleeHitAbilityClass, 1, INDEX_NONE, this);
         AbilitySystemComponent->GiveAbility(HitSpec);
         UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 刷新近战GA: %s"),
+            *GetName(), *MeleeHitAbilityClass->GetName());
+    }
+    else
+    {
+        UE_LOG(LogXBSoldier, Verbose, TEXT("士兵 %s 已拥有近战GA: %s"),
             *GetName(), *MeleeHitAbilityClass->GetName());
     }
 }

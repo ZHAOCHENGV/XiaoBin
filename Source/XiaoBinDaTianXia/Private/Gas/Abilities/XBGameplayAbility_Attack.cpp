@@ -24,9 +24,9 @@ UXBGameplayAbility_Attack::UXBGameplayAbility_Attack()
     Tags.AddTag(FGameplayTag::RequestGameplayTag(FName("Ability.Attack"), false));
     SetAssetTags(Tags);
 
-    // ✨ 新增 - 近战命中事件触发
+    // ✨ 新增 - 近战命中事件触发（显式请求Tag，避免初始化顺序导致无效）
     FAbilityTriggerData TriggerData;
-    TriggerData.TriggerTag = FXBGameplayTags::Get().Event_Attack_MeleeHit;
+    TriggerData.TriggerTag = FGameplayTag::RequestGameplayTag(FName("Event.Attack.MeleeHit"), false);
     TriggerData.TriggerSource = EGameplayAbilityTriggerSource::GameplayEvent;
     AbilityTriggers.Add(TriggerData);
 
@@ -43,11 +43,13 @@ void UXBGameplayAbility_Attack::ActivateAbility(const FGameplayAbilitySpecHandle
         return;
     }
 
-    UE_LOG(LogTemp, Log, TEXT("普攻GA激活 - 触发Tag: %s"),
-        TriggerEventData ? *TriggerEventData->EventTag.ToString() : TEXT("无"));
+    UE_LOG(LogTemp, Log, TEXT("普攻GA激活 - 触发Tag: %s, GA=%s"),
+        TriggerEventData ? *TriggerEventData->EventTag.ToString() : TEXT("无"),
+        *GetName());
 
     // 🔧 修改 - 仅处理近战命中事件，避免误伤
-    if (!TriggerEventData || TriggerEventData->EventTag != FXBGameplayTags::Get().Event_Attack_MeleeHit)
+    const FGameplayTag ExpectedTag = FGameplayTag::RequestGameplayTag(FName("Event.Attack.MeleeHit"), false);
+    if (!TriggerEventData || TriggerEventData->EventTag != ExpectedTag)
     {
         UE_LOG(LogTemp, Warning, TEXT("普攻GA触发失败：事件Tag不匹配"));
         EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
