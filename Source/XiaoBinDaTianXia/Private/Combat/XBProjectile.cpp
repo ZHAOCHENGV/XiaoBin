@@ -69,6 +69,7 @@ void AXBProjectile::InitializeProjectile(AActor* InSourceActor, float InDamage, 
     ProjectileMovementComponent->InitialSpeed = FinalSpeed;
     ProjectileMovementComponent->MaxSpeed = FinalSpeed;
 
+    // 🔧 修改 - 使用目标方向计算速度，并同步旋转，保证胶囊体朝飞行方向对齐
     FVector Velocity = ShootDirection.GetSafeNormal() * FinalSpeed;
     if (bUseArc)
     {
@@ -81,6 +82,9 @@ void AXBProjectile::InitializeProjectile(AActor* InSourceActor, float InDamage, 
     }
 
     ProjectileMovementComponent->Velocity = Velocity;
+
+    // 🔧 修改 - 以飞行方向更新Actor旋转，避免胶囊体与速度方向不一致
+    SetActorRotation(Velocity.Rotation());
 
     UE_LOG(LogXBCombat, Log, TEXT("投射物初始化: 来源=%s 伤害=%.1f 模式=%s 速度=%.1f"),
         InSourceActor ? *InSourceActor->GetName() : TEXT("无"),
@@ -182,6 +186,7 @@ void AXBProjectile::ApplyDamageToTarget(AActor* TargetActor, const FHitResult& H
 
     if (!UXBBlueprintFunctionLibrary::AreFactionsHostile(SourceFaction, TargetFaction))
     {
+        // 🔧 修改 - 只对敌人生效，友军直接忽略
         UE_LOG(LogXBCombat, Verbose, TEXT("投射物忽略友军: %s -> %s"), *Source->GetName(), *TargetActor->GetName());
         return;
     }

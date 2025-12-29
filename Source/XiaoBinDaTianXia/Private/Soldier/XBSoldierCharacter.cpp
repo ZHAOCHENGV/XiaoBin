@@ -1305,7 +1305,19 @@ float AXBSoldierCharacter::GetAttackRange() const
 
 float AXBSoldierCharacter::GetAttackInterval() const
 {
-    return IsDataAccessorValid() ? DataAccessor->GetAttackInterval() : 1.0f;
+    if (!IsDataAccessorValid())
+    {
+        return 1.0f;
+    }
+
+    // 🔧 修改 - 优先使用数据表中普攻Cooldown，避免AttackInterval与技能冷却语义冲突
+    const float BasicAttackCooldown = DataAccessor->GetBasicAttackCooldown();
+    if (BasicAttackCooldown > 0.0f)
+    {
+        return BasicAttackCooldown;
+    }
+
+    return DataAccessor->GetAttackInterval();
 }
 
 float AXBSoldierCharacter::GetMoveSpeed() const

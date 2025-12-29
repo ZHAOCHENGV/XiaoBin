@@ -135,10 +135,13 @@ void UAN_XBSpawnAbility::Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceB
                     Projectile->bUseArc = ProjectileConfig.bUseArc;
                     Projectile->DamageEffectClass = ProjectileConfig.DamageEffectClass;
 
+                    // 🔧 修改 - 优先锁定当前目标方向，确保发射物朝目标飞行
                     FVector ShootDirection = SpawnRotation.Vector();
                     if (AActor* CurrentTarget = Soldier->CurrentAttackTarget.Get())
                     {
                         ShootDirection = CurrentTarget->GetActorLocation() - SpawnLocation;
+                        SpawnRotation = ShootDirection.Rotation();
+                        Projectile->SetActorRotation(SpawnRotation);
                     }
 
                     Projectile->InitializeProjectile(OwnerActor, Projectile->Damage, ShootDirection, ProjectileConfig.Speed, ProjectileConfig.bUseArc);
