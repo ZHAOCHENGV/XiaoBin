@@ -11,9 +11,10 @@
 #include "Combat/XBProjectile.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
-#include "Components/SphereComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/ProjectileMovementComponent.h"
+#include "Combat/XBProjectilePoolSubsystem.h"
 #include "GAS/XBAttributeSet.h"
 #include "Soldier/XBSoldierCharacter.h"
 #include "Character/XBCharacterBase.h"
@@ -25,8 +26,8 @@ AXBProjectile::AXBProjectile()
 {
     PrimaryActorTick.bCanEverTick = false;
 
-    CollisionComponent = CreateDefaultSubobject<USphereComponent>(TEXT("CollisionComponent"));
-    CollisionComponent->InitSphereRadius(15.0f);
+    CollisionComponent = CreateDefaultSubobject<UCapsuleComponent>(TEXT("CollisionComponent"));
+    CollisionComponent->InitCapsuleSize(12.0f, 24.0f);
     CollisionComponent->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
     CollisionComponent->SetCollisionObjectType(ECC_WorldDynamic);
     CollisionComponent->SetCollisionResponseToAllChannels(ECR_Ignore);
@@ -88,6 +89,34 @@ void AXBProjectile::InitializeProjectile(AActor* InSourceActor, float InDamage, 
         FinalSpeed);
 }
 
+void AXBProjectile::ActivateFromPool(const FVector& SpawnLocation, const FRotator& SpawnRotation)
+{
+    SetActorHiddenInGame(false);
+    SetActorEnableCollision(true);
+    SetActorLocation(SpawnLocation);
+    SetActorRotation(SpawnRotation);
+
+    if (ProjectileMovementComponent)
+    {
+        ProjectileMovementComponent->StopMovementImmediately();
+    }
+}
+
+void AXBProjectile::ResetForPooling()
+{
+    if (ProjectileMovementComponent)
+    {
+        ProjectileMovementComponent->StopMovementImmediately();
+    }
+
+    SetActorEnableCollision(false);
+    SetActorHiddenInGame(true);
+
+    SourceActor = nullptr;
+
+    UE_LOG(LogXBCombat, Verbose, TEXT("投射物 %s 已重置并进入池化休眠"), *GetName());
+}
+
 void AXBProjectile::OnProjectileOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
     UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
@@ -105,6 +134,18 @@ void AXBProjectile::OnProjectileOverlap(UPrimitiveComponent* OverlappedComponent
 
     if (bDestroyOnHit)
     {
+        if (bUsePooling)
+        {
+            if (UWorld* World = GetWorld())
+            {
+                if (UXBProjectilePoolSubsystem* PoolSubsystem = World->GetSubsystem<UXBProjectilePoolSubsystem>())
+                {
+                    PoolSubsystem->ReleaseProjectile(this);
+                    return;
+                }
+            }
+        }
+
         Destroy();
     }
 }

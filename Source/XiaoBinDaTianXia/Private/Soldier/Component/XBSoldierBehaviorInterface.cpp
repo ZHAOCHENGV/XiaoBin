@@ -126,30 +126,33 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
     AXBCharacterBase* MyLeader = Soldier->GetLeaderCharacter();
     EXBFaction MyFaction = Soldier->GetFaction();
 
-    // 初始化优先攻击阵营数据，默认无优先阵营
+    // 初始化优先攻击阵营/主将数据，默认无优先目标
     EXBFaction PreferredFaction = EXBFaction::Neutral;
     bool bHasPreferredFaction = false;
+    AXBCharacterBase* PreferredEnemyLeader = nullptr;
+    bool bHasPreferredLeader = false;
     
     // 实现"集火"逻辑：若跟随主将，则尝试同步主将的攻击目标
     if (MyLeader)
     {
-        // 尝试获取主将最近攻击的敌方阵营，实现小队协同攻击
+        // 尝试获取主将最近攻击的敌方主将/阵营，实现小队协同攻击
         EXBFaction LeaderEnemyFaction = EXBFaction::Neutral;
         
-        // 优先策略 A：直接继承主将明确记录的敌方阵营
-        if (MyLeader->GetLastAttackedEnemyFaction(LeaderEnemyFaction))
-        {
-            PreferredFaction = LeaderEnemyFaction;
-            bHasPreferredFaction = true;
-        }
-        // 优先策略 B：若无阵营记录，回退到主将攻击的具体敌方武将所属阵营
-        else if (AXBCharacterBase* EnemyLeader = MyLeader->GetLastAttackedEnemyLeader())
+        // 优先策略 A：若主将攻击了具体敌方主将，则只锁定该主将及其士兵
+        if (AXBCharacterBase* EnemyLeader = MyLeader->GetLastAttackedEnemyLeader())
         {
             if (!EnemyLeader->IsDead())
             {
-                PreferredFaction = EnemyLeader->GetFaction();
-                bHasPreferredFaction = true;
+                PreferredEnemyLeader = EnemyLeader;
+                bHasPreferredLeader = true;
             }
+        }
+
+        // 优先策略 B：若无主将目标，则回退到阵营锁定
+        if (!bHasPreferredLeader && MyLeader->GetLastAttackedEnemyFaction(LeaderEnemyFaction))
+        {
+            PreferredFaction = LeaderEnemyFaction;
+            bHasPreferredFaction = true;
         }
     }
 
@@ -191,6 +194,7 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
             EXBFaction CandidateFaction = EXBFaction::Neutral;
             bool bIsSoldier = false;
             bool bIsLeader = false;
+            AXBCharacterBase* CandidateLeaderOwner = nullptr;
 
             // 根据目标类型（士兵/武将）提取阵营并标记类型
             if (AXBSoldierCharacter* EnemySoldier = Cast<AXBSoldierCharacter>(Candidate))
@@ -198,18 +202,29 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
                 // 忽略已死亡单位，防止鞭尸
                 if (EnemySoldier->GetSoldierState() == EXBSoldierState::Dead) continue;
                 CandidateFaction = EnemySoldier->GetFaction();
+                CandidateLeaderOwner = EnemySoldier->GetLeaderCharacter();
                 bIsSoldier = true;
             }
             else if (AXBCharacterBase* EnemyLeader = Cast<AXBCharacterBase>(Candidate))
             {
                 if (EnemyLeader->IsDead()) continue;
                 CandidateFaction = EnemyLeader->GetFaction();
+                CandidateLeaderOwner = EnemyLeader;
                 bIsLeader = true;
             }
             else
             {
                 // 忽略非角色类型的 Actor（如可破坏物等，视项目需求而定）
                 continue;
+            }
+
+            // 🔧 修改 - 若主将明确锁定敌方主将，则只选择该主将及其士兵
+            if (bHasPreferredLeader)
+            {
+                if (CandidateLeaderOwner != PreferredEnemyLeader)
+                {
+                    continue;
+                }
             }
 
             // 🔧 关键修复 3: 核心敌对关系检查
@@ -224,7 +239,9 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
             // 使用距离平方比较，避免开方运算带来的性能损耗
             const float DistSq = FVector::DistSquared(SoldierLocation, Candidate->GetActorLocation());
             // 判断是否属于主将正在攻击的"优先阵营"
-            const bool bPreferred = bHasPreferredFaction && CandidateFaction == PreferredFaction;
+            const bool bPreferred = bHasPreferredLeader
+                ? (CandidateLeaderOwner == PreferredEnemyLeader)
+                : (bHasPreferredFaction && CandidateFaction == PreferredFaction);
 
             // 根据单位类型和优先权更新对应的最近候选者
             if (bIsSoldier)
@@ -388,15 +405,24 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
 
             // 🔧 修改 - 仅统计敌方目标，避免把友军聚集当作拥挤
             EXBFaction TargetFaction = EXBFaction::Neutral;
+            AXBCharacterBase* TargetLeaderOwner = nullptr;
             if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(FriendlyTarget))
             {
                 TargetFaction = TargetSoldier->GetFaction();
+                TargetLeaderOwner = TargetSoldier->GetLeaderCharacter();
             }
             else if (AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(FriendlyTarget))
             {
                 TargetFaction = TargetLeader->GetFaction();
+                TargetLeaderOwner = TargetLeader;
             }
             else
+            {
+                continue;
+            }
+
+            // 🔧 修改 - 锁定主将时，仅统计该主将目标，避免错误拥挤惩罚
+            if (bHasPreferredLeader && TargetLeaderOwner != PreferredEnemyLeader)
             {
                 continue;
             }
@@ -448,14 +474,21 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
             continue;
         }
 
+        if (bHasPreferredLeader && Candidate->GetLeaderCharacter() != PreferredEnemyLeader)
+        {
+            continue;
+        }
+
         const EXBFaction CandidateFaction = Candidate->GetFaction();
         if (!UXBBlueprintFunctionLibrary::AreFactionsHostile(MyFaction, CandidateFaction))
         {
             continue;
         }
 
-        const bool bPreferred = bHasPreferredFaction && CandidateFaction == PreferredFaction;
-        if (bHasPreferredFaction && !bPreferred)
+        const bool bPreferred = bHasPreferredLeader
+            ? (Candidate->GetLeaderCharacter() == PreferredEnemyLeader)
+            : (bHasPreferredFaction && CandidateFaction == PreferredFaction);
+        if (!bPreferred && (bHasPreferredLeader || bHasPreferredFaction))
         {
             continue;
         }
@@ -490,14 +523,21 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
             continue;
         }
 
+        if (bHasPreferredLeader && Candidate != PreferredEnemyLeader)
+        {
+            continue;
+        }
+
         const EXBFaction CandidateFaction = Candidate->GetFaction();
         if (!UXBBlueprintFunctionLibrary::AreFactionsHostile(MyFaction, CandidateFaction))
         {
             continue;
         }
 
-        const bool bPreferred = bHasPreferredFaction && CandidateFaction == PreferredFaction;
-        if (bHasPreferredFaction && !bPreferred)
+        const bool bPreferred = bHasPreferredLeader
+            ? (Candidate == PreferredEnemyLeader)
+            : (bHasPreferredFaction && CandidateFaction == PreferredFaction);
+        if (!bPreferred && (bHasPreferredLeader || bHasPreferredFaction))
         {
             continue;
         }
@@ -514,7 +554,7 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
     }
 
     // 🔧 修改 - 当优先阵营没有任何可用目标时，允许回退到任意敌对阵营
-    if (bHasPreferredFaction &&
+    if (bHasPreferredFaction && !bHasPreferredLeader &&
         !NearestPreferredSoldier && !NearestPreferredLeader)
     {
         // 🔧 修改 - 回退扫描仅补充“其他阵营”候选，避免打断优先规则

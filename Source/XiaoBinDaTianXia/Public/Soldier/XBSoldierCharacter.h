@@ -19,6 +19,7 @@
 #include "GameFramework/Character.h"
 #include "AbilitySystemInterface.h"
 #include "Army/XBSoldierTypes.h"
+#include "Data/XBSoldierDataTable.h"
 #include "XBSoldierCharacter.generated.h"
 
 // ============================================
@@ -102,6 +103,14 @@ public:
      */
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier", meta = (DisplayName = "完整初始化"))
     void FullInitialize(UDataTable* DataTable, FName RowName, EXBFaction InFaction);
+
+    /**
+     * @brief  获取发射物配置
+     * @return 发射物配置结构
+     * @note   仅弓手有效，其余类型返回默认值
+     */
+    UFUNCTION(BlueprintPure, Category = "XB|Soldier|Combat", meta = (DisplayName = "获取发射物配置"))
+    FXBProjectileConfig GetProjectileConfig() const { return ProjectileConfig; }
 
     // ==================== 休眠系统接口 ====================
 
@@ -502,6 +511,10 @@ protected:
 
     UPROPERTY(BlueprintReadOnly, Category = "状态", meta = (DisplayName = "士兵类型"))
     EXBSoldierType SoldierType = EXBSoldierType::Infantry;
+
+    // ✨ 新增 - 弓手发射物配置缓存
+    UPROPERTY(BlueprintReadOnly, Category = "状态", meta = (DisplayName = "发射物配置"))
+    FXBProjectileConfig ProjectileConfig;
 
     UPROPERTY(BlueprintReadOnly, Category = "状态", meta = (DisplayName = "阵营"))
     EXBFaction Faction = EXBFaction::Neutral;

@@ -1214,6 +1214,19 @@ void AXBSoldierCharacter::InitializeFromDataTable(UDataTable* DataTable, FName R
     Faction = InFaction;
     CurrentHealth = DataAccessor->GetMaxHealth();
 
+    // 🔧 修改 - 弓手初始化发射物配置，便于动画通知读取
+    if (SoldierType == EXBSoldierType::Archer)
+    {
+        ProjectileConfig = DataAccessor->GetProjectileConfig();
+        UE_LOG(LogXBSoldier, Log, TEXT("弓手 %s 载入发射物配置，投射物类=%s"),
+            *GetName(),
+            ProjectileConfig.ProjectileClass ? *ProjectileConfig.ProjectileClass->GetName() : TEXT("未配置"));
+    }
+    else
+    {
+        ProjectileConfig = FXBProjectileConfig();
+    }
+
     if (UCharacterMovementComponent* MovementComp = GetCharacterMovement())
     {
         MovementComp->MaxWalkSpeed = DataAccessor->GetMoveSpeed();
