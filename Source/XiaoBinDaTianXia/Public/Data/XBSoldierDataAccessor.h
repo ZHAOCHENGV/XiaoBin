@@ -90,6 +90,9 @@ public:
     UFUNCTION(BlueprintPure, Category = "XB|Data|Combat", meta = (DisplayName = "获取攻击间隔"))
     float GetAttackInterval() const { return CachedTableRow.AttackInterval; }
 
+    UFUNCTION(BlueprintPure, Category = "XB|Data|Combat", meta = (DisplayName = "获取投射物配置"))
+    FXBProjectileConfig GetProjectileConfig() const { return CachedTableRow.ProjectileConfig; }
+
     // --- 移动属性访问 ---
 
     UFUNCTION(BlueprintPure, Category = "XB|Data|Movement", meta = (DisplayName = "获取移动速度"))
