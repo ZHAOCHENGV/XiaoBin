@@ -238,8 +238,13 @@ void UBTService_XBUpdateSoldierState::TickNode(UBehaviorTreeComponent& OwnerComp
         // 若需要撤退且正在战斗则退出战斗
         if (bShouldRetreat && Soldier->GetSoldierState() == EXBSoldierState::Combat)
         {
-            // 强制退出战斗
-            Soldier->ExitCombat();
+            // 🔧 修改 - 仅处理超距回队，脱战延迟由将领统一调度
+            if (DistToLeader >= DisengageDistanceValue)
+            {
+                Soldier->ExitCombat();
+                Soldier->ReturnToFormation();
+                UE_LOG(LogXBAI, Log, TEXT("士兵 %s 超距回队列"), *Soldier->GetName());
+            }
         }
     }
     
@@ -276,6 +281,21 @@ void UBTService_XBUpdateSoldierState::TickNode(UBehaviorTreeComponent& OwnerComp
                 
                 UE_LOG(LogTemp, Log, TEXT("士兵 %s 自动补位新目标 %s"),
                     *Soldier->GetName(), *NewTarget->GetName());
+            }
+        }
+    }
+
+    // 🔧 修改 - 若战斗中没有敌人，通知主将延迟脱战
+    if (bInCombat && BehaviorInterface && !BehaviorInterface->HasEnemyInSight())
+    {
+        if (AXBCharacterBase* LeaderCharacter = Soldier->GetLeaderCharacter())
+        {
+            if (LeaderCharacter->HasEnemiesInCombat())
+            {
+                LeaderCharacter->SetHasEnemiesInCombat(false);
+                LeaderCharacter->ScheduleNoEnemyDisengage();
+                UE_LOG(LogXBAI, Log, TEXT("士兵 %s 通知主将 %s：无敌人，开始脱战计时"), 
+                    *Soldier->GetName(), *LeaderCharacter->GetName());
             }
         }
     }

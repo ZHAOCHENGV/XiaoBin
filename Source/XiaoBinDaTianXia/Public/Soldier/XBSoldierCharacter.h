@@ -17,6 +17,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "AbilitySystemInterface.h"
 #include "Army/XBSoldierTypes.h"
 #include "XBSoldierCharacter.generated.h"
 
@@ -38,6 +39,9 @@ class UAnimMontage;
 class UAnimSequence;
 class UNiagaraComponent;
 class UNiagaraSystem;
+class UAbilitySystemComponent;
+class UXBAbilitySystemComponent;
+class UGameplayAbility;
 
 // ============================================
 // 委托声明
@@ -54,7 +58,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDropLandingComplete, AXBSoldierCh
 // ============================================
 
 UCLASS()
-class XIAOBINDATIANXIA_API AXBSoldierCharacter : public ACharacter
+class XIAOBINDATIANXIA_API AXBSoldierCharacter : public ACharacter, public IAbilitySystemInterface
 {
     GENERATED_BODY()
 
@@ -64,6 +68,9 @@ public:
     virtual void BeginPlay() override;
     virtual void Tick(float DeltaTime) override;
     virtual void PostInitializeComponents() override;
+
+    // ============ IAbilitySystemInterface ============
+    virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 
     // ==================== 组件状态 ====================
 
@@ -247,6 +254,16 @@ public:
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier", meta = (DisplayName = "设置阵营"))
     void SetFaction(EXBFaction NewFaction) { Faction = NewFaction; }
 
+    // ==================== GAS 支持 ====================
+
+    /** @brief 士兵ASC（用于近战Tag触发GA） */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GAS", meta = (DisplayName = "能力系统组件"))
+    TObjectPtr<class UXBAbilitySystemComponent> AbilitySystemComponent;
+
+    /** @brief 近战命中GA（由蒙太奇Tag触发） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GAS", meta = (DisplayName = "近战命中GA"))
+    TSubclassOf<class UGameplayAbility> MeleeHitAbilityClass;
+
     UFUNCTION(BlueprintPure, Category = "XB|Soldier", meta = (DisplayName = "是否已死亡"))
     bool IsDead() const { return bIsDead; }
 
@@ -264,6 +281,7 @@ public:
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier", meta = (DisplayName = "执行攻击"))
     bool PerformAttack(AActor* Target);
 
+public:
     UFUNCTION(BlueprintPure, Category = "XB|Soldier", meta = (DisplayName = "获取当前血量"))
     float GetCurrentHealth() const { return CurrentHealth; }
 
@@ -347,7 +365,7 @@ public:
 
     // ==================== 公开访问的战斗状态 ====================
 
-    UPROPERTY(BlueprintReadOnly, Category = "状态")
+    UPROPERTY(BlueprintReadOnly, Category = "状态", meta = (DisplayName = "当前攻击目标"))
     TWeakObjectPtr<AActor> CurrentAttackTarget;
 
     // ==================== AI系统友元 ====================
@@ -356,7 +374,6 @@ public:
 
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|Behavior", meta = (DisplayName = "获取行为接口"))
     UXBSoldierBehaviorInterface* GetBehaviorInterface() const { return BehaviorInterface; }
-
 
     // ==================== ✨ 新增：动画系统接口 ====================
 
@@ -379,6 +396,14 @@ public:
      */
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|Animation", meta = (DisplayName = "应该播放移动动画"))
     bool ShouldPlayMoveAnimation() const;
+
+protected:
+    /**
+     * @brief  刷新近战命中GA配置
+     * @note   详细流程分析: 读取数据表普攻配置 -> 覆盖近战GA -> 初始化ASC并授予能力
+     *         性能/架构注意事项: 仅在初始化阶段调用，避免运行时重复授予
+     */
+    void RefreshMeleeHitAbilityFromData();
 protected:
 
     // ✨ 新增 - 配置跟随并开始移动
