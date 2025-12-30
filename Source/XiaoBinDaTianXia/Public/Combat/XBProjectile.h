@@ -41,8 +41,31 @@ public:
      * @note   详细流程分析: 写入来源/伤害/速度 -> 设置投射物速度 -> 根据抛射参数修正Z轴速度
      *         性能/架构注意事项: 该接口仅负责运动与基础伤害，不负责对象池状态切换
      */
+    /**
+     * @brief  初始化投射物
+     * @param  InSourceActor 来源Actor
+     * @param  InDamage 伤害数值
+     * @param  ShootDirection 发射方向
+     * @param  InSpeed 发射速度
+     * @param  bInUseArc 是否使用抛射
+     * @note   详细流程分析: 直线模式使用方向速度，抛射模式回退上抛速度
+     *         性能/架构注意事项: 对蓝图暴露，避免UHT参数兼容问题
+     */
     UFUNCTION(BlueprintCallable, Category = "投射物", meta = (DisplayName = "初始化投射物"))
     void InitializeProjectile(AActor* InSourceActor, float InDamage, const FVector& ShootDirection, float InSpeed, bool bInUseArc);
+
+    /**
+     * @brief  初始化投射物（带目标位置）
+     * @param  InSourceActor 来源Actor
+     * @param  InDamage 伤害数值
+     * @param  ShootDirection 发射方向
+     * @param  InSpeed 发射速度
+     * @param  bInUseArc 是否使用抛射
+     * @param  TargetLocation 目标位置（抛射使用）
+     * @note   详细流程分析: 抛射模式优先使用目标位置计算抛物线速度
+     *         性能/架构注意事项: 仅C++使用，避免UHT参数差异
+     */
+    void InitializeProjectileWithTarget(AActor* InSourceActor, float InDamage, const FVector& ShootDirection, float InSpeed, bool bInUseArc, const FVector& TargetLocation);
 
     /**
      * @brief  从对象池激活投射物

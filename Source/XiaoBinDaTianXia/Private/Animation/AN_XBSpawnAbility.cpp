@@ -133,7 +133,8 @@ void UAN_XBSpawnAbility::Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceB
                 if (Projectile)
                 {
                     // 🔧 修改 - 先写入配置，再初始化投射物运动参数
-                    Projectile->Damage = ProjectileConfig.Damage;
+                    // 🔧 修改 - 投射物伤害使用弓手基础伤害，避免额外数值配置
+                    Projectile->Damage = Soldier->GetBaseDamage();
                     Projectile->LinearSpeed = ProjectileConfig.Speed;
                     Projectile->ArcLaunchSpeed = ProjectileConfig.ArcLaunchSpeed;
                     Projectile->ArcGravityScale = ProjectileConfig.ArcGravityScale;
@@ -157,7 +158,7 @@ void UAN_XBSpawnAbility::Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceB
                     const FVector TargetLocation = Soldier->CurrentAttackTarget.IsValid()
                         ? Soldier->CurrentAttackTarget->GetActorLocation()
                         : FVector::ZeroVector;
-                    Projectile->InitializeProjectile(OwnerActor, Projectile->Damage, ShootDirection, ProjectileConfig.Speed, ProjectileConfig.bUseArc, TargetLocation);
+                    Projectile->InitializeProjectileWithTarget(OwnerActor, Projectile->Damage, ShootDirection, ProjectileConfig.Speed, ProjectileConfig.bUseArc, TargetLocation);
                     UE_LOG(LogXBCombat, Log, TEXT("弓手 %s 发射物生成成功，类=%s 伤害=%.1f"), 
                         *Soldier->GetName(),
                         ProjectileClass ? *ProjectileClass->GetName() : TEXT("未知"),

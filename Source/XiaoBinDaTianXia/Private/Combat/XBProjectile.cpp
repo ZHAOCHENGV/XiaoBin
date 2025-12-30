@@ -68,7 +68,13 @@ void AXBProjectile::BeginPlay()
     }
 }
 
-void AXBProjectile::InitializeProjectile(AActor* InSourceActor, float InDamage, const FVector& ShootDirection, float InSpeed, bool bInUseArc, const FVector& TargetLocation)
+void AXBProjectile::InitializeProjectile(AActor* InSourceActor, float InDamage, const FVector& ShootDirection, float InSpeed, bool bInUseArc)
+{
+    // 🔧 修改 - 兼容蓝图调用的初始化入口
+    InitializeProjectileWithTarget(InSourceActor, InDamage, ShootDirection, InSpeed, bInUseArc, FVector::ZeroVector);
+}
+
+void AXBProjectile::InitializeProjectileWithTarget(AActor* InSourceActor, float InDamage, const FVector& ShootDirection, float InSpeed, bool bInUseArc, const FVector& TargetLocation)
 {
     SourceActor = InSourceActor;
     Damage = InDamage;
