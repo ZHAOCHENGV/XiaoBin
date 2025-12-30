@@ -413,7 +413,7 @@ public:
      *         性能/架构注意事项: 仅在状态变化时执行
      */
     UFUNCTION(BlueprintCallable, Category = "草丛", meta = (DisplayName = "设置草丛隐身"))
-    void SetHiddenInBush(bool bHidden);
+    void SetHiddenInBush(bool bEnableHidden);
 
     /**
      * @brief  是否处于草丛隐身
