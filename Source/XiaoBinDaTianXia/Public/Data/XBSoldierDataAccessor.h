@@ -90,6 +90,18 @@ public:
     UFUNCTION(BlueprintPure, Category = "XB|Data|Combat", meta = (DisplayName = "获取攻击间隔"))
     float GetAttackInterval() const { return CachedTableRow.AttackInterval; }
 
+    /**
+     * @brief  获取普攻冷却时间
+     * @return 普攻冷却（秒）
+     * @note   详细流程分析: 直接读取 BasicAttack.Cooldown，避免和 AttackInterval 混用
+     *         性能/架构注意事项: 纯访问器不做逻辑判断，交由调用方选择兜底策略
+     */
+    UFUNCTION(BlueprintPure, Category = "XB|Data|Combat", meta = (DisplayName = "获取普攻冷却"))
+    float GetBasicAttackCooldown() const { return CachedTableRow.BasicAttack.Cooldown; }
+
+    UFUNCTION(BlueprintPure, Category = "XB|Data|Combat", meta = (DisplayName = "获取投射物配置"))
+    FXBProjectileConfig GetProjectileConfig() const { return CachedTableRow.ProjectileConfig; }
+
     // --- 移动属性访问 ---
 
     UFUNCTION(BlueprintPure, Category = "XB|Data|Movement", meta = (DisplayName = "获取移动速度"))
