@@ -249,4 +249,5 @@ protected:
 
     /** @brief 感知缓存有效期 */
     static constexpr float PerceptionCacheValidity = 0.1f;
+
 };
