@@ -14,6 +14,7 @@
 #include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/ProjectileMovementComponent.h"
+#include "Kismet/GameplayStatics.h"
 #include "Combat/XBProjectilePoolSubsystem.h"
 #include "GAS/XBAttributeSet.h"
 #include "Soldier/XBSoldierCharacter.h"
@@ -67,7 +68,7 @@ void AXBProjectile::BeginPlay()
     }
 }
 
-void AXBProjectile::InitializeProjectile(AActor* InSourceActor, float InDamage, const FVector& ShootDirection, float InSpeed, bool bInUseArc)
+void AXBProjectile::InitializeProjectile(AActor* InSourceActor, float InDamage, const FVector& ShootDirection, float InSpeed, bool bInUseArc, const FVector& TargetLocation)
 {
     SourceActor = InSourceActor;
     Damage = InDamage;
@@ -77,12 +78,43 @@ void AXBProjectile::InitializeProjectile(AActor* InSourceActor, float InDamage, 
     ProjectileMovementComponent->InitialSpeed = FinalSpeed;
     ProjectileMovementComponent->MaxSpeed = FinalSpeed;
 
-    // 🔧 修改 - 使用目标方向计算速度，并同步旋转，保证胶囊体朝飞行方向对齐
+    // 🔧 修改 - 抛射模式优先使用目标位置计算抛物线速度
     FVector Velocity = ShootDirection.GetSafeNormal() * FinalSpeed;
     if (bUseArc)
     {
         ProjectileMovementComponent->ProjectileGravityScale = ArcGravityScale;
-        Velocity.Z += ArcLaunchSpeed;
+
+        if (!TargetLocation.IsZero())
+        {
+            FVector SuggestedVelocity = FVector::ZeroVector;
+            const FVector StartLocation = GetActorLocation();
+            const float OverrideGravityZ = GetWorld() ? GetWorld()->GetGravityZ() * ArcGravityScale : 0.0f;
+
+            const bool bHasSolution = UGameplayStatics::SuggestProjectileVelocity(
+                this,
+                SuggestedVelocity,
+                StartLocation,
+                TargetLocation,
+                FinalSpeed,
+                false,
+                0.0f,
+                OverrideGravityZ,
+                ESuggestProjVelocityTraceOption::DoNotTrace
+            );
+
+            if (bHasSolution)
+            {
+                Velocity = SuggestedVelocity;
+            }
+            else
+            {
+                Velocity.Z += ArcLaunchSpeed;
+            }
+        }
+        else
+        {
+            Velocity.Z += ArcLaunchSpeed;
+        }
     }
     else
     {
@@ -166,9 +198,10 @@ void AXBProjectile::OnProjectileOverlap(UPrimitiveComponent* OverlappedComponent
         return;
     }
 
-    ApplyDamageToTarget(OtherActor, SweepResult);
+    const bool bDidApplyDamage = ApplyDamageToTarget(OtherActor, SweepResult);
 
-    if (bDestroyOnHit)
+    // 🔧 修改 - 仅命中敌方且造成伤害时才允许销毁/回收
+    if (bDestroyOnHit && bDidApplyDamage)
     {
         if (bUsePooling)
         {
@@ -186,18 +219,18 @@ void AXBProjectile::OnProjectileOverlap(UPrimitiveComponent* OverlappedComponent
     }
 }
 
-void AXBProjectile::ApplyDamageToTarget(AActor* TargetActor, const FHitResult& HitResult)
+bool AXBProjectile::ApplyDamageToTarget(AActor* TargetActor, const FHitResult& HitResult)
 {
     if (!TargetActor)
     {
-        return;
+        return false;
     }
 
     AActor* Source = SourceActor.Get();
     if (!Source)
     {
         UE_LOG(LogXBCombat, Warning, TEXT("投射物命中 %s，但没有有效的来源"), *TargetActor->GetName());
-        return;
+        return false;
     }
 
     EXBFaction SourceFaction = EXBFaction::Neutral;
@@ -213,14 +246,14 @@ void AXBProjectile::ApplyDamageToTarget(AActor* TargetActor, const FHitResult& H
     EXBFaction TargetFaction = EXBFaction::Neutral;
     if (!GetTargetFaction(TargetActor, TargetFaction))
     {
-        return;
+        return false;
     }
 
     if (!UXBBlueprintFunctionLibrary::AreFactionsHostile(SourceFaction, TargetFaction))
     {
         // 🔧 修改 - 只对敌人生效，友军直接忽略
         UE_LOG(LogXBCombat, Verbose, TEXT("投射物忽略友军: %s -> %s"), *Source->GetName(), *TargetActor->GetName());
-        return;
+        return false;
     }
 
     if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(TargetActor))
@@ -228,13 +261,13 @@ void AXBProjectile::ApplyDamageToTarget(AActor* TargetActor, const FHitResult& H
         float ActualDamage = TargetSoldier->TakeSoldierDamage(Damage, Source);
         UE_LOG(LogXBCombat, Log, TEXT("投射物命中士兵: %s, 伤害: %.1f, 实际: %.1f"),
             *TargetActor->GetName(), Damage, ActualDamage);
-        return;
+        return true;
     }
 
     AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(TargetActor);
     if (!TargetLeader)
     {
-        return;
+        return false;
     }
 
     if (AXBCharacterBase* SourceLeader = Cast<AXBCharacterBase>(Source))
@@ -248,7 +281,7 @@ void AXBProjectile::ApplyDamageToTarget(AActor* TargetActor, const FHitResult& H
     if (!TargetASC)
     {
         UE_LOG(LogXBCombat, Warning, TEXT("投射物命中 %s，但目标没有ASC"), *TargetActor->GetName());
-        return;
+        return false;
     }
 
     if (DamageEffectClass && SourceASC)
@@ -281,6 +314,8 @@ void AXBProjectile::ApplyDamageToTarget(AActor* TargetActor, const FHitResult& H
         UE_LOG(LogXBCombat, Log, TEXT("投射物命中将领: %s, 伤害: %.1f (直接属性)"),
             *TargetActor->GetName(), Damage);
     }
+
+    return true;
 }
 
 bool AXBProjectile::GetTargetFaction(AActor* TargetActor, EXBFaction& OutFaction) const

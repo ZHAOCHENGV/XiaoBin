@@ -97,7 +97,7 @@ private:
     void OnProjectileOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
         UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 
-    void ApplyDamageToTarget(AActor* TargetActor, const FHitResult& HitResult);
+    bool ApplyDamageToTarget(AActor* TargetActor, const FHitResult& HitResult);
     bool GetTargetFaction(AActor* TargetActor, EXBFaction& OutFaction) const;
 
     UPROPERTY(VisibleAnywhere, Category = "组件", meta = (DisplayName = "碰撞胶囊"))

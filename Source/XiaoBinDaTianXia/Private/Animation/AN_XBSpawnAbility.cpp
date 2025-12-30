@@ -154,7 +154,10 @@ void UAN_XBSpawnAbility::Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceB
                         UE_LOG(LogXBCombat, Warning, TEXT("弓手 %s 发射失败：没有有效目标，使用默认朝向"), *Soldier->GetName());
                     }
 
-                    Projectile->InitializeProjectile(OwnerActor, Projectile->Damage, ShootDirection, ProjectileConfig.Speed, ProjectileConfig.bUseArc);
+                    const FVector TargetLocation = Soldier->CurrentAttackTarget.IsValid()
+                        ? Soldier->CurrentAttackTarget->GetActorLocation()
+                        : FVector::ZeroVector;
+                    Projectile->InitializeProjectile(OwnerActor, Projectile->Damage, ShootDirection, ProjectileConfig.Speed, ProjectileConfig.bUseArc, TargetLocation);
                     UE_LOG(LogXBCombat, Log, TEXT("弓手 %s 发射物生成成功，类=%s 伤害=%.1f"), 
                         *Soldier->GetName(),
                         ProjectileClass ? *ProjectileClass->GetName() : TEXT("未知"),
