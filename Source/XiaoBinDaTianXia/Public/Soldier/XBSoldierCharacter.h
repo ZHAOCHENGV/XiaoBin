@@ -406,6 +406,22 @@ public:
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|Animation", meta = (DisplayName = "应该播放移动动画"))
     bool ShouldPlayMoveAnimation() const;
 
+    /**
+     * @brief  设置草丛隐身状态
+     * @param  bHidden 是否隐身
+     * @note   详细流程分析: 设置半透明 -> 调整碰撞通道
+     *         性能/架构注意事项: 仅在状态变化时执行
+     */
+    UFUNCTION(BlueprintCallable, Category = "草丛", meta = (DisplayName = "设置草丛隐身"))
+    void SetHiddenInBush(bool bHidden);
+
+    /**
+     * @brief  是否处于草丛隐身
+     * @return 是否隐身
+     */
+    UFUNCTION(BlueprintPure, Category = "草丛", meta = (DisplayName = "是否草丛隐身"))
+    bool IsHiddenInBush() const { return bIsHiddenInBush; }
+
 protected:
     /**
      * @brief  刷新近战命中GA配置
@@ -545,6 +561,23 @@ protected:
 
     UPROPERTY(BlueprintReadOnly, Category = "状态", meta = (DisplayName = "是否已死亡"))
     bool bIsDead = false;
+
+    // ==================== 草丛隐身 ====================
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "草丛", meta = (DisplayName = "草丛透明度", ClampMin = "0.0", ClampMax = "1.0"))
+    float BushOpacity = 0.35f;
+
+    UPROPERTY(BlueprintReadOnly, Category = "草丛", meta = (DisplayName = "是否草丛隐身"))
+    bool bIsHiddenInBush = false;
+
+    UPROPERTY()
+    bool bCachedBushCollisionResponse = false;
+
+    UPROPERTY()
+    TEnumAsByte<ECollisionResponse> CachedLeaderCollisionResponse = ECR_Block;
+
+    UPROPERTY()
+    TEnumAsByte<ECollisionResponse> CachedSoldierCollisionResponse = ECR_Block;
 
     UPROPERTY(BlueprintReadOnly, Category = "状态")
     bool bIsPooledSoldier = false;

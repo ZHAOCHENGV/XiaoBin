@@ -1021,6 +1021,55 @@ void AXBCharacterBase::RecallAllSoldiers()
     }
 }
 
+/**
+ * @brief  设置草丛隐身状态
+ * @param  bHidden 是否隐身
+ * @note   详细流程分析: 更新标记 -> 缓存碰撞响应 -> 设置半透明 -> 同步士兵
+ *         性能/架构注意事项: 仅在状态变化时执行，避免频繁材质更新
+ */
+void AXBCharacterBase::SetHiddenInBush(bool bHidden)
+{
+    if (bIsHiddenInBush == bHidden)
+    {
+        return;
+    }
+
+    bIsHiddenInBush = bHidden;
+
+    // 🔧 修改 - 设置半透明效果（依赖材质参数）
+    if (USkeletalMeshComponent* MeshComp = GetMesh())
+    {
+        const float TargetOpacity = bHidden ? BushOpacity : 1.0f;
+        MeshComp->SetScalarParameterValueOnMaterials(TEXT("Opacity"), TargetOpacity);
+    }
+
+    // 🔧 修改 - 关闭与敌人的碰撞（简化为忽略Leader/Soldier通道）
+    if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+    {
+        if (!bCachedBushCollisionResponse)
+        {
+            CachedLeaderCollisionResponse = Capsule->GetCollisionResponseToChannel(XBCollision::Leader);
+            CachedSoldierCollisionResponse = Capsule->GetCollisionResponseToChannel(XBCollision::Soldier);
+            bCachedBushCollisionResponse = true;
+        }
+
+        Capsule->SetCollisionResponseToChannel(XBCollision::Leader, bHidden ? ECR_Ignore : CachedLeaderCollisionResponse);
+        Capsule->SetCollisionResponseToChannel(XBCollision::Soldier, bHidden ? ECR_Ignore : CachedSoldierCollisionResponse);
+    }
+
+    // 🔧 修改 - 同步所有士兵隐身状态（即便士兵在草丛外）
+    for (AXBSoldierCharacter* Soldier : Soldiers)
+    {
+        if (Soldier && Soldier->GetSoldierState() != EXBSoldierState::Dead)
+        {
+            Soldier->SetHiddenInBush(bHidden);
+        }
+    }
+
+    UE_LOG(LogXBCharacter, Log, TEXT("主将 %s 草丛隐身状态=%s"),
+        *GetName(), bHidden ? TEXT("开启") : TEXT("关闭"));
+}
+
 void AXBCharacterBase::SetSoldiersEscaping(bool bEscaping)
 {
     for (AXBSoldierCharacter* Soldier : Soldiers)

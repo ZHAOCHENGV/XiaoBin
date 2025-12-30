@@ -2086,6 +2086,44 @@ void AXBSoldierCharacter::ResetForPooling()
     UE_LOG(LogXBSoldier, Verbose, TEXT("士兵 %s 状态已重置，进入池化休眠"), *GetName());
 }
 
+/**
+ * @brief  设置草丛隐身状态
+ * @param  bHidden 是否隐身
+ * @note   详细流程分析: 设置半透明 -> 调整碰撞通道
+ *         性能/架构注意事项: 仅在状态变化时执行，避免材质频繁更新
+ */
+void AXBSoldierCharacter::SetHiddenInBush(bool bHidden)
+{
+    if (bIsHiddenInBush == bHidden)
+    {
+        return;
+    }
+
+    bIsHiddenInBush = bHidden;
+
+    if (USkeletalMeshComponent* MeshComp = GetMesh())
+    {
+        const float TargetOpacity = bHidden ? BushOpacity : 1.0f;
+        MeshComp->SetScalarParameterValueOnMaterials(TEXT("Opacity"), TargetOpacity);
+    }
+
+    if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+    {
+        if (!bCachedBushCollisionResponse)
+        {
+            CachedLeaderCollisionResponse = Capsule->GetCollisionResponseToChannel(XBCollision::Leader);
+            CachedSoldierCollisionResponse = Capsule->GetCollisionResponseToChannel(XBCollision::Soldier);
+            bCachedBushCollisionResponse = true;
+        }
+
+        Capsule->SetCollisionResponseToChannel(XBCollision::Leader, bHidden ? ECR_Ignore : CachedLeaderCollisionResponse);
+        Capsule->SetCollisionResponseToChannel(XBCollision::Soldier, bHidden ? ECR_Ignore : CachedSoldierCollisionResponse);
+    }
+
+    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 草丛隐身状态=%s"),
+        *GetName(), bHidden ? TEXT("开启") : TEXT("关闭"));
+}
+
 // ==================== 死亡系统 ====================
 
 void AXBSoldierCharacter::HandleDeath()

@@ -201,6 +201,8 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
             {
                 // 忽略已死亡单位，防止鞭尸
                 if (EnemySoldier->GetSoldierState() == EXBSoldierState::Dead) continue;
+                // 🔧 修改 - 草丛隐身单位不可锁定
+                if (EnemySoldier->IsHiddenInBush()) continue;
                 CandidateFaction = EnemySoldier->GetFaction();
                 CandidateLeaderOwner = EnemySoldier->GetLeaderCharacter();
                 bIsSoldier = true;
@@ -208,6 +210,8 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
             else if (AXBCharacterBase* EnemyLeader = Cast<AXBCharacterBase>(Candidate))
             {
                 if (EnemyLeader->IsDead()) continue;
+                // 🔧 修改 - 草丛隐身主将不可锁定
+                if (EnemyLeader->IsHiddenInBush()) continue;
                 CandidateFaction = EnemyLeader->GetFaction();
                 CandidateLeaderOwner = EnemyLeader;
                 bIsLeader = true;
@@ -473,6 +477,11 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
         {
             continue;
         }
+        // 🔧 修改 - 草丛隐身士兵不可锁定
+        if (Candidate->IsHiddenInBush())
+        {
+            continue;
+        }
 
         if (bHasPreferredLeader && Candidate->GetLeaderCharacter() != PreferredEnemyLeader)
         {
@@ -519,6 +528,11 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
         }
 
         if (Candidate->IsDead())
+        {
+            continue;
+        }
+        // 🔧 修改 - 草丛隐身主将不可锁定
+        if (Candidate->IsHiddenInBush())
         {
             continue;
         }
@@ -627,6 +641,72 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
             CachedPerceptionResult.DetectedEnemies.Add(Candidate);
             UpdateBestCandidate(Candidate, false, false, DistSq + GetCrowdPenalty(Candidate));
         }
+
+        for (TActorIterator<AXBCharacterBase> It(World); It; ++It)
+        {
+            AXBCharacterBase* Candidate = *It;
+            if (!Candidate || Candidate == SoldierActor)
+            {
+                continue;
+            }
+
+            if (LeaderActor && Candidate == LeaderActor)
+            {
+                continue;
+            }
+
+            if (Candidate->IsDead())
+            {
+                continue;
+            }
+
+            const EXBFaction CandidateFaction = Candidate->GetFaction();
+            if (!UXBBlueprintFunctionLibrary::AreFactionsHostile(MyFaction, CandidateFaction))
+            {
+                continue;
+            }
+
+            // 🔧 修改 - 先用真实距离过滤，再叠加拥挤惩罚用于排序
+            const float DistSq = FVector::DistSquared(SoldierLocation, Candidate->GetActorLocation());
+            if (DistSq > VisionRangeSq)
+            {
+                continue;
+            }
+
+            CachedPerceptionResult.DetectedEnemies.Add(Candidate);
+            UpdateBestCandidate(Candidate, false, false, DistSq + GetCrowdPenalty(Candidate));
+        }
+    }
+
+    // 更新缓存时间戳
+    PerceptionCacheTime = CurrentTime;
+
+    // 对新的查询结果应用筛选逻辑
+    AActor* PriorityTarget = nullptr;
+    if (NearestPreferredSoldier)
+    {
+        PriorityTarget = NearestPreferredSoldier;
+    }
+    else if (NearestSoldier)
+    {
+        PriorityTarget = NearestSoldier;
+    }
+    else if (NearestPreferredLeader)
+    {
+        PriorityTarget = NearestPreferredLeader;
+    }
+    else
+    {
+        PriorityTarget = NearestLeader;
+    }
+
+    if (PriorityTarget)
+    {
+        CachedPerceptionResult.NearestEnemy = PriorityTarget;
+        CachedPerceptionResult.DistanceToNearest = FVector::Dist(SoldierLocation, PriorityTarget->GetActorLocation());
+        OutEnemy = PriorityTarget;
+        RecordEnemySeen(); // 更新"最后看见敌人时间"，用于脱战判断
+        return true;
     }
 
     // 更新缓存时间戳
