@@ -138,6 +138,7 @@ void UAN_XBSpawnAbility::Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceB
                     Projectile->ArcLaunchSpeed = ProjectileConfig.ArcLaunchSpeed;
                     Projectile->ArcGravityScale = ProjectileConfig.ArcGravityScale;
                     Projectile->bUseArc = ProjectileConfig.bUseArc;
+                    Projectile->LifeSeconds = ProjectileConfig.LifeSeconds;
                     Projectile->DamageEffectClass = ProjectileConfig.DamageEffectClass;
 
                     // 🔧 修改 - 优先锁定当前目标方向，确保发射物朝目标飞行

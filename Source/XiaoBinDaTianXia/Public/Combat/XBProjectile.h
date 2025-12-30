@@ -77,6 +77,9 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", meta = (DisplayName = "抛射重力缩放"))
     float ArcGravityScale = 1.0f;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", meta = (DisplayName = "最大存活时间", ClampMin = "0.0"))
+    float LifeSeconds = 5.0f;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", meta = (DisplayName = "启用对象池"))
     bool bUsePooling = true;
 
@@ -109,4 +112,6 @@ private:
     TWeakObjectPtr<AActor> SourceActor;
 
     FGameplayTag DamageTag;
+
+    FTimerHandle LifeTimerHandle;
 };

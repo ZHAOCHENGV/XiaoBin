@@ -59,6 +59,12 @@ void AXBProjectile::BeginPlay()
     {
         CollisionComponent->OnComponentBeginOverlap.AddDynamic(this, &AXBProjectile::OnProjectileOverlap);
     }
+
+    // 🔧 修改 - 输出可视化资源检查日志，便于定位“看不到弓箭”
+    if (MeshComponent && !MeshComponent->GetStaticMesh())
+    {
+        UE_LOG(LogXBCombat, Warning, TEXT("投射物 %s 未配置StaticMesh，可能导致不可见"), *GetName());
+    }
 }
 
 void AXBProjectile::InitializeProjectile(AActor* InSourceActor, float InDamage, const FVector& ShootDirection, float InSpeed, bool bInUseArc)
@@ -88,6 +94,19 @@ void AXBProjectile::InitializeProjectile(AActor* InSourceActor, float InDamage, 
     // 🔧 修改 - 以飞行方向更新Actor旋转，避免胶囊体与速度方向不一致
     SetActorRotation(Velocity.Rotation());
 
+    // 🔧 修改 - 启动存活计时，超时自动回收
+    if (LifeSeconds > 0.0f)
+    {
+        GetWorldTimerManager().ClearTimer(LifeTimerHandle);
+        GetWorldTimerManager().SetTimer(
+            LifeTimerHandle,
+            this,
+            &AXBProjectile::ResetForPooling,
+            LifeSeconds,
+            false
+        );
+    }
+
     UE_LOG(LogXBCombat, Log, TEXT("投射物初始化: 来源=%s 伤害=%.1f 模式=%s 速度=%.1f"),
         InSourceActor ? *InSourceActor->GetName() : TEXT("无"),
         Damage,
@@ -115,8 +134,19 @@ void AXBProjectile::ResetForPooling()
         ProjectileMovementComponent->StopMovementImmediately();
     }
 
-    SetActorEnableCollision(false);
-    SetActorHiddenInGame(true);
+    GetWorldTimerManager().ClearTimer(LifeTimerHandle);
+
+    // 🔧 修改 - 若启用对象池则回收，否则允许直接销毁
+    if (bUsePooling)
+    {
+        SetActorEnableCollision(false);
+        SetActorHiddenInGame(true);
+    }
+    else
+    {
+        Destroy();
+        return;
+    }
 
     SourceActor = nullptr;
 

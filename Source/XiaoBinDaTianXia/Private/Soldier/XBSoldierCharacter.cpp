@@ -32,6 +32,7 @@
 #include "BehaviorTree/BehaviorTree.h"
 #include "BehaviorTree/BlackboardComponent.h"
 #include "Engine/DataTable.h"
+#include "Combat/XBProjectilePoolSubsystem.h"
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimSequence.h"
 #include "NiagaraComponent.h"
@@ -1221,6 +1222,15 @@ void AXBSoldierCharacter::InitializeFromDataTable(UDataTable* DataTable, FName R
         UE_LOG(LogXBSoldier, Log, TEXT("弓手 %s 载入发射物配置，投射物类=%s"),
             *GetName(),
             ProjectileConfig.ProjectileClass ? *ProjectileConfig.ProjectileClass->GetName() : TEXT("未配置"));
+
+        // ✨ 新增 - 预加载弓手投射物到对象池
+        if (ProjectileConfig.ProjectileClass && GetWorld())
+        {
+            if (UXBProjectilePoolSubsystem* PoolSubsystem = GetWorld()->GetSubsystem<UXBProjectilePoolSubsystem>())
+            {
+                PoolSubsystem->PrewarmProjectiles(ProjectileConfig.ProjectileClass, ProjectileConfig.PreloadCount);
+            }
+        }
     }
     else
     {

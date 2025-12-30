@@ -108,3 +108,45 @@ AXBProjectile* UXBProjectilePoolSubsystem::AcquireProjectile(TSubclassOf<AXBProj
 
     return Projectile;
 }
+
+void UXBProjectilePoolSubsystem::PrewarmProjectiles(TSubclassOf<AXBProjectile> ProjectileClass, int32 PreloadCount)
+{
+    if (!ProjectileClass || PreloadCount <= 0)
+    {
+        return;
+    }
+
+    UWorld* World = GetWorld();
+    if (!World)
+    {
+        return;
+    }
+
+    FXBProjectilePoolBucket& Bucket = RecycledProjectiles.FindOrAdd(ProjectileClass);
+
+    // 🔧 修改 - 仅补足到目标数量，避免重复预热
+    const int32 MissingCount = PreloadCount - Bucket.Projectiles.Num();
+    if (MissingCount <= 0)
+    {
+        return;
+    }
+
+    for (int32 Index = 0; Index < MissingCount; ++Index)
+    {
+        FActorSpawnParameters SpawnParams;
+        SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+        AXBProjectile* Projectile = World->SpawnActor<AXBProjectile>(ProjectileClass, RecycleLocation, FRotator::ZeroRotator, SpawnParams);
+        if (!Projectile)
+        {
+            continue;
+        }
+
+        Projectile->ResetForPooling();
+        Bucket.Projectiles.Add(Projectile);
+        Stats.PoolSize += 1;
+    }
+
+    UE_LOG(LogXBCombat, Log, TEXT("投射物对象池预加载完成，类=%s 数量=%d"),
+        *ProjectileClass->GetName(), Bucket.Projectiles.Num());
+}

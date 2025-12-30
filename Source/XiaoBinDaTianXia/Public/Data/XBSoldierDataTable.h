@@ -135,6 +135,14 @@ struct XIAOBINDATIANXIA_API FXBProjectileConfig
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", meta = (DisplayName = "重力缩放"))
     float ArcGravityScale = 1.0f;
 
+    /** @brief 预加载数量 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", meta = (DisplayName = "预加载数量", ClampMin = "0"))
+    int32 PreloadCount = 5;
+
+    /** @brief 最大存活时间 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", meta = (DisplayName = "最大存活时间", ClampMin = "0.0"))
+    float LifeSeconds = 5.0f;
+
     /** @brief 伤害效果（GAS） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", meta = (DisplayName = "伤害效果"))
     TSubclassOf<UGameplayEffect> DamageEffectClass;

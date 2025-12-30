@@ -83,6 +83,16 @@ public:
     AXBProjectile* AcquireProjectile(TSubclassOf<AXBProjectile> ProjectileClass, const FVector& SpawnLocation, const FRotator& SpawnRotation);
 
     /**
+     * @brief  预加载投射物到对象池
+     * @param  ProjectileClass 投射物类
+     * @param  PreloadCount 预加载数量
+     * @note   详细流程分析: 批量Spawn -> ResetForPooling -> 放入桶
+     *         性能/架构注意事项: 仅在初始化/职业切换时调用
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|ProjectilePool", meta = (DisplayName = "预加载投射物"))
+    void PrewarmProjectiles(TSubclassOf<AXBProjectile> ProjectileClass, int32 PreloadCount);
+
+    /**
      * @brief 获取池统计数据
      */
     UFUNCTION(BlueprintPure, Category = "XB|ProjectilePool", meta = (DisplayName = "获取统计"))
