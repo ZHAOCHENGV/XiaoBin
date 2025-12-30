@@ -2116,8 +2116,10 @@ void AXBSoldierCharacter::SetHiddenInBush(bool bEnableHidden)
             bCachedBushCollisionResponse = true;
         }
 
-        Capsule->SetCollisionResponseToChannel(XBCollision::Leader, bEnableHidden ? ECR_Ignore : CachedLeaderCollisionResponse);
-        Capsule->SetCollisionResponseToChannel(XBCollision::Soldier, bEnableHidden ? ECR_Ignore : CachedSoldierCollisionResponse);
+        Capsule->SetCollisionResponseToChannel(XBCollision::Leader,
+            bEnableHidden ? ECR_Ignore : CachedLeaderCollisionResponse.GetValue());
+        Capsule->SetCollisionResponseToChannel(XBCollision::Soldier,
+            bEnableHidden ? ECR_Ignore : CachedSoldierCollisionResponse.GetValue());
     }
 
     UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 草丛隐身状态=%s"),

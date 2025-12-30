@@ -1053,8 +1053,10 @@ void AXBCharacterBase::SetHiddenInBush(bool bEnableHidden)
             bCachedBushCollisionResponse = true;
         }
 
-        Capsule->SetCollisionResponseToChannel(XBCollision::Leader, bEnableHidden ? ECR_Ignore : CachedLeaderCollisionResponse);
-        Capsule->SetCollisionResponseToChannel(XBCollision::Soldier, bEnableHidden ? ECR_Ignore : CachedSoldierCollisionResponse);
+        Capsule->SetCollisionResponseToChannel(XBCollision::Leader,
+            bEnableHidden ? ECR_Ignore : CachedLeaderCollisionResponse.GetValue());
+        Capsule->SetCollisionResponseToChannel(XBCollision::Soldier,
+            bEnableHidden ? ECR_Ignore : CachedSoldierCollisionResponse.GetValue());
     }
 
     // 🔧 修改 - 同步所有士兵隐身状态（即便士兵在草丛外）
