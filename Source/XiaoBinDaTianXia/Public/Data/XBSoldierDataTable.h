@@ -18,12 +18,14 @@
 #include "Engine/DataTable.h"
 #include "Army/XBSoldierTypes.h"
 #include "Data/XBLeaderDataTable.h"
+#include "Combat/XBProjectile.h"
 #include "XBSoldierDataTable.generated.h"
 
 class UBehaviorTree;
 class USkeletalMesh;
 class UAnimInstance;
 class UAnimMontage;
+class UGameplayEffect;
 
 // ============================================
 // 配置子结构（保持不变，增强注释）
@@ -100,6 +102,48 @@ struct XIAOBINDATIANXIA_API FXBSoldierVisualConfig
     TSoftObjectPtr<UAnimMontage> DeathMontage;
 };
 
+/**
+ * @brief 士兵投射物配置（弓手专用）
+ * @note 仅在 SoldierType 为 Archer 时启用
+ */
+USTRUCT(BlueprintType)
+struct XIAOBINDATIANXIA_API FXBProjectileConfig
+{
+    GENERATED_BODY()
+
+    /** @brief 投射物类 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", meta = (DisplayName = "投射物类"))
+    TSubclassOf<AXBProjectile> ProjectileClass;
+
+    /** @brief 发射速度 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", meta = (DisplayName = "发射速度", ClampMin = "0.0"))
+    float Speed = 1200.0f;
+
+    /** @brief 是否使用抛射 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", meta = (DisplayName = "抛射模式"))
+    bool bUseArc = false;
+
+    /** @brief 上抛速度 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", meta = (DisplayName = "上抛速度"))
+    float ArcLaunchSpeed = 600.0f;
+
+    /** @brief 重力缩放 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", meta = (DisplayName = "重力缩放"))
+    float ArcGravityScale = 1.0f;
+
+    /** @brief 预加载数量 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", meta = (DisplayName = "预加载数量", ClampMin = "0"))
+    int32 PreloadCount = 5;
+
+    /** @brief 最大存活时间 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", meta = (DisplayName = "最大存活时间", ClampMin = "0.0"))
+    float LifeSeconds = 5.0f;
+
+    /** @brief 伤害效果（GAS） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", meta = (DisplayName = "伤害效果"))
+    TSubclassOf<UGameplayEffect> DamageEffectClass;
+};
+
 // ============================================
 // ✨ 新增：数据访问器前向声明
 // ============================================
@@ -160,6 +204,12 @@ struct XIAOBINDATIANXIA_API FXBSoldierTableRow : public FTableRowBase
     /** @brief 攻击间隔（秒） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "战斗", meta = (DisplayName = "攻击间隔", ClampMin = "0.1"))
     float AttackInterval = 1.0f;
+
+    // ==================== 远程配置（弓手专用） ====================
+
+    /** @brief 投射物配置（仅弓手显示） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "战斗|远程", meta = (DisplayName = "发射物配置", EditCondition = "SoldierType == EXBSoldierType::Archer", EditConditionHides))
+    FXBProjectileConfig ProjectileConfig;
 
     // ==================== 移动配置 ====================
 
