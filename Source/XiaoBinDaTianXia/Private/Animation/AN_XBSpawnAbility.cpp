@@ -10,6 +10,10 @@
 #include "Kismet/GameplayStatics.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/Character.h"
+#include "Combat/XBProjectile.h"
+#include "Combat/XBProjectilePoolSubsystem.h"
+#include "Soldier/XBSoldierCharacter.h"
+#include "Utils/XBLogCategories.h"
 
 UAN_XBSpawnAbility::UAN_XBSpawnAbility()
 {
@@ -86,6 +90,77 @@ void UAN_XBSpawnAbility::Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceB
                 OwnerActor->GetWorld(),
                 Sound,
                 SpawnLocation);
+        }
+    }
+
+    // ✨ 新增 - 弓手投射物生成（结合对象池）
+    if (AXBSoldierCharacter* Soldier = Cast<AXBSoldierCharacter>(OwnerActor))
+    {
+        if (Soldier->GetSoldierType() == EXBSoldierType::Archer)
+        {
+            // 🔧 修改 - 输出弓手发射流程关键日志，便于定位配置与目标问题
+            UE_LOG(LogXBCombat, Log, TEXT("弓手 %s 触发发射物通知，目标=%s"), 
+                *Soldier->GetName(),
+                Soldier->CurrentAttackTarget.IsValid() ? *Soldier->CurrentAttackTarget->GetName() : TEXT("无"));
+
+            const FXBProjectileConfig ProjectileConfig = Soldier->GetProjectileConfig();
+            TSubclassOf<AXBProjectile> ProjectileClass = ProjectileClassOverride ? ProjectileClassOverride : ProjectileConfig.ProjectileClass;
+
+            if (!ProjectileClass)
+            {
+                UE_LOG(LogXBCombat, Warning, TEXT("弓手 %s 发射失败：未配置投射物类"), *Soldier->GetName());
+            }
+            else
+            {
+                AXBProjectile* Projectile = nullptr;
+                UWorld* World = OwnerActor->GetWorld();
+
+                if (bUseProjectilePool && World)
+                {
+                    if (UXBProjectilePoolSubsystem* PoolSubsystem = World->GetSubsystem<UXBProjectilePoolSubsystem>())
+                    {
+                        Projectile = PoolSubsystem->AcquireProjectile(ProjectileClass, SpawnLocation, SpawnRotation);
+                    }
+                }
+
+                if (!Projectile && World)
+                {
+                    FActorSpawnParameters SpawnParams;
+                    SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+                    Projectile = World->SpawnActor<AXBProjectile>(ProjectileClass, SpawnLocation, SpawnRotation, SpawnParams);
+                }
+
+                if (Projectile)
+                {
+                    // 🔧 修改 - 先写入配置，再初始化投射物运动参数
+                    Projectile->Damage = ProjectileConfig.Damage;
+                    Projectile->LinearSpeed = ProjectileConfig.Speed;
+                    Projectile->ArcLaunchSpeed = ProjectileConfig.ArcLaunchSpeed;
+                    Projectile->ArcGravityScale = ProjectileConfig.ArcGravityScale;
+                    Projectile->bUseArc = ProjectileConfig.bUseArc;
+                    Projectile->LifeSeconds = ProjectileConfig.LifeSeconds;
+                    Projectile->DamageEffectClass = ProjectileConfig.DamageEffectClass;
+
+                    // 🔧 修改 - 优先锁定当前目标方向，确保发射物朝目标飞行
+                    FVector ShootDirection = SpawnRotation.Vector();
+                    if (AActor* CurrentTarget = Soldier->CurrentAttackTarget.Get())
+                    {
+                        ShootDirection = CurrentTarget->GetActorLocation() - SpawnLocation;
+                        SpawnRotation = ShootDirection.Rotation();
+                        Projectile->SetActorRotation(SpawnRotation);
+                    }
+                    else
+                    {
+                        UE_LOG(LogXBCombat, Warning, TEXT("弓手 %s 发射失败：没有有效目标，使用默认朝向"), *Soldier->GetName());
+                    }
+
+                    Projectile->InitializeProjectile(OwnerActor, Projectile->Damage, ShootDirection, ProjectileConfig.Speed, ProjectileConfig.bUseArc);
+                    UE_LOG(LogXBCombat, Log, TEXT("弓手 %s 发射物生成成功，类=%s 伤害=%.1f"), 
+                        *Soldier->GetName(),
+                        ProjectileClass ? *ProjectileClass->GetName() : TEXT("未知"),
+                        Projectile->Damage);
+                }
+            }
         }
     }
 
