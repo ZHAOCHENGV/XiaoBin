@@ -69,8 +69,22 @@ protected:
     UPROPERTY(EditAnywhere, Category = "配置", meta = (DisplayName = "位置更新间隔", ClampMin = "0.1"))
     float TargetUpdateInterval = 0.3f;
 
+    // 🔧 新增 - 判定卡住的最小移动速度
+    /** @brief 判定卡住的最小速度 */
+    UPROPERTY(EditAnywhere, Category = "配置", meta = (DisplayName = "最小移动速度", ClampMin = "0.0"))
+    float MinMoveSpeed = 10.0f;
+
+    // 🔧 新增 - 卡住持续时间阈值
+    /** @brief 卡住持续时间阈值 */
+    UPROPERTY(EditAnywhere, Category = "配置", meta = (DisplayName = "卡住判定时间", ClampMin = "0.1"))
+    float StuckTimeThreshold = 0.6f;
+
 private:
     // 🔧 修改 - 简单注释: 更新计时器
     /** @brief 目标位置更新计时器 */
     float TargetUpdateTimer = 0.0f;
+
+    // 🔧 新增 - 卡住检测计时器
+    /** @brief 卡住检测计时器 */
+    float StuckTimer = 0.0f;
 };
