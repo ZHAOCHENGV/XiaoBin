@@ -1162,7 +1162,18 @@ void AXBCharacterBase::SpawnDroppedSoldiers()
 
     if (LastDamageInstigator.IsValid())
     {
-        TargetLeader = Cast<AXBCharacterBase>(LastDamageInstigator.Get());
+        // 🔧 修改 - 击杀者可能是士兵或主将，统一映射到对应主将
+        if (AXBCharacterBase* InstigatorLeader = Cast<AXBCharacterBase>(LastDamageInstigator.Get()))
+        {
+            TargetLeader = InstigatorLeader;
+        }
+        else if (AXBSoldierCharacter* InstigatorSoldier = Cast<AXBSoldierCharacter>(LastDamageInstigator.Get()))
+        {
+            TargetLeader = InstigatorSoldier->GetLeaderCharacter();
+            UE_LOG(LogXBCharacter, Log, TEXT("掉落士兵：击杀者为士兵 %s，归属主将=%s"),
+                *InstigatorSoldier->GetName(),
+                TargetLeader ? *TargetLeader->GetName() : TEXT("无"));
+        }
         
         if (TargetLeader && !TargetLeader->IsDead())
         {
