@@ -981,9 +981,10 @@ void AXBCharacterBase::OnAttackHit(AActor* HitTarget)
         CancelNoEnemyDisengage();
         bHasEnemiesInCombat = true;
         // 🔧 修改 - 若命中敌方士兵，优先锁定其所属主将，避免跨主将误选目标
-        if (AXBCharacterBase* TargetLeader = TargetSoldier->GetLeaderCharacter())
+        // 🔧 修改 - 避免与上方 TargetLeader 变量遮蔽
+        if (AXBCharacterBase* TargetSoldierLeader = TargetSoldier->GetLeaderCharacter())
         {
-            LastAttackedEnemyLeader = TargetLeader;
+            LastAttackedEnemyLeader = TargetSoldierLeader;
         }
         // ?? ?? - ????????????
         bHasLastAttackedEnemyFaction = true;
