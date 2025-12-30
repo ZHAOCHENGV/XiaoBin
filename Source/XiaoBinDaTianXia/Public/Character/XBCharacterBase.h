@@ -29,6 +29,7 @@ class UDataTable;
 struct FXBSoldierTableRow;
 class AXBSoldierCharacter;
 class UAnimMontage;
+class USkeletalMesh;
 class UXBWorldHealthBarComponent;
 class UXBMagnetFieldComponent;
 class UXBFormationComponent;
@@ -218,6 +219,12 @@ public:
     UFUNCTION(BlueprintPure, Category = "战斗")
     bool IsInCombat() const { return bIsInCombat; }
 
+    UFUNCTION(BlueprintPure, Category = "战斗", meta = (DisplayName = "战斗中有敌人"))
+    bool HasEnemiesInCombat() const { return bHasEnemiesInCombat; }
+
+    UFUNCTION(BlueprintCallable, Category = "战斗", meta = (DisplayName = "设置战斗敌人状态"))
+    void SetHasEnemiesInCombat(bool bInCombat);
+
     UFUNCTION(BlueprintCallable, Category = "战斗")
     virtual void OnAttackHit(AActor* HitTarget);
 
@@ -227,6 +234,22 @@ public:
     // 🔧 修改 - 记录主将最近攻击到的敌方阵营，用于士兵优先选敌
     UFUNCTION(BlueprintPure, Category = "战斗", meta = (DisplayName = "获取最近攻击的敌方阵营"))
     bool GetLastAttackedEnemyFaction(EXBFaction& OutFaction) const;
+
+    /**
+     * @brief  设置草丛隐身状态
+     * @param  bHidden 是否隐身
+     * @note   详细流程分析: 更新自身隐身状态 -> 设置半透明 -> 调整碰撞 -> 同步所有士兵
+     *         性能/架构注意事项: 仅在状态变化时执行，避免重复刷新材质
+     */
+    UFUNCTION(BlueprintCallable, Category = "草丛", meta = (DisplayName = "设置草丛隐身"))
+    void SetHiddenInBush(bool bHidden);
+
+    /**
+     * @brief  是否处于草丛隐身
+     * @return 是否隐身
+     */
+    UFUNCTION(BlueprintPure, Category = "草丛", meta = (DisplayName = "是否草丛隐身"))
+    bool IsHiddenInBush() const { return bIsHiddenInBush; }
 
     UFUNCTION(BlueprintPure, Category = "移动", meta = (DisplayName = "是否正在冲刺"))
     bool IsSprinting() const { return bIsSprinting; }
@@ -380,6 +403,26 @@ protected:
     UPROPERTY(BlueprintReadOnly, Category = "成长")
     FXBGrowthConfigCache GrowthConfigCache;
 
+    UPROPERTY(BlueprintReadOnly, Category = "战斗", meta = (DisplayName = "战斗中有敌人"))
+    bool bHasEnemiesInCombat = false;
+
+    // ==================== 草丛隐身 ====================
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "草丛", meta = (DisplayName = "草丛透明度", ClampMin = "0.0", ClampMax = "1.0"))
+    float BushOpacity = 0.35f;
+
+    UPROPERTY(BlueprintReadOnly, Category = "草丛", meta = (DisplayName = "是否草丛隐身"))
+    bool bIsHiddenInBush = false;
+
+    UPROPERTY()
+    bool bCachedBushCollisionResponse = false;
+
+    UPROPERTY()
+    TEnumAsByte<ECollisionResponse> CachedLeaderCollisionResponse = ECR_Block;
+
+    UPROPERTY()
+    TEnumAsByte<ECollisionResponse> CachedSoldierCollisionResponse = ECR_Block;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "掉落", meta = (DisplayName = "士兵掉落配置"))
     FXBSoldierDropConfig SoldierDropConfig;
 
@@ -396,6 +439,9 @@ protected:
 
     // ==================== 死亡系统 ====================
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "视觉", meta = (DisplayName = "动画蓝图类"))
+    TSubclassOf<UAnimInstance> AnimClass;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "死亡", meta = (DisplayName = "死亡蒙太奇"))
     TObjectPtr<UAnimMontage> DeathMontage;
 
@@ -404,6 +450,9 @@ protected:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "死亡", meta = (DisplayName = "蒙太奇结束后开始计时"))
     bool bDelayAfterMontage = true;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "死亡", meta = (DisplayName = "死亡缩放比例", ClampMin = "0.1"))
+    float DeathScale = 0.2f;
 
     UPROPERTY(BlueprintReadOnly, Category = "死亡")
     bool bIsDead = false;
@@ -436,7 +485,17 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "战斗", meta = (DisplayName = "战斗超时时间"))
     float CombatTimeoutDuration = 999.0f;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "战斗", meta = (DisplayName = "无敌人脱战延迟", ClampMin = "0.0"))
+    float NoEnemyDisengageDelay = 3.0f;
+
     FTimerHandle CombatTimeoutHandle;
+
+    FTimerHandle NoEnemyDisengageHandle;
+
+public:
+    void ScheduleNoEnemyDisengage();
+
+    void CancelNoEnemyDisengage();
 
 private:
     UFUNCTION()

@@ -21,6 +21,7 @@
 #include "AN_XBSpawnAbility.generated.h"
 
 class UNiagaraSystem;
+class AXBProjectile;
 
 /**
  * @brief 技能释放动画通知
@@ -78,4 +79,14 @@ protected:
     /** 事件附带的额外数据（可选） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "技能", meta = (DisplayName = "事件数值"))
     float EventMagnitude = 0.0f;
+
+    // ==================== ✨ 新增：弓手投射物 ====================
+
+    /** 弓手投射物类（覆盖数据表配置） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", meta = (DisplayName = "投射物类"))
+    TSubclassOf<AXBProjectile> ProjectileClassOverride;
+
+    /** 是否优先使用对象池 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", meta = (DisplayName = "使用对象池"))
+    bool bUseProjectilePool = true;
 };
