@@ -115,10 +115,6 @@ struct XIAOBINDATIANXIA_API FXBProjectileConfig
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", meta = (DisplayName = "投射物类"))
     TSubclassOf<AXBProjectile> ProjectileClass;
 
-    /** @brief 投射物伤害 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", meta = (DisplayName = "投射物伤害", ClampMin = "0.0"))
-    float Damage = 10.0f;
-
     /** @brief 发射速度 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", meta = (DisplayName = "发射速度", ClampMin = "0.0"))
     float Speed = 1200.0f;

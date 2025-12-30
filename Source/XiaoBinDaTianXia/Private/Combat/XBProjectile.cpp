@@ -110,7 +110,9 @@ void AXBProjectile::InitializeProjectileWithTarget(AActor* InSourceActor, float 
 
             if (bHasSolution)
             {
+                // 🔧 修改 - 在解算基础上增加上抛速度，确保可调节抛物线高度
                 Velocity = SuggestedVelocity;
+                Velocity.Z += ArcLaunchSpeed;
             }
             else
             {
