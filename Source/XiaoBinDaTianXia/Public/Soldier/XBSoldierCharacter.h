@@ -565,9 +565,6 @@ protected:
 
     // ==================== 草丛隐身 ====================
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "草丛", meta = (DisplayName = "草丛透明度", ClampMin = "0.0", ClampMax = "1.0"))
-    float BushOpacity = 0.35f;
-
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "草丛", meta = (DisplayName = "草丛覆层材质"))
     TObjectPtr<UMaterialInterface> BushOverlayMaterial;
 

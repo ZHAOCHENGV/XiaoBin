@@ -2114,16 +2114,12 @@ void AXBSoldierCharacter::SetHiddenInBush(bool bEnableHidden)
             {
                 MeshComp->SetOverlayMaterial(BushOverlayMaterial);
             }
-            else
-            {
-                const float TargetOpacity = BushOpacity;
-                MeshComp->SetScalarParameterValueOnMaterials(TEXT("Opacity"), TargetOpacity);
-            }
         }
         else
         {
-            MeshComp->SetOverlayMaterial(CachedOverlayMaterial);
-            MeshComp->SetScalarParameterValueOnMaterials(TEXT("Opacity"), 1.0f);
+            // 🔧 修改 - 离开草丛时清理覆层材质
+            MeshComp->SetOverlayMaterial(nullptr);
+            CachedOverlayMaterial = nullptr;
         }
     }
 
