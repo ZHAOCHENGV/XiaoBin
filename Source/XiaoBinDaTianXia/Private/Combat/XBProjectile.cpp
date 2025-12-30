@@ -26,6 +26,12 @@ AXBProjectile::AXBProjectile()
 {
     PrimaryActorTick.bCanEverTick = false;
 
+    // 🔧 修改 - 以静态网格作为根组件，便于朝向与视觉对齐
+    MeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MeshComponent"));
+    MeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    RootComponent = MeshComponent;
+
+    // 🔧 修改 - 碰撞胶囊改为附加在网格下，随Actor旋转
     CollisionComponent = CreateDefaultSubobject<UCapsuleComponent>(TEXT("CollisionComponent"));
     CollisionComponent->InitCapsuleSize(12.0f, 24.0f);
     CollisionComponent->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
@@ -34,11 +40,7 @@ AXBProjectile::AXBProjectile()
     CollisionComponent->SetCollisionResponseToChannel(XBCollision::Soldier, ECR_Overlap);
     CollisionComponent->SetCollisionResponseToChannel(XBCollision::Leader, ECR_Overlap);
     CollisionComponent->SetGenerateOverlapEvents(true);
-    RootComponent = CollisionComponent;
-
-    MeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MeshComponent"));
-    MeshComponent->SetupAttachment(CollisionComponent);
-    MeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    CollisionComponent->SetupAttachment(MeshComponent);
 
     ProjectileMovementComponent = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileMovementComponent"));
     ProjectileMovementComponent->InitialSpeed = LinearSpeed;

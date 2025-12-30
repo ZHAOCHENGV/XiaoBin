@@ -662,8 +662,22 @@ void AXBCharacterBase::UpdateLeaderScale()
 {
     const float AdditionalScale = Soldiers.Num() * GrowthConfigCache.ScalePerSoldier;
     const float NewScale = FMath::Min(BaseScale + AdditionalScale, GrowthConfigCache.MaxScale);
+    // 🔧 修改 - 缩放前记录胶囊高度，保证缩放后脚底贴地
+    const float OldHalfHeight = GetCapsuleComponent() ? GetCapsuleComponent()->GetScaledCapsuleHalfHeight() : 0.0f;
 
     SetActorScale3D(FVector(NewScale));
+
+    // 🔧 修改 - 根据高度差调整位置，避免缩放导致角色悬空/穿地
+    if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+    {
+        const float NewHalfHeight = Capsule->GetScaledCapsuleHalfHeight();
+        const float HeightDelta = NewHalfHeight - OldHalfHeight;
+        if (!FMath::IsNearlyZero(HeightDelta))
+        {
+            const FVector AdjustedLocation = GetActorLocation() + FVector(0.0f, 0.0f, HeightDelta);
+            SetActorLocation(AdjustedLocation);
+        }
+    }
 
     if (AbilitySystemComponent)
     {
@@ -966,6 +980,11 @@ void AXBCharacterBase::OnAttackHit(AActor* HitTarget)
         // 🔧 修改 - 命中敌方士兵时取消脱战计时，保持战斗
         CancelNoEnemyDisengage();
         bHasEnemiesInCombat = true;
+        // 🔧 修改 - 若命中敌方士兵，优先锁定其所属主将，避免跨主将误选目标
+        if (AXBCharacterBase* TargetLeader = TargetSoldier->GetLeaderCharacter())
+        {
+            LastAttackedEnemyLeader = TargetLeader;
+        }
         // ?? ?? - ????????????
         bHasLastAttackedEnemyFaction = true;
         LastAttackedEnemyFaction = TargetSoldier->GetFaction();
@@ -1052,9 +1071,7 @@ void AXBCharacterBase::HandleDeath()
         Capsule->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     }
 
-    // 🔧 修改 - 死亡后缩小体型（用于尸体表现与路径通行）
-    SetActorScale3D(FVector(DeathScale));
-    UE_LOG(LogXBCharacter, Log, TEXT("%s: 死亡后缩放为 %.2f"), *GetName(), DeathScale);
+    // 🔧 修改 - 保持死亡时当前缩放，避免死亡瞬间体型变化
 
     if (AbilitySystemComponent)
     {

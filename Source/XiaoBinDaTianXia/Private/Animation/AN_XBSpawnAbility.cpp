@@ -98,6 +98,11 @@ void UAN_XBSpawnAbility::Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceB
     {
         if (Soldier->GetSoldierType() == EXBSoldierType::Archer)
         {
+            // 🔧 修改 - 输出弓手发射流程关键日志，便于定位配置与目标问题
+            UE_LOG(LogXBCombat, Log, TEXT("弓手 %s 触发发射物通知，目标=%s"), 
+                *Soldier->GetName(),
+                Soldier->CurrentAttackTarget.IsValid() ? *Soldier->CurrentAttackTarget->GetName() : TEXT("无"));
+
             const FXBProjectileConfig ProjectileConfig = Soldier->GetProjectileConfig();
             TSubclassOf<AXBProjectile> ProjectileClass = ProjectileClassOverride ? ProjectileClassOverride : ProjectileConfig.ProjectileClass;
 
@@ -143,8 +148,16 @@ void UAN_XBSpawnAbility::Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceB
                         SpawnRotation = ShootDirection.Rotation();
                         Projectile->SetActorRotation(SpawnRotation);
                     }
+                    else
+                    {
+                        UE_LOG(LogXBCombat, Warning, TEXT("弓手 %s 发射失败：没有有效目标，使用默认朝向"), *Soldier->GetName());
+                    }
 
                     Projectile->InitializeProjectile(OwnerActor, Projectile->Damage, ShootDirection, ProjectileConfig.Speed, ProjectileConfig.bUseArc);
+                    UE_LOG(LogXBCombat, Log, TEXT("弓手 %s 发射物生成成功，类=%s 伤害=%.1f"), 
+                        *Soldier->GetName(),
+                        ProjectileClass ? *ProjectileClass->GetName() : TEXT("未知"),
+                        Projectile->Damage);
                 }
             }
         }
