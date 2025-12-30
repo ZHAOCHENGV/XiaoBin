@@ -43,6 +43,7 @@ class UNiagaraSystem;
 class UAbilitySystemComponent;
 class UXBAbilitySystemComponent;
 class UGameplayAbility;
+class UMaterialInterface;
 
 // ============================================
 // 委托声明
@@ -567,6 +568,9 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "草丛", meta = (DisplayName = "草丛透明度", ClampMin = "0.0", ClampMax = "1.0"))
     float BushOpacity = 0.35f;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "草丛", meta = (DisplayName = "草丛覆层材质"))
+    TObjectPtr<UMaterialInterface> BushOverlayMaterial;
+
     UPROPERTY(BlueprintReadOnly, Category = "草丛", meta = (DisplayName = "是否草丛隐身"))
     bool bIsHiddenInBush = false;
 
@@ -578,6 +582,9 @@ protected:
 
     UPROPERTY()
     TEnumAsByte<ECollisionResponse> CachedSoldierCollisionResponse = ECR_Block;
+
+    UPROPERTY()
+    TObjectPtr<UMaterialInterface> CachedOverlayMaterial;
 
     UPROPERTY(BlueprintReadOnly, Category = "状态")
     bool bIsPooledSoldier = false;

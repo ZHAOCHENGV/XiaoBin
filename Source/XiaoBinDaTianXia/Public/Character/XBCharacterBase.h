@@ -33,6 +33,7 @@ class USkeletalMesh;
 class UXBWorldHealthBarComponent;
 class UXBMagnetFieldComponent;
 class UXBFormationComponent;
+class UMaterialInterface;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCharacterDeath, AXBCharacterBase*, DeadCharacter);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCombatStateChanged, bool, bInCombat);
@@ -411,6 +412,9 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "草丛", meta = (DisplayName = "草丛透明度", ClampMin = "0.0", ClampMax = "1.0"))
     float BushOpacity = 0.35f;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "草丛", meta = (DisplayName = "草丛覆层材质"))
+    TObjectPtr<UMaterialInterface> BushOverlayMaterial;
+
     UPROPERTY(BlueprintReadOnly, Category = "草丛", meta = (DisplayName = "是否草丛隐身"))
     bool bIsHiddenInBush = false;
 
@@ -422,6 +426,9 @@ protected:
 
     UPROPERTY()
     TEnumAsByte<ECollisionResponse> CachedSoldierCollisionResponse = ECR_Block;
+
+    UPROPERTY()
+    TObjectPtr<UMaterialInterface> CachedOverlayMaterial;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "掉落", meta = (DisplayName = "士兵掉落配置"))
     FXBSoldierDropConfig SoldierDropConfig;

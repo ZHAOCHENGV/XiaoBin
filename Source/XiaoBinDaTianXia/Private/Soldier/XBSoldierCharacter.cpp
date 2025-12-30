@@ -2103,8 +2103,28 @@ void AXBSoldierCharacter::SetHiddenInBush(bool bEnableHidden)
 
     if (USkeletalMeshComponent* MeshComp = GetMesh())
     {
-        const float TargetOpacity = bEnableHidden ? BushOpacity : 1.0f;
-        MeshComp->SetScalarParameterValueOnMaterials(TEXT("Opacity"), TargetOpacity);
+        if (!CachedOverlayMaterial)
+        {
+            CachedOverlayMaterial = MeshComp->GetOverlayMaterial();
+        }
+
+        if (bEnableHidden)
+        {
+            if (BushOverlayMaterial)
+            {
+                MeshComp->SetOverlayMaterial(BushOverlayMaterial);
+            }
+            else
+            {
+                const float TargetOpacity = BushOpacity;
+                MeshComp->SetScalarParameterValueOnMaterials(TEXT("Opacity"), TargetOpacity);
+            }
+        }
+        else
+        {
+            MeshComp->SetOverlayMaterial(CachedOverlayMaterial);
+            MeshComp->SetScalarParameterValueOnMaterials(TEXT("Opacity"), 1.0f);
+        }
     }
 
     if (UCapsuleComponent* Capsule = GetCapsuleComponent())

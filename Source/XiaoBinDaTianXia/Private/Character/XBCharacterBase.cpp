@@ -1036,11 +1036,31 @@ void AXBCharacterBase::SetHiddenInBush(bool bEnableHidden)
 
     bIsHiddenInBush = bEnableHidden;
 
-    // 🔧 修改 - 设置半透明效果（依赖材质参数）
+    // 🔧 修改 - 设置覆层材质（草丛半透明效果）
     if (USkeletalMeshComponent* MeshComp = GetMesh())
     {
-        const float TargetOpacity = bEnableHidden ? BushOpacity : 1.0f;
-        MeshComp->SetScalarParameterValueOnMaterials(TEXT("Opacity"), TargetOpacity);
+        if (!CachedOverlayMaterial)
+        {
+            CachedOverlayMaterial = MeshComp->GetOverlayMaterial();
+        }
+
+        if (bEnableHidden)
+        {
+            if (BushOverlayMaterial)
+            {
+                MeshComp->SetOverlayMaterial(BushOverlayMaterial);
+            }
+            else
+            {
+                const float TargetOpacity = BushOpacity;
+                MeshComp->SetScalarParameterValueOnMaterials(TEXT("Opacity"), TargetOpacity);
+            }
+        }
+        else
+        {
+            MeshComp->SetOverlayMaterial(CachedOverlayMaterial);
+            MeshComp->SetScalarParameterValueOnMaterials(TEXT("Opacity"), 1.0f);
+        }
     }
 
     // 🔧 修改 - 关闭与敌人的碰撞（简化为忽略Leader/Soldier通道）
@@ -1064,6 +1084,12 @@ void AXBCharacterBase::SetHiddenInBush(bool bEnableHidden)
     {
         if (Soldier && Soldier->GetSoldierState() != EXBSoldierState::Dead)
         {
+            // 🔧 修改 - 草丛隐身时强制士兵脱离战斗并回归跟随
+            if (bEnableHidden && Soldier->GetSoldierState() == EXBSoldierState::Combat)
+            {
+                Soldier->ExitCombat();
+                Soldier->ReturnToFormation();
+            }
             Soldier->SetHiddenInBush(bEnableHidden);
         }
     }
