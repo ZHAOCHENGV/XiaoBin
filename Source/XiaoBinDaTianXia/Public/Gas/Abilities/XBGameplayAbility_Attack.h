@@ -18,6 +18,8 @@
 #include "GAS/Abilities/XBGameplayAbility.h"
 #include "XBGameplayAbility_Attack.generated.h"
 
+class UGameplayEffect;
+
 /**
  * @brief 将领普攻技能类
  */
@@ -45,5 +47,7 @@ public:
         bool bWasCancelled) override;
 
 protected:
-  
+    /** @brief 伤害GE（用于触发GAS伤害流程） */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "伤害", meta = (DisplayName = "伤害Effect"))
+    TSubclassOf<UGameplayEffect> DamageEffectClass;
 };

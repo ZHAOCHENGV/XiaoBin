@@ -32,6 +32,7 @@
 #include "BehaviorTree/BehaviorTree.h"
 #include "BehaviorTree/BlackboardComponent.h"
 #include "Engine/DataTable.h"
+#include "Combat/XBProjectilePoolSubsystem.h"
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimSequence.h"
 #include "NiagaraComponent.h"
@@ -40,6 +41,8 @@
 #include "DrawDebugHelpers.h"
 #include "TimerManager.h"
 #include "XBCollisionChannels.h"
+#include "GAS/XBAbilitySystemComponent.h"
+#include "GAS/Abilities/XBGameplayAbility_Attack.h"
 
 AXBSoldierCharacter::AXBSoldierCharacter()
 {
@@ -67,6 +70,10 @@ AXBSoldierCharacter::AXBSoldierCharacter()
     FollowComponent = CreateDefaultSubobject<UXBSoldierFollowComponent>(TEXT("FollowComponent"));
     DebugComponent = CreateDefaultSubobject<UXBSoldierDebugComponent>(TEXT("DebugComponent"));
     BehaviorInterface = CreateDefaultSubobject<UXBSoldierBehaviorInterface>(TEXT("BehaviorInterface"));
+
+    // ✨ 新增 - 士兵ASC用于近战Tag触发GA
+    AbilitySystemComponent = CreateDefaultSubobject<UXBAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
+    MeleeHitAbilityClass = UXBGameplayAbility_Attack::StaticClass();
     
     ZzzEffectComponent = CreateDefaultSubobject<UNiagaraComponent>(TEXT("ZzzEffectComponent"));
     ZzzEffectComponent->SetupAttachment(RootComponent);
@@ -118,6 +125,17 @@ void AXBSoldierCharacter::BeginPlay()
 {
     Super::BeginPlay();
 
+    // 🔧 修改 - 初始化ASC信息，确保GA可被触发
+    if (AbilitySystemComponent)
+    {
+        AbilitySystemComponent->InitAbilityActorInfo(this, this);
+    }
+
+    // 🔧 修改 - 使用数据表配置刷新近战GA
+    RefreshMeleeHitAbilityFromData();
+
+    // 🔧 修改 - 近战GA授予由 RefreshMeleeHitAbilityFromData 统一处理
+
     if (!ZzzEffectAsset.IsNull() && ZzzEffectComponent)
     {
         if (UNiagaraSystem* LoadedEffect = ZzzEffectAsset.LoadSynchronous())
@@ -162,6 +180,60 @@ void AXBSoldierCharacter::BeginPlay()
         static_cast<int32>(Faction), 
         static_cast<int32>(CurrentState),
         bStartAsDormant ? TEXT("是") : TEXT("否"));
+}
+
+UAbilitySystemComponent* AXBSoldierCharacter::GetAbilitySystemComponent() const
+{
+    return AbilitySystemComponent;
+}
+
+void AXBSoldierCharacter::RefreshMeleeHitAbilityFromData()
+{
+    if (!IsDataAccessorValid())
+    {
+        UE_LOG(LogXBSoldier, Warning, TEXT("刷新近战GA失败：DataAccessor无效，Soldier=%s"), *GetName());
+        return;
+    }
+
+    // 🔧 修改 - 从数据表读取普攻GA作为近战命中GA
+    const TSubclassOf<UGameplayAbility> DataAttackGA = DataAccessor->GetRawData().BasicAttack.AbilityClass;
+    if (DataAttackGA)
+    {
+        MeleeHitAbilityClass = DataAttackGA;
+        UE_LOG(LogXBSoldier, Log, TEXT("读取数据表近战GA成功: %s, Soldier=%s"),
+            *MeleeHitAbilityClass->GetName(), *GetName());
+    }
+    else
+    {
+        UE_LOG(LogXBSoldier, Warning, TEXT("数据表未配置近战GA，Soldier=%s"), *GetName());
+    }
+
+    if (!AbilitySystemComponent)
+    {
+        UE_LOG(LogXBSoldier, Warning, TEXT("刷新近战GA失败：ASC无效，Soldier=%s"), *GetName());
+        return;
+    }
+
+    AbilitySystemComponent->InitAbilityActorInfo(this, this);
+
+    if (!HasAuthority() || !MeleeHitAbilityClass)
+    {
+        UE_LOG(LogXBSoldier, Verbose, TEXT("刷新近战GA跳过：无权限或GA无效，Soldier=%s"), *GetName());
+        return;
+    }
+
+    if (!AbilitySystemComponent->FindAbilitySpecFromClass(MeleeHitAbilityClass))
+    {
+        FGameplayAbilitySpec HitSpec(MeleeHitAbilityClass, 1, INDEX_NONE, this);
+        AbilitySystemComponent->GiveAbility(HitSpec);
+        UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 刷新近战GA: %s"),
+            *GetName(), *MeleeHitAbilityClass->GetName());
+    }
+    else
+    {
+        UE_LOG(LogXBSoldier, Verbose, TEXT("士兵 %s 已拥有近战GA: %s"),
+            *GetName(), *MeleeHitAbilityClass->GetName());
+    }
 }
 
 void AXBSoldierCharacter::Tick(float DeltaTime)
@@ -1143,6 +1215,28 @@ void AXBSoldierCharacter::InitializeFromDataTable(UDataTable* DataTable, FName R
     Faction = InFaction;
     CurrentHealth = DataAccessor->GetMaxHealth();
 
+    // 🔧 修改 - 弓手初始化发射物配置，便于动画通知读取
+    if (SoldierType == EXBSoldierType::Archer)
+    {
+        ProjectileConfig = DataAccessor->GetProjectileConfig();
+        UE_LOG(LogXBSoldier, Log, TEXT("弓手 %s 载入发射物配置，投射物类=%s"),
+            *GetName(),
+            ProjectileConfig.ProjectileClass ? *ProjectileConfig.ProjectileClass->GetName() : TEXT("未配置"));
+
+        // ✨ 新增 - 预加载弓手投射物到对象池
+        if (ProjectileConfig.ProjectileClass && GetWorld())
+        {
+            if (UXBProjectilePoolSubsystem* PoolSubsystem = GetWorld()->GetSubsystem<UXBProjectilePoolSubsystem>())
+            {
+                PoolSubsystem->PrewarmProjectiles(ProjectileConfig.ProjectileClass, ProjectileConfig.PreloadCount);
+            }
+        }
+    }
+    else
+    {
+        ProjectileConfig = FXBProjectileConfig();
+    }
+
     if (UCharacterMovementComponent* MovementComp = GetCharacterMovement())
     {
         MovementComp->MaxWalkSpeed = DataAccessor->GetMoveSpeed();
@@ -1156,6 +1250,9 @@ void AXBSoldierCharacter::InitializeFromDataTable(UDataTable* DataTable, FName R
 
     BehaviorTreeAsset = DataAccessor->GetBehaviorTree();
     ApplyVisualConfig();
+
+    // 🔧 修改 - 数据表初始化完成后刷新近战GA配置
+    RefreshMeleeHitAbilityFromData();
 
     UE_LOG(LogXBSoldier, Log, TEXT("士兵初始化成功: %s (类型=%s, 血量=%.1f)"), 
         *RowName.ToString(),
@@ -1218,7 +1315,19 @@ float AXBSoldierCharacter::GetAttackRange() const
 
 float AXBSoldierCharacter::GetAttackInterval() const
 {
-    return IsDataAccessorValid() ? DataAccessor->GetAttackInterval() : 1.0f;
+    if (!IsDataAccessorValid())
+    {
+        return 1.0f;
+    }
+
+    // 🔧 修改 - 优先使用数据表中普攻Cooldown，避免AttackInterval与技能冷却语义冲突
+    const float BasicAttackCooldown = DataAccessor->GetBasicAttackCooldown();
+    if (BasicAttackCooldown > 0.0f)
+    {
+        return BasicAttackCooldown;
+    }
+
+    return DataAccessor->GetAttackInterval();
 }
 
 float AXBSoldierCharacter::GetMoveSpeed() const
@@ -1546,6 +1655,16 @@ void AXBSoldierCharacter::SetSoldierState(EXBSoldierState NewState)
 
     EXBSoldierState OldState = CurrentState;
     CurrentState = NewState;
+
+    // 🔧 修改 - 跟随状态下强制关闭行为树，避免非战斗逻辑运行
+    if (NewState == EXBSoldierState::Following)
+    {
+        if (AXBSoldierAIController* SoldierAI = Cast<AXBSoldierAIController>(GetController()))
+        {
+            SoldierAI->StopBehaviorTreeLogic();
+            UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 跟随状态停止行为树"), *GetName());
+        }
+    }
 
     if (AAIController* AICtrl = Cast<AAIController>(GetController()))
     {
@@ -1965,6 +2084,62 @@ void AXBSoldierCharacter::ResetForPooling()
     GetWorldTimerManager().ClearTimer(DelayedAIStartTimerHandle);
 
     UE_LOG(LogXBSoldier, Verbose, TEXT("士兵 %s 状态已重置，进入池化休眠"), *GetName());
+}
+
+/**
+ * @brief  设置草丛隐身状态
+ * @param  bHidden 是否隐身
+ * @note   详细流程分析: 设置半透明 -> 调整碰撞通道
+ *         性能/架构注意事项: 仅在状态变化时执行，避免材质频繁更新
+ */
+void AXBSoldierCharacter::SetHiddenInBush(bool bEnableHidden)
+{
+    if (bIsHiddenInBush == bEnableHidden)
+    {
+        return;
+    }
+
+    bIsHiddenInBush = bEnableHidden;
+
+    if (USkeletalMeshComponent* MeshComp = GetMesh())
+    {
+        if (!CachedOverlayMaterial)
+        {
+            CachedOverlayMaterial = MeshComp->GetOverlayMaterial();
+        }
+
+        if (bEnableHidden)
+        {
+            if (BushOverlayMaterial)
+            {
+                MeshComp->SetOverlayMaterial(BushOverlayMaterial);
+            }
+        }
+        else
+        {
+            // 🔧 修改 - 离开草丛时清理覆层材质
+            MeshComp->SetOverlayMaterial(nullptr);
+            CachedOverlayMaterial = nullptr;
+        }
+    }
+
+    if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+    {
+        if (!bCachedBushCollisionResponse)
+        {
+            CachedLeaderCollisionResponse = Capsule->GetCollisionResponseToChannel(XBCollision::Leader);
+            CachedSoldierCollisionResponse = Capsule->GetCollisionResponseToChannel(XBCollision::Soldier);
+            bCachedBushCollisionResponse = true;
+        }
+
+        Capsule->SetCollisionResponseToChannel(XBCollision::Leader,
+            bEnableHidden ? ECR_Ignore : CachedLeaderCollisionResponse.GetValue());
+        Capsule->SetCollisionResponseToChannel(XBCollision::Soldier,
+            bEnableHidden ? ECR_Ignore : CachedSoldierCollisionResponse.GetValue());
+    }
+
+    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 草丛隐身状态=%s"),
+        *GetName(), bEnableHidden ? TEXT("开启") : TEXT("关闭"));
 }
 
 // ==================== 死亡系统 ====================
