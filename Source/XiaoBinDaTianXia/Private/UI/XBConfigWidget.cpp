@@ -63,9 +63,22 @@ bool UXBConfigWidget::SaveConfig()
         return false;
     }
 
-    // 🔧 修改 - 保存配置到存档
-    GameInstance->SetGameConfig(ConfigData, true);
-    return true;
+    // 🔧 修改 - 默认保存到槽位 0（兼容旧存档）
+    return SaveConfigToSlot(0);
+}
+
+bool UXBConfigWidget::SaveConfigToSlot(int32 SlotIndex)
+{
+    UXBGameInstance* GameInstance = GetGameInstance<UXBGameInstance>();
+    if (!GameInstance)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("配置界面保存失败：GameInstance 为空"));
+        return false;
+    }
+
+    // ✨ 新增 - 先写入配置，再保存到指定槽位
+    GameInstance->SetGameConfig(ConfigData, false);
+    return GameInstance->SaveGameConfig(SlotIndex);
 }
 
 bool UXBConfigWidget::LoadConfig()
@@ -77,8 +90,21 @@ bool UXBConfigWidget::LoadConfig()
         return false;
     }
 
-    // 🔧 修改 - 读取存档并刷新数据
-    const bool bLoaded = GameInstance->LoadGameConfig(0);
+    // 🔧 修改 - 默认读取槽位 0（兼容旧存档）
+    return LoadConfigFromSlot(0);
+}
+
+bool UXBConfigWidget::LoadConfigFromSlot(int32 SlotIndex)
+{
+    UXBGameInstance* GameInstance = GetGameInstance<UXBGameInstance>();
+    if (!GameInstance)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("配置界面读取失败：GameInstance 为空"));
+        return false;
+    }
+
+    // ✨ 新增 - 读取指定槽位并刷新数据
+    const bool bLoaded = GameInstance->LoadGameConfig(SlotIndex);
     RefreshConfigFromSave();
     return bLoaded;
 }

@@ -64,11 +64,29 @@ public:
     bool SaveConfig();
 
     /**
+     * @brief  保存配置数据到指定槽位
+     * @param  SlotIndex 存档槽位索引
+     * @return 是否保存成功
+     * @note   详细流程分析: 调用 GameInstance 存档接口 -> 写入指定槽位
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Config", meta = (DisplayName = "保存配置到指定槽位"))
+    bool SaveConfigToSlot(int32 SlotIndex);
+
+    /**
      * @brief  读取配置数据
      * @return 是否读取成功
      */
     UFUNCTION(BlueprintCallable, Category = "XB|Config", meta = (DisplayName = "读取配置"))
     bool LoadConfig();
+
+    /**
+     * @brief  从指定槽位读取配置数据
+     * @param  SlotIndex 存档槽位索引
+     * @return 是否读取成功
+     * @note   详细流程分析: 调用 GameInstance 读取接口 -> 同步 UI 配置
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Config", meta = (DisplayName = "读取指定槽位配置"))
+    bool LoadConfigFromSlot(int32 SlotIndex);
 
     /**
      * @brief  重置为默认配置

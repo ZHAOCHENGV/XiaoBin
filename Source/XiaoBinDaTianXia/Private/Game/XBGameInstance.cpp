@@ -39,6 +39,13 @@ void UXBGameInstance::InitializeGameplayTags()
 
 bool UXBGameInstance::SaveGameConfig(int32 SlotIndex)
 {
+	// 🔧 修改 - 增加槽位合法性校验，支持多存档保存
+	if (!IsValidConfigSlotIndex(SlotIndex))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("保存配置失败：存档槽位索引非法，SlotIndex=%d"), SlotIndex);
+		return false;
+	}
+
 	EnsureSaveGameInstance();
 
 	if (!CurrentSaveGame)
@@ -49,13 +56,20 @@ bool UXBGameInstance::SaveGameConfig(int32 SlotIndex)
 
 
     
-	FString SlotName = FString::Printf(TEXT("XBConfig_%d"), SlotIndex);
+	FString SlotName = BuildConfigSlotName(SlotIndex);
 	return UGameplayStatics::SaveGameToSlot(CurrentSaveGame, SlotName, 0);
 }
 
 bool UXBGameInstance::LoadGameConfig(int32 SlotIndex)
 {
-	FString SlotName = FString::Printf(TEXT("XBConfig_%d"), SlotIndex);
+	// 🔧 修改 - 增加槽位合法性校验，支持多存档加载
+	if (!IsValidConfigSlotIndex(SlotIndex))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("加载配置失败：存档槽位索引非法，SlotIndex=%d"), SlotIndex);
+		return false;
+	}
+
+	FString SlotName = BuildConfigSlotName(SlotIndex);
     
 	if (UGameplayStatics::DoesSaveGameExist(SlotName, 0))
 	{
@@ -87,6 +101,36 @@ bool UXBGameInstance::LoadSceneLayout(int32 SlotIndex)
 {
 	// TODO: 实现场景摆放加载
 	return false;
+}
+
+int32 UXBGameInstance::GetMaxConfigSaveSlots() const
+{
+	// ✨ 新增 - 对外提供配置存档槽位上限
+	return MaxConfigSaveSlots;
+}
+
+TArray<int32> UXBGameInstance::GetAllConfigSlotIndices() const
+{
+	// ✨ 新增 - 生成可用槽位列表（1~Max）
+	TArray<int32> SlotIndices;
+	for (int32 Index = 1; Index <= MaxConfigSaveSlots; ++Index)
+	{
+		SlotIndices.Add(Index);
+	}
+	return SlotIndices;
+}
+
+bool UXBGameInstance::DoesGameConfigExist(int32 SlotIndex) const
+{
+	// ✨ 新增 - 查询指定配置存档是否存在
+	if (!IsValidConfigSlotIndex(SlotIndex))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("查询配置存档失败：存档槽位索引非法，SlotIndex=%d"), SlotIndex);
+		return false;
+	}
+
+	const FString SlotName = BuildConfigSlotName(SlotIndex);
+	return UGameplayStatics::DoesSaveGameExist(SlotName, 0);
 }
 
 FXBGameConfigData UXBGameInstance::GetGameConfig() const
@@ -190,4 +234,16 @@ void UXBGameInstance::EnsureSaveGameInstance()
 		CurrentSaveGame = Cast<UXBSaveGame>(
 			UGameplayStatics::CreateSaveGameObject(UXBSaveGame::StaticClass()));
 	}
+}
+
+bool UXBGameInstance::IsValidConfigSlotIndex(int32 SlotIndex) const
+{
+	// ✨ 新增 - 允许旧版默认槽位 0，同时支持 1~MaxConfigSaveSlots
+	return SlotIndex >= 0 && SlotIndex <= MaxConfigSaveSlots;
+}
+
+FString UXBGameInstance::BuildConfigSlotName(int32 SlotIndex) const
+{
+	// ✨ 新增 - 统一配置存档命名，便于多存档扩展
+	return FString::Printf(TEXT("XBConfig_%d"), SlotIndex);
 }
