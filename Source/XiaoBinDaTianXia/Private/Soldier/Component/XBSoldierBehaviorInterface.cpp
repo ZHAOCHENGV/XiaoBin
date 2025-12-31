@@ -749,6 +749,16 @@ EXBBehaviorResult UXBSoldierBehaviorInterface::ExecuteAttack(AActor* Target)
         return EXBBehaviorResult::Failed;
     }
 
+    // 🔧 修改 - 主将在草丛中时禁止攻击，保持跟随
+    if (AXBCharacterBase* Leader = Soldier->GetLeaderCharacter())
+    {
+        if (Leader->IsHiddenInBush())
+        {
+            Soldier->ReturnToFormation();
+            return EXBBehaviorResult::Failed;
+        }
+    }
+
     // 检查是否可以攻击
     if (!CanAttack(Target))
     {

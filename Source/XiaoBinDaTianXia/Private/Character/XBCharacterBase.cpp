@@ -957,6 +957,11 @@ void AXBCharacterBase::OnAttackHit(AActor* HitTarget)
     AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(HitTarget);
     if (TargetLeader && IsHostileTo(TargetLeader))
     {
+        // 🔧 修改 - 草丛隐身目标不可被命中
+        if (TargetLeader->IsHiddenInBush())
+        {
+            return;
+        }
         // 🔧 修改 - 命中敌方主将时取消脱战计时，保持战斗
         CancelNoEnemyDisengage();
         bHasEnemiesInCombat = true;
@@ -977,6 +982,11 @@ void AXBCharacterBase::OnAttackHit(AActor* HitTarget)
     AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(HitTarget);
     if (TargetSoldier && UXBBlueprintFunctionLibrary::AreFactionsHostile(Faction, TargetSoldier->GetFaction()))
     {
+        // 🔧 修改 - 草丛隐身目标不可被命中
+        if (TargetSoldier->IsHiddenInBush())
+        {
+            return;
+        }
         // 🔧 修改 - 命中敌方士兵时取消脱战计时，保持战斗
         CancelNoEnemyDisengage();
         bHasEnemiesInCombat = true;

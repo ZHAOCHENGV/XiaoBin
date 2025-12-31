@@ -266,6 +266,11 @@ bool AXBProjectile::ApplyDamageToTarget(AActor* TargetActor, const FHitResult& H
 
     if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(TargetActor))
     {
+        // 🔧 修改 - 草丛隐身士兵不可被命中
+        if (TargetSoldier->IsHiddenInBush())
+        {
+            return false;
+        }
         float ActualDamage = TargetSoldier->TakeSoldierDamage(Damage, Source);
         UE_LOG(LogXBCombat, Log, TEXT("投射物命中士兵: %s, 伤害: %.1f, 实际: %.1f"),
             *TargetActor->GetName(), Damage, ActualDamage);
@@ -274,6 +279,11 @@ bool AXBProjectile::ApplyDamageToTarget(AActor* TargetActor, const FHitResult& H
 
     AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(TargetActor);
     if (!TargetLeader)
+    {
+        return false;
+    }
+    // 🔧 修改 - 草丛隐身主将不可被命中
+    if (TargetLeader->IsHiddenInBush())
     {
         return false;
     }

@@ -1684,6 +1684,17 @@ void AXBSoldierCharacter::SetSoldierState(EXBSoldierState NewState)
 
 void AXBSoldierCharacter::EnterCombat()
 {
+    // 🔧 修改 - 主将在草丛中时，士兵强制保持跟随状态
+    if (AXBCharacterBase* Leader = GetLeaderCharacter())
+    {
+        if (Leader->IsHiddenInBush())
+        {
+            ReturnToFormation();
+            UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 因主将草丛隐身，禁止进入战斗"), *GetName());
+            return;
+        }
+    }
+
     if (CurrentState == EXBSoldierState::Dead || CurrentState == EXBSoldierState::Dormant || CurrentState == EXBSoldierState::Dropping)
     {
         return;
@@ -1820,6 +1831,15 @@ bool AXBSoldierCharacter::PlayAttackMontage()
 
 bool AXBSoldierCharacter::CanAttack() const
 {
+    // 🔧 修改 - 主将在草丛中时，士兵不可攻击
+    if (const AXBCharacterBase* Leader = GetLeaderCharacter())
+    {
+        if (Leader->IsHiddenInBush())
+        {
+            return false;
+        }
+    }
+
     if (CurrentState == EXBSoldierState::Dead || CurrentState == EXBSoldierState::Dormant || CurrentState == EXBSoldierState::Dropping)
     {
         return false;

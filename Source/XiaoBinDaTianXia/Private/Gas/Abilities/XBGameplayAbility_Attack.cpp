@@ -95,6 +95,26 @@ void UXBGameplayAbility_Attack::ActivateAbility(const FGameplayAbilitySpecHandle
         return;
     }
 
+    // 🔧 修改 - 草丛隐身目标不可被锁定与伤害
+    if (const AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(TargetActor))
+    {
+        if (TargetLeader->IsHiddenInBush())
+        {
+            UE_LOG(LogTemp, Log, TEXT("普攻GA忽略草丛隐身主将: %s"), *TargetLeader->GetName());
+            EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+            return;
+        }
+    }
+    if (const AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(TargetActor))
+    {
+        if (TargetSoldier->IsHiddenInBush())
+        {
+            UE_LOG(LogTemp, Log, TEXT("普攻GA忽略草丛隐身士兵: %s"), *TargetSoldier->GetName());
+            EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+            return;
+        }
+    }
+
     // 🔧 修改 - 解析阵营并过滤非敌对目标
     EXBFaction SourceFaction = EXBFaction::Neutral;
     if (AXBSoldierCharacter* SourceSoldier = Cast<AXBSoldierCharacter>(SourceActor))
