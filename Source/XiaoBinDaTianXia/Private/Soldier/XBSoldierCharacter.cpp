@@ -2134,12 +2134,15 @@ void AXBSoldierCharacter::SetHiddenInBush(bool bEnableHidden)
             {
                 MeshComp->SetOverlayMaterial(BushOverlayMaterial);
             }
+            // 🔧 修改 - 草丛中对其他阵营不可见，统一隐藏网格
+            MeshComp->SetVisibility(false, true);
         }
         else
         {
             // 🔧 修改 - 离开草丛时清理覆层材质
             MeshComp->SetOverlayMaterial(nullptr);
             CachedOverlayMaterial = nullptr;
+            MeshComp->SetVisibility(true, true);
         }
     }
 
