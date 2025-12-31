@@ -35,6 +35,7 @@
 #include "Soldier/Component/XBSoldierPoolSubsystem.h"
 #include "AI/XBSoldierAIController.h"
 #include "Kismet/GameplayStatics.h"
+#include "Game/XBGameInstance.h"
 
 AXBCharacterBase::AXBCharacterBase()
 {
@@ -101,9 +102,25 @@ void AXBCharacterBase::BeginPlay()
         MagnetFieldComponent->SetFieldEnabled(true);
     }
 
+    // 🔧 修改 - 从全局配置覆盖主将行名，优先用户配置
+    if (UXBGameInstance* GameInstance = GetGameInstance<UXBGameInstance>())
+    {
+        const FXBGameConfigData GameConfig = GameInstance->GetGameConfig();
+        if (!GameConfig.LeaderConfigRowName.IsNone())
+        {
+            ConfigRowName = GameConfig.LeaderConfigRowName;
+        }
+    }
+
     if (ConfigDataTable && !ConfigRowName.IsNone())
     {
         InitializeFromDataTable(ConfigDataTable, ConfigRowName);
+    }
+
+    // 🔧 修改 - 统一应用运行时配置（倍率/掉落/招募/磁场）
+    if (UXBGameInstance* GameInstance = GetGameInstance<UXBGameInstance>())
+    {
+        ApplyRuntimeConfig(GameInstance->GetGameConfig(), true);
     }
 }
 
@@ -278,6 +295,151 @@ void AXBCharacterBase::ApplyInitialAttributes()
     AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetDamageMultiplierAttribute(), CachedLeaderData.DamageMultiplier);
     AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetMoveSpeedAttribute(), CachedLeaderData.MoveSpeed);
     AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetScaleAttribute(), CachedLeaderData.Scale);
+}
+
+void AXBCharacterBase::ApplyRuntimeConfig(const FXBGameConfigData& GameConfig, bool bApplyInitialSoldiers)
+{
+    // ==================== 主将配置覆盖 ====================
+    if (!GameConfig.LeaderDisplayName.IsEmpty())
+    {
+        CharacterName = GameConfig.LeaderDisplayName;
+        CachedLeaderData.LeaderName = FText::FromString(CharacterName);
+    }
+
+    // 🔧 修改 - 覆盖核心倍率（保持数据驱动）
+    CachedLeaderData.HealthMultiplier = GameConfig.LeaderHealthMultiplier;
+    CachedLeaderData.DamageMultiplier = GameConfig.LeaderDamageMultiplier;
+
+    if (GameConfig.LeaderMoveSpeed > 0.0f)
+    {
+        CachedLeaderData.MoveSpeed = GameConfig.LeaderMoveSpeed;
+    }
+
+    // 🔧 修改 - 冲刺倍率由配置直接覆盖
+    SprintSpeedMultiplier = GameConfig.LeaderSprintSpeedMultiplier;
+
+    // 🔧 修改 - 掉落数量由配置覆盖
+    SoldierDropConfig.DropCount = GameConfig.LeaderDeathDropCount;
+
+    // ==================== 招募/成长配置 ====================
+    if (!GameConfig.InitialSoldierRowName.IsNone())
+    {
+        RecruitSoldierRowName = GameConfig.InitialSoldierRowName;
+    }
+
+    GrowthConfigCache.ScalePerSoldier = GameConfig.SoldierScalePerRecruit;
+    GrowthConfigCache.HealthPerSoldier = GameConfig.SoldierHealthPerRecruit;
+
+    // ==================== 磁场配置 ====================
+    if (MagnetFieldComponent)
+    {
+        MagnetFieldComponent->SetFieldRadius(GameConfig.MagnetFieldRadius);
+    }
+
+    // ==================== 属性刷新 ====================
+    ApplyInitialAttributes();
+
+    // 🔧 修改 - 同步移动速度到移动组件
+    if (UCharacterMovementComponent* MovementComp = GetCharacterMovement())
+    {
+        MovementComp->MaxWalkSpeed = CachedLeaderData.MoveSpeed;
+        BaseMoveSpeed = CachedLeaderData.MoveSpeed;
+        TargetMoveSpeed = BaseMoveSpeed;
+    }
+
+    // 🔧 修改 - 根据新配置刷新成长效果
+    UpdateLeaderScale();
+    UpdateDamageMultiplier();
+
+    if (GrowthConfigCache.bEnableSkillEffectScaling)
+    {
+        UpdateSkillEffectScaling();
+    }
+
+    if (GrowthConfigCache.bEnableAttackRangeScaling)
+    {
+        UpdateAttackRangeScaling();
+    }
+
+    // ==================== 初始士兵 ====================
+    if (bApplyInitialSoldiers)
+    {
+        SpawnInitialSoldiers(GameConfig.InitialSoldierCount);
+    }
+}
+
+void AXBCharacterBase::SpawnInitialSoldiers(int32 DesiredCount)
+{
+    if (DesiredCount <= 0)
+    {
+        return;
+    }
+
+    const int32 MissingCount = FMath::Max(0, DesiredCount - Soldiers.Num());
+    if (MissingCount <= 0)
+    {
+        return;
+    }
+
+    if (!SoldierDataTable || RecruitSoldierRowName.IsNone())
+    {
+        UE_LOG(LogXBCharacter, Warning, TEXT("初始士兵生成失败：未配置士兵数据表或行名"));
+        return;
+    }
+
+    UWorld* World = GetWorld();
+    if (!World)
+    {
+        return;
+    }
+
+    UXBSoldierPoolSubsystem* PoolSubsystem = World->GetSubsystem<UXBSoldierPoolSubsystem>();
+    const FVector LeaderLocation = GetActorLocation();
+
+    for (int32 i = 0; i < MissingCount; ++i)
+    {
+        const float Angle = (360.0f / MissingCount) * i;
+        const float Distance = 150.0f;
+        const FVector Offset = FVector(
+            FMath::Cos(FMath::DegreesToRadians(Angle)) * Distance,
+            FMath::Sin(FMath::DegreesToRadians(Angle)) * Distance,
+            0.0f
+        );
+
+        const FVector SpawnLocation = LeaderLocation + Offset;
+        AXBSoldierCharacter* Soldier = nullptr;
+
+        if (PoolSubsystem)
+        {
+            Soldier = PoolSubsystem->AcquireSoldier(SpawnLocation, FRotator::ZeroRotator);
+        }
+
+        if (!Soldier)
+        {
+            // 🔧 修改 - 使用显式分支避免 TSubclassOf 与 UClass* 的三元表达式歧义
+            TSubclassOf<AXBSoldierCharacter> SpawnClass = SoldierActorClass;
+            if (!SpawnClass)
+            {
+                SpawnClass = AXBSoldierCharacter::StaticClass();
+            }
+
+            Soldier = World->SpawnActor<AXBSoldierCharacter>(SpawnClass, SpawnLocation, FRotator::ZeroRotator);
+        }
+
+        if (!Soldier)
+        {
+            UE_LOG(LogXBCharacter, Warning, TEXT("初始士兵生成失败：SpawnActor 为空"));
+            continue;
+        }
+
+        // 🔧 修改 - 使用完整初始化确保数据/组件一致
+        Soldier->FullInitialize(SoldierDataTable, RecruitSoldierRowName, Faction);
+
+        // 🔧 修改 - 按顺序分配槽位并进入跟随
+        const int32 SlotIndex = Soldiers.Num();
+        Soldier->OnRecruited(this, SlotIndex);
+        AddSoldier(Soldier);
+    }
 }
 
 // ==================== 冲刺系统实现 ====================

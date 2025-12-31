@@ -44,6 +44,7 @@ class UAbilitySystemComponent;
 class UXBAbilitySystemComponent;
 class UGameplayAbility;
 class UMaterialInterface;
+struct FXBGameConfigData;
 
 // ============================================
 // 委托声明
@@ -184,6 +185,15 @@ public:
 
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|Combat", meta = (DisplayName = "获取基础伤害"))
     float GetBaseDamage() const;
+
+    /**
+     * @brief  应用运行时配置
+     * @param  GameConfig 游戏配置数据
+     * @return 无
+     * @note   详细流程分析: 缓存倍率/覆盖值 -> 刷新当前血量 -> 保证运行时数据一致
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Soldier|Config", meta = (DisplayName = "应用运行时配置"))
+    void ApplyRuntimeConfig(const struct FXBGameConfigData& GameConfig);
 
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|Combat", meta = (DisplayName = "获取攻击范围"))
     float GetAttackRange() const;
@@ -547,6 +557,17 @@ protected:
 
     UPROPERTY(BlueprintReadOnly, Category = "状态", meta = (DisplayName = "当前血量"))
     float CurrentHealth = 100.0f;
+
+    // ==================== 运行时配置缓存 ====================
+
+    UPROPERTY(BlueprintReadOnly, Category = "配置", meta = (DisplayName = "士兵生命倍率"))
+    float CachedHealthMultiplier = 1.0f;
+
+    UPROPERTY(BlueprintReadOnly, Category = "配置", meta = (DisplayName = "士兵伤害倍率"))
+    float CachedDamageMultiplier = 1.0f;
+
+    UPROPERTY(BlueprintReadOnly, Category = "配置", meta = (DisplayName = "士兵血量覆盖值"))
+    float CachedHealthOverride = 0.0f;
 
     UPROPERTY(BlueprintReadOnly, Category = "状态", meta = (DisplayName = "正在逃跑"))
     bool bIsEscaping = false;
