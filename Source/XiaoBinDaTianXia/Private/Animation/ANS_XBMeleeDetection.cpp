@@ -323,10 +323,20 @@ bool UANS_XBMeleeDetection::ShouldDamageTarget(AActor* OwnerActor, AActor* Targe
     
     if (AXBCharacterBase* TargetCharacter = Cast<AXBCharacterBase>(TargetActor))
     {
+        // 🔧 修改 - 草丛隐身主将不可被命中
+        if (TargetCharacter->IsHiddenInBush())
+        {
+            return false;
+        }
         TargetFaction = TargetCharacter->GetFaction();
     }
     else if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(TargetActor))
     {
+        // 🔧 修改 - 草丛隐身士兵不可被命中
+        if (TargetSoldier->IsHiddenInBush())
+        {
+            return false;
+        }
         TargetFaction = TargetSoldier->GetFaction();
     }
     else

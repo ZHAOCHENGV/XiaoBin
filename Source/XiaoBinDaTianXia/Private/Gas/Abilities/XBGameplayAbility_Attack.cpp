@@ -9,6 +9,14 @@
 #include "GAS/Abilities/XBGameplayAbility_Attack.h"
 #include "AbilitySystemComponent.h"
 #include "GameplayTagContainer.h"
+#include "AbilitySystemGlobals.h"
+#include "GAS/XBAttributeSet.h"
+#include "Utils/XBGameplayTags.h"
+#include "Utils/XBBlueprintFunctionLibrary.h"
+#include "Soldier/XBSoldierCharacter.h"
+#include "Character/XBCharacterBase.h"
+#include "Character/Components/XBCombatComponent.h"
+#include "GameplayEffect.h"
 
 UXBGameplayAbility_Attack::UXBGameplayAbility_Attack()
 {
@@ -16,6 +24,12 @@ UXBGameplayAbility_Attack::UXBGameplayAbility_Attack()
     FGameplayTagContainer Tags;
     Tags.AddTag(FGameplayTag::RequestGameplayTag(FName("Ability.Attack"), false));
     SetAssetTags(Tags);
+
+    // ✨ 新增 - 近战命中事件触发（显式请求Tag，避免初始化顺序导致无效）
+    FAbilityTriggerData TriggerData;
+    TriggerData.TriggerTag = FGameplayTag::RequestGameplayTag(FName("Event.Attack.MeleeHit"), false);
+    TriggerData.TriggerSource = EGameplayAbilityTriggerSource::GameplayEvent;
+    AbilityTriggers.Add(TriggerData);
 
     // 设置能力的基本属性
     InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
@@ -30,10 +44,192 @@ void UXBGameplayAbility_Attack::ActivateAbility(const FGameplayAbilitySpecHandle
         return;
     }
 
-    UE_LOG(LogTemp, Log, TEXT("普攻GA激活"));
+    UE_LOG(LogTemp, Log, TEXT("普攻GA激活 - 触发Tag: %s, GA=%s, DamageGE=%s"),
+        TriggerEventData ? *TriggerEventData->EventTag.ToString() : TEXT("无"),
+        *GetName(),
+        DamageEffectClass ? *DamageEffectClass->GetName() : TEXT("未配置"));
 
-    // 蒙太奇播放和伤害检测由XBCombatComponent和ANS_XBMeleeDetection处理
-    // 这里只负责GA的生命周期管理
+    // 🔧 修改 - 仅处理近战命中事件，避免误伤
+    const FGameplayTag ExpectedTag = FGameplayTag::RequestGameplayTag(FName("Event.Attack.MeleeHit"), false);
+    if (!TriggerEventData || TriggerEventData->EventTag != ExpectedTag)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("普攻GA触发失败：事件Tag不匹配"));
+        EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+        return;
+    }
+
+    AActor* SourceActor = ActorInfo ? ActorInfo->AvatarActor.Get() : nullptr;
+    if (!SourceActor)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("普攻GA触发失败：SourceActor无效"));
+        EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+        return;
+    }
+
+    // 🔧 修改 - 弓手不使用近战命中Tag
+    if (AXBSoldierCharacter* SourceSoldier = Cast<AXBSoldierCharacter>(SourceActor))
+    {
+        if (SourceSoldier->GetSoldierType() == EXBSoldierType::Archer)
+        {
+            UE_LOG(LogTemp, Verbose, TEXT("弓手跳过近战命中GA: %s"), *SourceSoldier->GetName());
+            EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+            return;
+        }
+    }
+
+    // 🔧 修改 - 通过 Get() 获取指针，避免直接对 TObjectPtr 做 const_cast
+    const AActor* TargetActorConst = TriggerEventData->Target.Get();
+    AActor* TargetActor = const_cast<AActor*>(TargetActorConst);
+    if (!TargetActor)
+    {
+        if (AXBSoldierCharacter* SourceSoldier = Cast<AXBSoldierCharacter>(SourceActor))
+        {
+            TargetActor = SourceSoldier->CurrentAttackTarget.Get();
+        }
+    }
+
+    if (!TargetActor || !IsValid(TargetActor))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("普攻GA触发失败：目标无效"));
+        EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+        return;
+    }
+
+    // 🔧 修改 - 草丛隐身目标不可被锁定与伤害
+    if (const AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(TargetActor))
+    {
+        if (TargetLeader->IsHiddenInBush())
+        {
+            UE_LOG(LogTemp, Log, TEXT("普攻GA忽略草丛隐身主将: %s"), *TargetLeader->GetName());
+            EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+            return;
+        }
+    }
+    if (const AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(TargetActor))
+    {
+        if (TargetSoldier->IsHiddenInBush())
+        {
+            UE_LOG(LogTemp, Log, TEXT("普攻GA忽略草丛隐身士兵: %s"), *TargetSoldier->GetName());
+            EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+            return;
+        }
+    }
+
+    // 🔧 修改 - 解析阵营并过滤非敌对目标
+    EXBFaction SourceFaction = EXBFaction::Neutral;
+    if (AXBSoldierCharacter* SourceSoldier = Cast<AXBSoldierCharacter>(SourceActor))
+    {
+        SourceFaction = SourceSoldier->GetFaction();
+    }
+    else if (AXBCharacterBase* SourceLeader = Cast<AXBCharacterBase>(SourceActor))
+    {
+        SourceFaction = SourceLeader->GetFaction();
+    }
+
+    EXBFaction TargetFaction = EXBFaction::Neutral;
+    if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(TargetActor))
+    {
+        TargetFaction = TargetSoldier->GetFaction();
+    }
+    else if (AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(TargetActor))
+    {
+        TargetFaction = TargetLeader->GetFaction();
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("普攻GA触发失败：目标类型不支持"));
+        EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+        return;
+    }
+
+    if (!UXBBlueprintFunctionLibrary::AreFactionsHostile(SourceFaction, TargetFaction))
+    {
+        UE_LOG(LogTemp, Verbose, TEXT("普攻GA跳过：非敌对阵营"));
+        EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+        return;
+    }
+
+    // 🔧 修改 - 获取伤害数值（士兵用基础伤害，将领用战斗组件）
+    float AttackDamage = 0.0f;
+    if (AXBSoldierCharacter* SourceSoldier = Cast<AXBSoldierCharacter>(SourceActor))
+    {
+        AttackDamage = SourceSoldier->GetBaseDamage();
+    }
+    else if (AXBCharacterBase* SourceLeader = Cast<AXBCharacterBase>(SourceActor))
+    {
+        if (UXBCombatComponent* CombatComponent = SourceLeader->FindComponentByClass<UXBCombatComponent>())
+        {
+            AttackDamage = CombatComponent->GetCurrentAttackFinalDamage();
+        }
+    }
+
+    if (AttackDamage <= 0.0f)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("普攻GA触发失败：伤害为0"));
+        EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+        return;
+    }
+
+    // 🔧 修改 - 对士兵目标直接扣血，对将领目标使用GAS伤害流程
+    if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(TargetActor))
+    {
+        TargetSoldier->TakeSoldierDamage(AttackDamage, SourceActor);
+        UE_LOG(LogTemp, Log, TEXT("普攻GA命中士兵: %s, 伤害: %.1f"),
+            *TargetSoldier->GetName(), AttackDamage);
+    }
+    else if (AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(TargetActor))
+    {
+        UAbilitySystemComponent* SourceASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(SourceActor);
+        UAbilitySystemComponent* TargetASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(TargetLeader);
+
+        if (!SourceASC || !TargetASC)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("普攻GA命中将领失败：SourceASC或TargetASC无效，目标=%s"),
+                *TargetLeader->GetName());
+            EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+            return;
+        }
+
+        if (!DamageEffectClass)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("普攻GA未配置伤害GE，无法走GAS伤害流程，目标=%s"),
+                *TargetLeader->GetName());
+            EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+            return;
+        }
+
+        // 🔧 修改 - 参考 ANS_XBMeleeDetection 的GAS伤害路径
+        FGameplayEffectContextHandle ContextHandle = SourceASC->MakeEffectContext();
+        ContextHandle.AddSourceObject(SourceActor);
+        // 🔧 修改 - UE版本差异导致ContextHandle无Append接口，保持基础上下文
+
+        FGameplayEffectSpecHandle SpecHandle = SourceASC->MakeOutgoingSpec(DamageEffectClass, 1.0f, ContextHandle);
+        if (!SpecHandle.IsValid())
+        {
+            UE_LOG(LogTemp, Warning, TEXT("普攻GA伤害Spec构建失败，目标=%s"),
+                *TargetLeader->GetName());
+            EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+            return;
+        }
+
+        const FGameplayTag DamageTag = FGameplayTag::RequestGameplayTag(FName("Data.Damage"), false);
+        if (DamageTag.IsValid())
+        {
+            SpecHandle.Data->SetSetByCallerMagnitude(DamageTag, AttackDamage);
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("普攻GA伤害Tag无效(Data.Damage)，目标=%s"),
+                *TargetLeader->GetName());
+        }
+
+        SourceASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data, TargetASC);
+
+        UE_LOG(LogTemp, Log, TEXT("普攻GA命中将领(GAS): %s, 伤害: %.1f"),
+            *TargetLeader->GetName(), AttackDamage);
+    }
+
+    EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
 }
 
 void UXBGameplayAbility_Attack::EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled)
