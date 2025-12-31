@@ -48,15 +48,7 @@ public:
 	UXBSaveGame* GetCurrentSaveGame() const { return CurrentSaveGame; }
 
 	// ============ 全局配置 ============
-
-	/** 玩家自定义名称 */
-	UPROPERTY(BlueprintReadWrite, Category = "XB|Config", meta = (DisplayName = "玩家自定义名称"))
-	FString PlayerCustomName = TEXT("Player");
-
-	/** 假人自定义名称 */
-	UPROPERTY(BlueprintReadWrite, Category = "XB|Config", meta = (DisplayName = "假人自定义名称"))
-	TArray<FString> DummyCustomNames;
-
+	
 	/** 获取游戏配置 */
 	UFUNCTION(BlueprintCallable, Category = "XB|Config", meta = (DisplayName = "获取游戏配置"))
 	FXBGameConfigData GetGameConfig() const;

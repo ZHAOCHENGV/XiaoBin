@@ -41,8 +41,7 @@ bool UXBSaveSubsystem::SaveGame(const FString& SlotName, int32 UserIndex)
     }
 
     FString FullSlotName = SaveSlotPrefix + SlotName;
-    CurrentSaveGame->SaveSlotName = SlotName;
-    CurrentSaveGame->SaveTime = FDateTime::Now();
+
 
     if (UGameplayStatics::SaveGameToSlot(CurrentSaveGame, FullSlotName, UserIndex))
     {

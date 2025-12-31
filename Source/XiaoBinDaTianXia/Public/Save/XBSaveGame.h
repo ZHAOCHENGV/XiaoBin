@@ -43,23 +43,14 @@ USTRUCT(BlueprintType)
 struct FXBGameConfigData
 {
     GENERATED_BODY()
-
-    /** 玩家血量 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "玩家血量"))
-    float PlayerHealth = 1000.0f;
-
-    /** 玩家伤害倍率 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "玩家伤害倍率"))
-    float PlayerDamageMultiplier = 1.0f;
-
+    /** 主将名称 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "自定义主将名称"))
+    FString LeaderDisplayName;
+    
     /** 主将配置行 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "主将配置行"))
     FName LeaderConfigRowName;
-
-    /** 主将名称 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "主将名称"))
-    FString LeaderDisplayName;
-
+    
     /** 主将生命值倍率 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "主将生命值倍率"))
     float LeaderHealthMultiplier = 1.0f;
@@ -74,15 +65,11 @@ struct FXBGameConfigData
 
     /** 主将冲刺速度倍率 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "主将冲刺速度倍率"))
-    float LeaderSprintSpeedMultiplier = 2.0f;
+    float LeaderSprintSpeedMultiplier = 1.5f;
 
     /** 主将死亡掉落士兵数量 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "主将死亡掉落士兵数量"))
     int32 LeaderDeathDropCount = 5;
-
-    /** 士兵血量 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "士兵血量"))
-    float SoldierHealth = 100.0f;
 
     /** 士兵生命值倍率 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "士兵生命值倍率"))
@@ -105,21 +92,13 @@ struct FXBGameConfigData
     float MagnetFieldRadius = 300.0f;
 
     /** 初始兵种行 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "初始兵种行"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "初始兵种配置行"))
     FName InitialSoldierRowName;
 
     /** 初始带兵数 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "初始带兵数"))
-    int32 InitialSoldierCount = 0;
-
-    /** 敌人死亡掉落数 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "敌人死亡掉落数"))
-    int32 EnemyDeathDropCount = 5;
-
-    /** 假人行动延迟秒数 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "假人行动延迟秒数"))
-    float DummyActionDelay = 1.0f;
-
+    int32 InitialSoldierCount = 3;
+    
     /** 地图选项 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "地图选项"))
     FName SelectedMapName;
@@ -136,25 +115,7 @@ class XIAOBINDATIANXIA_API UXBSaveGame : public USaveGame
 public:
     UXBSaveGame();
 
-    // ============ 基本信息 ============
 
-    /** 存档名称 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Save", meta = (DisplayName = "存档名称"))
-    FString SaveSlotName;
-
-    /** 存档时间 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Save", meta = (DisplayName = "存档时间"))
-    FDateTime SaveTime;
-
-    // ============ 玩家信息 ============
-
-    /** 玩家名称 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Save", meta = (DisplayName = "玩家名称"))
-    FString PlayerName = TEXT("Player");
-
-    /** 假人名称列表 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Save", meta = (DisplayName = "假人名称列表"))
-    TArray<FString> DummyNames;
 
     // ============ 游戏配置 ============
 

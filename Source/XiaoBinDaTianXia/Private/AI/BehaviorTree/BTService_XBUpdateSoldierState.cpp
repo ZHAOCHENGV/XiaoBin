@@ -15,6 +15,7 @@
 #include "Soldier/Component/XBSoldierBehaviorInterface.h"  // ✅新增
 #include "Character/XBCharacterBase.h"
 #include "AI/XBSoldierAIController.h"
+#include "Utils/XBLogCategories.h"
 
 // 🔧 修改 - 按要求补充构造函数头部注释与逐行注释
 /**

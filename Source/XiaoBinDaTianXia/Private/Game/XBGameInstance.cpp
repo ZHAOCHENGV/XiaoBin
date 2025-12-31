@@ -9,8 +9,7 @@
 
 UXBGameInstance::UXBGameInstance()
 {
-	DummyCustomNames.Add(TEXT("Dummy1"));
-	DummyCustomNames.Add(TEXT("Dummy2"));
+	
 }
 
 void UXBGameInstance::Init()
@@ -48,8 +47,7 @@ bool UXBGameInstance::SaveGameConfig(int32 SlotIndex)
 		return false;
 	}
 
-	CurrentSaveGame->PlayerName = PlayerCustomName;
-	CurrentSaveGame->DummyNames = DummyCustomNames;
+
     
 	FString SlotName = FString::Printf(TEXT("XBConfig_%d"), SlotIndex);
 	return UGameplayStatics::SaveGameToSlot(CurrentSaveGame, SlotName, 0);
@@ -70,8 +68,7 @@ bool UXBGameInstance::LoadGameConfig(int32 SlotIndex)
 			return false;
 		}
 
-		PlayerCustomName = CurrentSaveGame->PlayerName;
-		DummyCustomNames = CurrentSaveGame->DummyNames;
+	
 		return true;
 	}
 

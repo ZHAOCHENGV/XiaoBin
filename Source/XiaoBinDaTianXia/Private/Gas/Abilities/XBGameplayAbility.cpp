@@ -1,4 +1,4 @@
-﻿// Copyright XiaoBing Project. All Rights Reserved.
+﻿    // Copyright XiaoBing Project. All Rights Reserved.
 
 #include "GAS/Abilities/XBGameplayAbility.h"
 #include "GAS/XBAbilitySystemComponent.h"
