@@ -34,6 +34,7 @@ class UXBWorldHealthBarComponent;
 class UXBMagnetFieldComponent;
 class UXBFormationComponent;
 class UMaterialInterface;
+struct FXBGameConfigData;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCharacterDeath, AXBCharacterBase*, DeadCharacter);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCombatStateChanged, bool, bInCombat);
@@ -117,6 +118,16 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "属性")
     void ApplyInitialAttributes();
+
+    /**
+     * @brief  应用运行时配置到主将
+     * @param  GameConfig 游戏配置数据
+     * @param  bApplyInitialSoldiers 是否应用初始士兵数量
+     * @return 无
+     * @note   详细流程分析: 覆盖主将数据 -> 刷新属性 -> 应用磁场/掉落/招募配置
+     */
+    UFUNCTION(BlueprintCallable, Category = "配置", meta = (DisplayName = "应用运行时配置"))
+    void ApplyRuntimeConfig(const FXBGameConfigData& GameConfig, bool bApplyInitialSoldiers = true);
 
     // ============ 阵营系统 ============
 
@@ -504,4 +515,12 @@ public:
 private:
     UFUNCTION()
     void OnCombatTimeout();
+
+    /**
+     * @brief  生成初始士兵
+     * @param  DesiredCount 期望士兵数量
+     * @return 无
+     * @note   详细流程分析: 计算缺口 -> 从对象池或新建 -> 初始化并招募
+     */
+    void SpawnInitialSoldiers(int32 DesiredCount);
 };
