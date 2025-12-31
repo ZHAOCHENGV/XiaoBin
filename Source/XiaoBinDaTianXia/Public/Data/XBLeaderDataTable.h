@@ -126,4 +126,18 @@ struct XIAOBINDATIANXIA_API FXBLeaderTableRow : public FTableRowBase
     /** @brief 技能配置 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "战斗配置", meta = (DisplayName = "技能配置"))
     FXBAbilityConfig SpecialSkillConfig;
+
+    // ============ 视觉配置 ============
+
+    /** @brief 动画蓝图类 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "视觉配置", meta = (DisplayName = "动画蓝图类"))
+    TSoftClassPtr<UAnimInstance> AnimClass;
+
+    /** @brief 死亡蒙太奇 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "视觉配置", meta = (DisplayName = "死亡蒙太奇"))
+    TSoftObjectPtr<UAnimMontage> DeathMontage;
+
+    /** @brief 主将骨骼网格 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "视觉配置", meta = (DisplayName = "主将骨骼网格"))
+    TSoftObjectPtr<USkeletalMesh> SkeletalMesh;
 };
