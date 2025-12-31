@@ -416,9 +416,12 @@ void AXBCharacterBase::SpawnInitialSoldiers(int32 DesiredCount)
 
         if (!Soldier)
         {
-            TSubclassOf<AXBSoldierCharacter> SpawnClass = SoldierActorClass
-                ? SoldierActorClass
-                : AXBSoldierCharacter::StaticClass();
+            // 🔧 修改 - 使用显式分支避免 TSubclassOf 与 UClass* 的三元表达式歧义
+            TSubclassOf<AXBSoldierCharacter> SpawnClass = SoldierActorClass;
+            if (!SpawnClass)
+            {
+                SpawnClass = AXBSoldierCharacter::StaticClass();
+            }
 
             Soldier = World->SpawnActor<AXBSoldierCharacter>(SpawnClass, SpawnLocation, FRotator::ZeroRotator);
         }
