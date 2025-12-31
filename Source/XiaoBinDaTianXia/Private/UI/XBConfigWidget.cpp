@@ -100,26 +100,22 @@ bool UXBConfigWidget::ResetToDefault(bool bSaveToDisk)
 
 TArray<FName> UXBConfigWidget::GetLeaderRowNames() const
 {
-    TArray<FName> RowNames;
     if (!LeaderConfigDataTable)
     {
-        return RowNames;
+        return TArray<FName>();
     }
 
     // 🔧 修改 - 从数据表拉取行名供 UI 下拉使用
-    LeaderConfigDataTable->GetRowNames(RowNames);
-    return RowNames;
+    return LeaderConfigDataTable->GetRowNames();
 }
 
 TArray<FName> UXBConfigWidget::GetSoldierRowNames() const
 {
-    TArray<FName> RowNames;
     if (!SoldierConfigDataTable)
     {
-        return RowNames;
+        return TArray<FName>();
     }
 
     // 🔧 修改 - 从数据表拉取行名供 UI 下拉使用
-    SoldierConfigDataTable->GetRowNames(RowNames);
-    return RowNames;
+    return SoldierConfigDataTable->GetRowNames();
 }
