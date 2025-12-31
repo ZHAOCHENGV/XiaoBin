@@ -33,6 +33,7 @@
 #include "BehaviorTree/BlackboardComponent.h"
 #include "Engine/DataTable.h"
 #include "Combat/XBProjectilePoolSubsystem.h"
+#include "Kismet/GameplayStatics.h"
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimSequence.h"
 #include "NiagaraComponent.h"
@@ -2134,8 +2135,16 @@ void AXBSoldierCharacter::SetHiddenInBush(bool bEnableHidden)
             {
                 MeshComp->SetOverlayMaterial(BushOverlayMaterial);
             }
-            // 🔧 修改 - 草丛中对其他阵营不可见，统一隐藏网格
-            MeshComp->SetVisibility(false, true);
+            // 🔧 修改 - 草丛中对非友军不可见，仅对本地玩家做可见性过滤
+            bool bShouldHideForLocal = false;
+            if (APawn* LocalPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0))
+            {
+                if (const AXBCharacterBase* LocalLeader = Cast<AXBCharacterBase>(LocalPawn))
+                {
+                    bShouldHideForLocal = (LocalLeader->GetFaction() != Faction);
+                }
+            }
+            MeshComp->SetVisibility(!bShouldHideForLocal, true);
         }
         else
         {

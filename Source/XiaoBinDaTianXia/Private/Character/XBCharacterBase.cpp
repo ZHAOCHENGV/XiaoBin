@@ -34,6 +34,7 @@
 #include "Particles/ParticleSystemComponent.h"
 #include "Soldier/Component/XBSoldierPoolSubsystem.h"
 #include "AI/XBSoldierAIController.h"
+#include "Kismet/GameplayStatics.h"
 
 AXBCharacterBase::AXBCharacterBase()
 {
@@ -1046,7 +1047,7 @@ void AXBCharacterBase::SetHiddenInBush(bool bEnableHidden)
 
     bIsHiddenInBush = bEnableHidden;
 
-    // 🔧 修改 - 设置覆层材质（草丛半透明效果）
+    // 🔧 修改 - 设置覆层材质（草丛隐身效果）
     if (USkeletalMeshComponent* MeshComp = GetMesh())
     {
         if (!CachedOverlayMaterial)
@@ -1060,8 +1061,20 @@ void AXBCharacterBase::SetHiddenInBush(bool bEnableHidden)
             {
                 MeshComp->SetOverlayMaterial(BushOverlayMaterial);
             }
-            // 🔧 修改 - 草丛中对其他阵营不可见，统一隐藏网格
-            MeshComp->SetVisibility(false, true);
+            // 🔧 修改 - 草丛中对非友军不可见，仅对本地玩家做可见性过滤
+            bool bShouldHideForLocal = false;
+            if (APawn* LocalPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0))
+            {
+                if (const AXBCharacterBase* LocalLeader = Cast<AXBCharacterBase>(LocalPawn))
+                {
+                    bShouldHideForLocal = (LocalLeader->GetFaction() != Faction);
+                }
+            }
+            MeshComp->SetVisibility(!bShouldHideForLocal, true);
+            if (HealthBarComponent)
+            {
+                HealthBarComponent->SetHealthBarVisible(!bShouldHideForLocal);
+            }
         }
         else
         {
@@ -1069,6 +1082,10 @@ void AXBCharacterBase::SetHiddenInBush(bool bEnableHidden)
             MeshComp->SetOverlayMaterial(nullptr);
             CachedOverlayMaterial = nullptr;
             MeshComp->SetVisibility(true, true);
+            if (HealthBarComponent)
+            {
+                HealthBarComponent->SetHealthBarVisible(true);
+            }
         }
     }
 
