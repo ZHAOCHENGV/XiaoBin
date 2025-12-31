@@ -17,6 +17,7 @@
 #include "Soldier/XBSoldierCharacter.h"
 #include "Utils/XBLogCategories.h"
 #include "Utils/XBBlueprintFunctionLibrary.h"
+#include "Game/XBGameInstance.h"
 #include "Data/XBSoldierDataAccessor.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -1212,9 +1213,22 @@ void AXBSoldierCharacter::InitializeFromDataTable(UDataTable* DataTable, FName R
         return;
     }
 
+    // 🔧 修改 - 应用运行时配置（倍率/覆盖值）以保证数据驱动一致
+    if (const UXBGameInstance* GameInstance = GetGameInstance<UXBGameInstance>())
+    {
+        ApplyRuntimeConfig(GameInstance->GetGameConfig());
+    }
+    else
+    {
+        // 🔧 修改 - 无 GameInstance 时回退默认倍率
+        CachedHealthMultiplier = 1.0f;
+        CachedDamageMultiplier = 1.0f;
+        CachedHealthOverride = 0.0f;
+        CurrentHealth = GetMaxHealth();
+    }
+
     SoldierType = DataAccessor->GetSoldierType();
     Faction = InFaction;
-    CurrentHealth = DataAccessor->GetMaxHealth();
 
     // 🔧 修改 - 弓手初始化发射物配置，便于动画通知读取
     if (SoldierType == EXBSoldierType::Archer)
@@ -1301,12 +1315,27 @@ FGameplayTagContainer AXBSoldierCharacter::GetSoldierTags() const
 
 float AXBSoldierCharacter::GetMaxHealth() const
 {
-    return IsDataAccessorValid() ? DataAccessor->GetMaxHealth() : 100.0f;
+    const float BaseHealth = CachedHealthOverride > 0.0f
+        ? CachedHealthOverride
+        : (IsDataAccessorValid() ? DataAccessor->GetMaxHealth() : 100.0f);
+    return BaseHealth * CachedHealthMultiplier;
 }
 
 float AXBSoldierCharacter::GetBaseDamage() const
 {
-    return IsDataAccessorValid() ? DataAccessor->GetBaseDamage() : 10.0f;
+    const float BaseDamage = IsDataAccessorValid() ? DataAccessor->GetBaseDamage() : 10.0f;
+    return BaseDamage * CachedDamageMultiplier;
+}
+
+void AXBSoldierCharacter::ApplyRuntimeConfig(const FXBGameConfigData& GameConfig)
+{
+    // 🔧 修改 - 缓存倍率/覆盖值，确保运行时一致
+    CachedHealthMultiplier = FMath::Max(0.01f, GameConfig.SoldierHealthMultiplier);
+    CachedDamageMultiplier = FMath::Max(0.01f, GameConfig.SoldierDamageMultiplier);
+    CachedHealthOverride = GameConfig.SoldierHealth > 0.0f ? GameConfig.SoldierHealth : 0.0f;
+
+    // 🔧 修改 - 刷新当前血量为新上限，避免配置变化导致负值
+    CurrentHealth = GetMaxHealth();
 }
 
 float AXBSoldierCharacter::GetAttackRange() const
