@@ -7,6 +7,7 @@
 #include "XBSaveSubsystem.generated.h"
 
 class UXBSaveGame;
+class UXBSaveSlotIndex;
 
 /**
  * 存档子系统
@@ -39,7 +40,7 @@ public:
 	bool DoesSaveGameExist(const FString& SlotName, int32 UserIndex = 0) const;
 
 	/** 获取所有存档槽位名称 */
-	UFUNCTION(BlueprintCallable, Category = "XB|Save")
+	UFUNCTION(BlueprintCallable, Category = "XB|Save", meta = (DisplayName = "获取全部存档槽位名称"))
 	TArray<FString> GetAllSaveSlotNames() const;
 
 	// ============ 当前存档访问 ============
@@ -58,10 +59,43 @@ public:
 
 protected:
 	/** 当前存档 */
-	UPROPERTY()
+	UPROPERTY(meta = (DisplayName = "当前存档"))
 	TObjectPtr<UXBSaveGame> CurrentSaveGame;
 
 	/** 存档槽位前缀 */
-	UPROPERTY()
+	UPROPERTY(EditDefaultsOnly, Category = "XB|Save", meta = (DisplayName = "存档槽位前缀"))
 	FString SaveSlotPrefix = TEXT("XBSave_");
+
+	/** 存档索引槽位名 */
+	UPROPERTY(EditDefaultsOnly, Category = "XB|Save", meta = (DisplayName = "存档索引槽位名"))
+	FString SaveSlotIndexName = TEXT("XBSaveIndex");
+
+	/** 默认存档槽位数量 */
+	UPROPERTY(EditDefaultsOnly, Category = "XB|Save", meta = (DisplayName = "默认存档槽位数量"))
+	int32 DefaultSaveSlotCount = 5;
+
+	/** 存档槽位索引 */
+	UPROPERTY(meta = (DisplayName = "存档槽位索引"))
+	TObjectPtr<UXBSaveSlotIndex> SaveSlotIndex;
+
+private:
+	/**
+	 * @brief  初始化存档槽位索引
+	 * @note   确保存档槽位列表可用，并在首次运行时生成默认存档槽位。
+	 */
+	void InitializeSaveSlotIndex();
+
+	/**
+	 * @brief  保存存档槽位索引
+	 * @note   将当前槽位列表持久化，便于后续列举。
+	 */
+	void SaveSlotIndexToDisk() const;
+
+	/**
+	 * @brief  构建完整存档槽位名称
+	 * @param  SlotName 逻辑槽位名称
+	 * @return 完整槽位名称
+	 * @note   用于避免外部直接依赖前缀格式。
+	 */
+	FString BuildFullSlotName(const FString& SlotName) const;
 };

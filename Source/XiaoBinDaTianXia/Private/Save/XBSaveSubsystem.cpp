@@ -2,11 +2,15 @@
 
 #include "Save/XBSaveSubsystem.h"
 #include "Save/XBSaveGame.h"
+#include "Save/XBSaveSlotIndex.h"
 #include "Kismet/GameplayStatics.h"
 
 void UXBSaveSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
     Super::Initialize(Collection);
+
+    // ✨ 新增 - 初始化存档槽位索引，确保多存档列表可用
+    InitializeSaveSlotIndex();
 
     // 尝试加载默认存档
     if (DoesSaveGameExist(TEXT("Default"), 0))
@@ -18,7 +22,7 @@ void UXBSaveSubsystem::Initialize(FSubsystemCollectionBase& Collection)
         CreateNewSaveGame();
     }
 
-    UE_LOG(LogTemp, Log, TEXT("XBSaveSubsystem Initialized"));
+    UE_LOG(LogTemp, Log, TEXT("存档子系统初始化完成"));
 }
 
 void UXBSaveSubsystem::Deinitialize()
@@ -36,30 +40,39 @@ bool UXBSaveSubsystem::SaveGame(const FString& SlotName, int32 UserIndex)
 {
     if (!CurrentSaveGame)
     {
-        UE_LOG(LogTemp, Warning, TEXT("XBSaveSubsystem::SaveGame - No current save game!"));
+        UE_LOG(LogTemp, Warning, TEXT("保存存档失败：当前存档为空"));
         return false;
     }
 
-    FString FullSlotName = SaveSlotPrefix + SlotName;
+    const FString FullSlotName = BuildFullSlotName(SlotName);
 
-
+    // ✨ 新增 - 保存前确保索引有效，避免出现空索引导致列表丢失
+    InitializeSaveSlotIndex();
     if (UGameplayStatics::SaveGameToSlot(CurrentSaveGame, FullSlotName, UserIndex))
     {
-        UE_LOG(LogTemp, Log, TEXT("Game saved to slot: %s"), *FullSlotName);
+        // ✨ 新增 - 保存成功后登记槽位名称，保证列表可列举
+        if (SaveSlotIndex)
+        {
+            // ✨ 新增 - 使用逻辑名称，避免外部依赖前缀格式
+            SaveSlotIndex->SlotNames.AddUnique(SlotName);
+            SaveSlotIndexToDisk();
+        }
+
+        UE_LOG(LogTemp, Log, TEXT("存档已保存到槽位：%s"), *FullSlotName);
         return true;
     }
 
-    UE_LOG(LogTemp, Error, TEXT("Failed to save game to slot: %s"), *FullSlotName);
+    UE_LOG(LogTemp, Error, TEXT("保存存档失败：%s"), *FullSlotName);
     return false;
 }
 
 bool UXBSaveSubsystem::LoadGame(const FString& SlotName, int32 UserIndex)
 {
-    FString FullSlotName = SaveSlotPrefix + SlotName;
+    const FString FullSlotName = BuildFullSlotName(SlotName);
 
     if (!UGameplayStatics::DoesSaveGameExist(FullSlotName, UserIndex))
     {
-        UE_LOG(LogTemp, Warning, TEXT("Save game does not exist: %s"), *FullSlotName);
+        UE_LOG(LogTemp, Warning, TEXT("加载存档失败：存档不存在 %s"), *FullSlotName);
         return false;
     }
 
@@ -69,21 +82,29 @@ bool UXBSaveSubsystem::LoadGame(const FString& SlotName, int32 UserIndex)
     if (LoadedGame)
     {
         CurrentSaveGame = LoadedGame;
-        UE_LOG(LogTemp, Log, TEXT("Game loaded from slot: %s"), *FullSlotName);
+        UE_LOG(LogTemp, Log, TEXT("存档已加载：%s"), *FullSlotName);
         return true;
     }
 
-    UE_LOG(LogTemp, Error, TEXT("Failed to load game from slot: %s"), *FullSlotName);
+    UE_LOG(LogTemp, Error, TEXT("加载存档失败：%s"), *FullSlotName);
     return false;
 }
 
 bool UXBSaveSubsystem::DeleteSaveGame(const FString& SlotName, int32 UserIndex)
 {
-    FString FullSlotName = SaveSlotPrefix + SlotName;
+    const FString FullSlotName = BuildFullSlotName(SlotName);
 
     if (UGameplayStatics::DeleteGameInSlot(FullSlotName, UserIndex))
     {
-        UE_LOG(LogTemp, Log, TEXT("Save game deleted: %s"), *FullSlotName);
+        // ✨ 新增 - 删除成功后同步更新索引列表
+        InitializeSaveSlotIndex();
+        if (SaveSlotIndex)
+        {
+            SaveSlotIndex->SlotNames.Remove(SlotName);
+            SaveSlotIndexToDisk();
+        }
+
+        UE_LOG(LogTemp, Log, TEXT("存档已删除：%s"), *FullSlotName);
         return true;
     }
 
@@ -92,16 +113,19 @@ bool UXBSaveSubsystem::DeleteSaveGame(const FString& SlotName, int32 UserIndex)
 
 bool UXBSaveSubsystem::DoesSaveGameExist(const FString& SlotName, int32 UserIndex) const
 {
-    FString FullSlotName = SaveSlotPrefix + SlotName;
+    const FString FullSlotName = BuildFullSlotName(SlotName);
     return UGameplayStatics::DoesSaveGameExist(FullSlotName, UserIndex);
 }
 
 TArray<FString> UXBSaveSubsystem::GetAllSaveSlotNames() const
 {
-    // TODO: 实现获取所有存档槽位名称
-    // UE5 没有内置方法列举所有存档，需要自己维护一个列表
-    TArray<FString> SlotNames;
-    return SlotNames;
+    // ✨ 新增 - 通过索引存档返回所有槽位
+    if (SaveSlotIndex)
+    {
+        return SaveSlotIndex->SlotNames;
+    }
+
+    return TArray<FString>();
 }
 
 UXBSaveGame* UXBSaveSubsystem::CreateNewSaveGame()
@@ -115,4 +139,64 @@ UXBSaveGame* UXBSaveSubsystem::CreateNewSaveGame()
 void UXBSaveSubsystem::SetCurrentSaveGame(UXBSaveGame* SaveGame)
 {
     CurrentSaveGame = SaveGame;
+}
+
+void UXBSaveSubsystem::InitializeSaveSlotIndex()
+{
+    if (SaveSlotIndex)
+    {
+        return;
+    }
+
+    // ✨ 新增 - 优先加载索引存档，保证槽位列表可持久化
+    if (UGameplayStatics::DoesSaveGameExist(SaveSlotIndexName, 0))
+    {
+        SaveSlotIndex = Cast<UXBSaveSlotIndex>(
+            UGameplayStatics::LoadGameFromSlot(SaveSlotIndexName, 0));
+    }
+
+    if (!SaveSlotIndex)
+    {
+        // ✨ 新增 - 首次运行创建索引存档
+        SaveSlotIndex = Cast<UXBSaveSlotIndex>(
+            UGameplayStatics::CreateSaveGameObject(UXBSaveSlotIndex::StaticClass()));
+    }
+
+    if (!SaveSlotIndex)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("初始化存档槽位索引失败：无法创建索引存档"));
+        return;
+    }
+
+    if (SaveSlotIndex->SlotNames.Num() == 0)
+    {
+        // ✨ 新增 - 初始化默认存档槽位列表（存档1~存档N）
+        for (int32 Index = 1; Index <= DefaultSaveSlotCount; ++Index)
+        {
+            // ✨ 新增 - 用中文名称，便于 UI 直接展示
+            SaveSlotIndex->SlotNames.Add(FString::Printf(TEXT("存档%d"), Index));
+        }
+
+        SaveSlotIndexToDisk();
+    }
+}
+
+void UXBSaveSubsystem::SaveSlotIndexToDisk() const
+{
+    if (!SaveSlotIndex)
+    {
+        return;
+    }
+
+    // ✨ 新增 - 保存索引存档，保证槽位列表可被列举
+    if (!UGameplayStatics::SaveGameToSlot(SaveSlotIndex, SaveSlotIndexName, 0))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("保存存档槽位索引失败：%s"), *SaveSlotIndexName);
+    }
+}
+
+FString UXBSaveSubsystem::BuildFullSlotName(const FString& SlotName) const
+{
+    // ✨ 新增 - 统一拼接规则，便于未来调整前缀策略
+    return SaveSlotPrefix + SlotName;
 }
