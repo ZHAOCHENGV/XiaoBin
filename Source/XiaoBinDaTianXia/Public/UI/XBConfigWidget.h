@@ -57,6 +57,15 @@ public:
     bool ApplyConfig(bool bSaveToDisk = true);
 
     /**
+     * @brief  开始游戏
+     * @param  bSaveToDisk 是否保存到存档
+     * @return 是否开始成功
+     * @note   详细流程分析: 写入配置 -> 应用到主将与士兵 -> 加载选定地图
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Config", meta = (DisplayName = "开始游戏"))
+    bool StartGame(bool bSaveToDisk = true);
+
+    /**
      * @brief  保存配置数据
      * @return 是否保存成功
      */
