@@ -54,6 +54,27 @@ bool UXBConfigWidget::ApplyConfig(bool bSaveToDisk)
     return true;
 }
 
+bool UXBConfigWidget::StartGame(bool bSaveToDisk)
+{
+    UXBGameInstance* GameInstance = GetGameInstance<UXBGameInstance>();
+    if (!GameInstance)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("开始游戏失败：GameInstance 为空"));
+        return false;
+    }
+
+    // 🔧 修改 - 先写入配置并应用到主将，确保进入地图前配置已生效
+    GameInstance->SetGameConfig(ConfigData, bSaveToDisk);
+
+    if (TargetLeader.IsValid())
+    {
+        GameInstance->ApplyGameConfigToLeader(TargetLeader.Get(), true);
+    }
+
+    // 🔧 修改 - 使用配置中选定的地图开始游戏
+    return GameInstance->LoadSelectedMap();
+}
+
 bool UXBConfigWidget::SaveConfig()
 {
     UXBGameInstance* GameInstance = GetGameInstance<UXBGameInstance>();
