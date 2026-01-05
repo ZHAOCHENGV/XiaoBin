@@ -102,10 +102,26 @@ void AXBCharacterBase::BeginPlay()
         }
         MagnetFieldComponent->SetFieldEnabled(true);
     }
+  
+    // 🔧 修改 - 从全局配置覆盖主将行名，优先用户配置
+    if (UXBGameInstance* GameInstance = GetGameInstance<UXBGameInstance>())
+    {
+        const FXBGameConfigData GameConfig = GameInstance->GetGameConfig();
+        if (!GameConfig.LeaderConfigRowName.IsNone())
+        {
+            ConfigRowName = GameConfig.LeaderConfigRowName;
+        }
+    }
 
     if (ConfigDataTable && !ConfigRowName.IsNone())
     {
         InitializeFromDataTable(ConfigDataTable, ConfigRowName);
+    }
+
+    // 🔧 修改 - 统一应用运行时配置（倍率/掉落/招募/磁场）
+    if (UXBGameInstance* GameInstance = GetGameInstance<UXBGameInstance>())
+    {
+        ApplyRuntimeConfig(GameInstance->GetGameConfig(), true);
     }
 }
 
