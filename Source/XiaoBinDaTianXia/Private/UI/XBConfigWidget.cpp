@@ -97,6 +97,12 @@ void UXBConfigWidget::SetConfigData(const FXBGameConfigData& NewConfig, bool bSy
     }
 }
 
+FXBGameConfigData UXBConfigWidget::GetConfigData() const
+{
+    // 🔧 修改 - 直接返回 ConfigData，便于蓝图侧读取当前配置
+    return ConfigData;
+}
+
 bool UXBConfigWidget::SaveConfig()
 {
     UXBGameInstance* GameInstance = GetGameInstance<UXBGameInstance>();
