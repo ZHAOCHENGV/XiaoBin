@@ -72,6 +72,12 @@ AXBCharacterBase::AXBCharacterBase()
     bUseControllerRotationRoll = false;
 }
 
+/**
+ * @brief  角色初始化入口
+ * @return 无
+ * @note   详细流程分析: 注册感知 -> 初始化组件 -> 初始化主将数据 -> 进入运行逻辑
+ *         性能注意: 初始化仅在 BeginPlay 执行，避免运行期重复调用
+ */
 void AXBCharacterBase::BeginPlay()
 {
     Super::BeginPlay();
@@ -102,27 +108,9 @@ void AXBCharacterBase::BeginPlay()
         }
         MagnetFieldComponent->SetFieldEnabled(true);
     }
-  
-    // 🔧 修改 - 从全局配置覆盖主将行名，优先用户配置
-    if (UXBGameInstance* GameInstance = GetGameInstance<UXBGameInstance>())
-    {
-        const FXBGameConfigData GameConfig = GameInstance->GetGameConfig();
-        if (!GameConfig.LeaderConfigRowName.IsNone())
-        {
-            ConfigRowName = GameConfig.LeaderConfigRowName;
-        }
-    }
 
-    if (ConfigDataTable && !ConfigRowName.IsNone())
-    {
-        InitializeFromDataTable(ConfigDataTable, ConfigRowName);
-    }
-
-    // 🔧 修改 - 统一应用运行时配置（倍率/掉落/招募/磁场）
-    if (UXBGameInstance* GameInstance = GetGameInstance<UXBGameInstance>())
-    {
-        ApplyRuntimeConfig(GameInstance->GetGameConfig(), true);
-    }
+    // 🔧 修改 - 统一初始化主将数据，子类可重写扩展
+    InitializeLeaderData();
 }
 
 /**
@@ -155,6 +143,44 @@ void AXBCharacterBase::Tick(float DeltaTime)
     Super::Tick(DeltaTime);
     UpdateSprint(DeltaTime);
     SmoothLeaderScale(DeltaTime);
+}
+
+/**
+ * @brief  初始化主将数据
+ * @return 无
+ * @note   详细流程分析: 读取外部配置 -> 同步基础参数 -> 根据配置行名初始化数据表
+ *         性能注意: 仅在 BeginPlay 阶段调用一次
+ */
+void AXBCharacterBase::InitializeLeaderData()
+{
+    FXBGameConfigData ExternalConfig;
+    const bool bHasExternalConfig = GetExternalInitConfig(ExternalConfig);
+
+    if (bHasExternalConfig)
+    {
+        // 🔧 修改 - 外部配置优先覆盖主将行名
+        if (!ExternalConfig.LeaderConfigRowName.IsNone())
+        {
+            ConfigRowName = ExternalConfig.LeaderConfigRowName;
+        }
+    }
+
+    // 🔧 修改 - 若配置行名有效，先从数据表初始化基础数据
+    if (ConfigDataTable && !ConfigRowName.IsNone())
+    {
+        InitializeFromDataTable(ConfigDataTable, ConfigRowName);
+    }
+}
+
+/**
+ * @brief  获取外部初始化配置
+ * @param  OutConfig 输出配置
+ * @return 是否存在外部配置
+ * @note   详细流程分析: 基类默认无外部配置
+ */
+bool AXBCharacterBase::GetExternalInitConfig(FXBGameConfigData& OutConfig) const
+{
+    return false;
 }
 
 void AXBCharacterBase::SetupMovementComponent()

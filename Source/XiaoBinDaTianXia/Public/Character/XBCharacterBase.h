@@ -320,6 +320,22 @@ protected:
     UFUNCTION()
     virtual void OnMagnetFieldActorEntered(AActor* EnteredActor);
 
+    /**
+     * @brief  初始化主将数据
+     * @return 无
+     * @note   详细流程分析: 优先读取外部配置 -> 否则使用 Actor 内部配置 -> 再读取数据表初始化
+     *         性能注意: 仅在 BeginPlay 调用一次，避免重复初始化
+     */
+    virtual void InitializeLeaderData();
+
+    /**
+     * @brief  获取外部初始化配置
+     * @param  OutConfig 输出配置
+     * @return 是否存在外部配置
+     * @note   详细流程分析: 默认返回 false，子类可重写提供外部配置
+     */
+    virtual bool GetExternalInitConfig(FXBGameConfigData& OutConfig) const;
+
     bool Internal_AddSoldierToArray(AXBSoldierCharacter* Soldier);
     bool Internal_RemoveSoldierFromArray(AXBSoldierCharacter* Soldier);
     void UpdateSoldierCount(int32 OldCount);

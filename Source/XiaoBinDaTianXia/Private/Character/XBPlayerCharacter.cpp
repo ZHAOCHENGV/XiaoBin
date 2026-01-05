@@ -42,6 +42,11 @@ AXBPlayerCharacter::AXBPlayerCharacter()
 
 }
 
+/**
+ * @brief  玩家主将初始化入口
+ * @return 无
+ * @note   详细流程分析: 先走父类通用初始化 -> 然后处理镜头初始化
+ */
 void AXBPlayerCharacter::BeginPlay()
 {
     if (UXBGameInstance* GameInstance = GetGameInstance<UXBGameInstance>())
@@ -86,6 +91,48 @@ void AXBPlayerCharacter::BeginPlay()
     }
 }
 
+/**
+ * @brief  初始化主将数据（玩家）
+ * @return 无
+ * @note   详细流程分析: 调用通用初始化 -> 若存在外部配置则执行配置初始化
+ */
+void AXBPlayerCharacter::InitializeLeaderData()
+{
+    FXBGameConfigData ExternalConfig;
+    if (GetExternalInitConfig(ExternalConfig))
+    {
+        // 🔧 修改 - 玩家主将优先使用配置界面数据初始化
+        ApplyConfigFromGameConfig(ExternalConfig, true);
+        return;
+    }
+
+    Super::InitializeLeaderData();
+}
+
+/**
+ * @brief  获取外部初始化配置（玩家从配置界面）
+ * @param  OutConfig 输出配置
+ * @return 是否存在外部配置
+ * @note   详细流程分析: 从 GameInstance 获取配置
+ */
+bool AXBPlayerCharacter::GetExternalInitConfig(FXBGameConfigData& OutConfig) const
+{
+    if (const UXBGameInstance* GameInstance = GetGameInstance<UXBGameInstance>())
+    {
+        OutConfig = GameInstance->GetGameConfig();
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * @brief  从配置数据初始化玩家主将
+ * @param  GameConfig 配置数据
+ * @param  bApplyInitialSoldiers 是否生成初始士兵
+ * @return 无
+ * @note   详细流程分析: 行名/名称/倍率/成长参数 -> 缩放 -> 属性刷新 -> 运行时配置
+ */
 void AXBPlayerCharacter::ApplyConfigFromGameConfig(const FXBGameConfigData& GameConfig, bool bApplyInitialSoldiers)
 {
     // 🔧 修改 - 仅玩家主将应用配置行名
