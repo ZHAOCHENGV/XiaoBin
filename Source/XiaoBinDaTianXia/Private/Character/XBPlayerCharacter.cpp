@@ -49,7 +49,39 @@ AXBPlayerCharacter::AXBPlayerCharacter()
  */
 void AXBPlayerCharacter::BeginPlay()
 {
+    if (UXBGameInstance* GameInstance = GetGameInstance<UXBGameInstance>())
+    {
+        // 🔧 修改 - 优先根据配置行名初始化数据表
+        ApplyConfigFromGameConfig(GameInstance->GetGameConfig(), true);
+    }
+
     Super::BeginPlay();
+
+    if (UXBGameInstance* GameInstance = GetGameInstance<UXBGameInstance>())
+    {
+        const FXBGameConfigData GameConfig = GameInstance->GetGameConfig();
+
+        if (!GameConfig.LeaderDisplayName.IsEmpty())
+        {
+            // 🔧 修改 - 初始化玩家主将名称，确保 UI 配置生效
+            CharacterName = GameConfig.LeaderDisplayName;
+            CachedLeaderData.LeaderName = FText::FromString(CharacterName);
+        }
+
+        // 🔧 修改 - 以配置初始化主将基础倍率与成长参数
+        CachedLeaderData.HealthMultiplier = GameConfig.LeaderHealthMultiplier;
+        CachedLeaderData.DamageMultiplier = GameConfig.LeaderDamageMultiplier;
+        const float InitialScale = FMath::Max(0.01f, GameConfig.LeaderInitialScale);
+        GrowthConfigCache.MaxScale = FMath::Max(InitialScale, GameConfig.LeaderMaxScale);
+        GrowthConfigCache.DamageMultiplierPerSoldier = GameConfig.LeaderDamageMultiplierPerSoldier;
+
+        // 🔧 修改 - 以配置初始化主将基础大小，确保出生尺寸一致
+        BaseScale = InitialScale;
+        CachedLeaderData.Scale = InitialScale;
+
+        // 🔧 修改 - 统一应用运行时配置（倍率/掉落/招募/磁场）
+        ApplyRuntimeConfig(GameConfig, true);
+    }
 
     // 初始化镜头
     if (SpringArmComponent)
