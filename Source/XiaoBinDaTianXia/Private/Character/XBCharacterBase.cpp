@@ -110,6 +110,13 @@ void AXBCharacterBase::BeginPlay()
         {
             ConfigRowName = GameConfig.LeaderConfigRowName;
         }
+
+        // 🔧 修改 - 游戏初始时同步主将名称，确保 UI 配置能覆盖默认名称
+        if (!GameConfig.LeaderDisplayName.IsEmpty())
+        {
+            // 🔧 修改 - 直接设置 CharacterName，保证后续 UI/血条显示一致
+            CharacterName = GameConfig.LeaderDisplayName;
+        }
     }
 
     if (ConfigDataTable && !ConfigRowName.IsNone())

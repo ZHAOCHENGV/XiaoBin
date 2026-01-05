@@ -147,6 +147,7 @@ bool UXBConfigWidget::LoadConfig()
     return bLoaded;
 }
 
+
 bool UXBConfigWidget::LoadConfigByName(const FString& SlotName)
 {
     UXBGameInstance* GameInstance = GetGameInstance<UXBGameInstance>();
