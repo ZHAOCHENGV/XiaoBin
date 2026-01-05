@@ -67,6 +67,9 @@ bool UXBConfigWidget::StartGame(bool bSaveToDisk)
         return false;
     }
 
+    // 🔧 修改 - 开始游戏前从 UI 同步最新值，确保使用当前控件配置
+    SyncConfigFromUI();
+
     // 🔧 修改 - 先写入配置并应用到主将，确保进入地图前配置已生效
     GameInstance->SetGameConfig(ConfigData, bSaveToDisk);
 

@@ -66,6 +66,13 @@ public:
     bool StartGame(bool bSaveToDisk = true);
 
     /**
+     * @brief  同步 UI 控件数据到配置数据
+     * @note   详细流程分析: 由蓝图实现，将当前 UI 值写回 ConfigData
+     */
+    UFUNCTION(BlueprintImplementableEvent, Category = "XB|Config", meta = (DisplayName = "同步UI到配置"))
+    void SyncConfigFromUI();
+
+    /**
      * @brief  保存配置数据
      * @return 是否保存成功
      */
