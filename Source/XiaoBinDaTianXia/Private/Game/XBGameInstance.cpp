@@ -1,7 +1,6 @@
 ﻿// Copyright XiaoBing Project. All Rights Reserved.
 
 #include "Game/XBGameInstance.h"
-#include "Utils/XBGameplayTags.h"
 #include "Save/XBSaveGame.h"
 #include "Character/XBCharacterBase.h"
 #include "Soldier/XBSoldierCharacter.h"
@@ -16,8 +15,7 @@ void UXBGameInstance::Init()
 {
 	Super::Init();
 
-	// 初始化 GameplayTags
-	InitializeGameplayTags();
+	// 🔧 修改 - NativeGameplayTags 已自动注册，无需手动初始化
 
 	// 尝试加载默认存档
 	if (!LoadGameConfig(0))
@@ -30,11 +28,6 @@ void UXBGameInstance::Init()
 void UXBGameInstance::Shutdown()
 {
 	Super::Shutdown();
-}
-
-void UXBGameInstance::InitializeGameplayTags()
-{
-	FXBGameplayTags::InitializeNativeTags();
 }
 
 bool UXBGameInstance::SaveGameConfig(int32 SlotIndex)

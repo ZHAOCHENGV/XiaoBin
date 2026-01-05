@@ -92,6 +92,5 @@ protected:
 	TObjectPtr<UXBSaveGame> CurrentSaveGame;
 
 private:
-	void InitializeGameplayTags();
 	void EnsureSaveGameInstance();
 };

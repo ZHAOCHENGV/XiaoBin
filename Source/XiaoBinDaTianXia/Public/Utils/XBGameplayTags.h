@@ -2,16 +2,17 @@
 
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
+#include "NativeGameplayTags.h"
 
 /**
  * 项目 GameplayTags 集中定义
- * 使用原生 GameplayTags 而非 NativeGameplayTags 宏以保持兼容性
+ * 使用 NativeGameplayTags 宏进行注册
  */
 struct XIAOBINDATIANXIA_API FXBGameplayTags
 {
 public:
+    FXBGameplayTags();
     static const FXBGameplayTags& Get() { return GameplayTags; }
-    static void InitializeNativeTags();
 
     // ============ 输入 Tags ============
     FGameplayTag InputTag_Move;
@@ -85,3 +86,70 @@ public:
 private:
     static FXBGameplayTags GameplayTags;
 };
+
+// ============ 输入 Tags ============
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Input_Move);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Input_Look);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Input_Attack);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Input_Skill);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Input_Dash);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Input_Recall);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Input_CameraRotateLeft);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Input_CameraRotateRight);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Input_CameraReset);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Input_CameraZoom);
+
+// ============ 状态 Tags ============
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_State_Combat);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_State_Dead);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_State_Hidden);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_State_InBuilding);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_State_Dashing);
+
+// ============ 技能 Tags ============
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Ability_Attack);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Ability_Skill);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Ability_Dash);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Ability_Skill_Roman);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Ability_Skill_Genghis);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Ability_Skill_GuanYu);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Ability_Skill_Templar);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Ability_Skill_Viking);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Ability_Skill_Persian);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Ability_Skill_LiShimin);
+
+// ============ 属性 Tags ============
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Attribute_Health);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Attribute_MaxHealth);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Attribute_Damage);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Attribute_Scale);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Attribute_MoveSpeed);
+
+// ============ 事件 Tags ============
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Event_Combat_Enter);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Event_Combat_Exit);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Event_Soldier_Recruited);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Event_Soldier_Died);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Event_Leader_Died);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Event_Building_Enter);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Event_Building_Exit);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Event_Hit);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Event_Damage);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Event_Attack_MeleeHit);
+
+// ============ 阵营 Tags ============
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Faction_Neutral);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Faction_Player);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Faction_Enemy);
+
+// ============ 兵种 Tags ============
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_SoldierType_Infantry);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_SoldierType_Cavalry);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_SoldierType_Archer);
+
+// ============ Cue Tags ============
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_GameplayCue_Attack);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_GameplayCue_Skill);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_GameplayCue_Hit);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_GameplayCue_Death);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_GameplayCue_Recruit);
