@@ -46,13 +46,8 @@ void AXBPlayerCharacter::BeginPlay()
 {
     if (UXBGameInstance* GameInstance = GetGameInstance<UXBGameInstance>())
     {
-        const FXBGameConfigData GameConfig = GameInstance->GetGameConfig();
-
-        // 🔧 修改 - 仅玩家主将应用配置行名
-        if (!GameConfig.LeaderConfigRowName.IsNone())
-        {
-            ConfigRowName = GameConfig.LeaderConfigRowName;
-        }
+        // 🔧 修改 - 优先根据配置行名初始化数据表
+        ApplyConfigFromGameConfig(GameInstance->GetGameConfig(), true);
     }
 
     Super::BeginPlay();
@@ -89,6 +84,46 @@ void AXBPlayerCharacter::BeginPlay()
         SpringArmComponent->TargetArmLength = 1200.0f;
         SpringArmComponent->SetRelativeRotation(FRotator(DefaultCameraPitch, 0.0f, 0.0f));
     }
+}
+
+void AXBPlayerCharacter::ApplyConfigFromGameConfig(const FXBGameConfigData& GameConfig, bool bApplyInitialSoldiers)
+{
+    // 🔧 修改 - 仅玩家主将应用配置行名
+    if (!GameConfig.LeaderConfigRowName.IsNone())
+    {
+        ConfigRowName = GameConfig.LeaderConfigRowName;
+    }
+
+    if (ConfigDataTable && !ConfigRowName.IsNone())
+    {
+        InitializeFromDataTable(ConfigDataTable, ConfigRowName);
+    }
+
+    if (!GameConfig.LeaderDisplayName.IsEmpty())
+    {
+        // 🔧 修改 - 初始化玩家主将名称，确保 UI 配置生效
+        CharacterName = GameConfig.LeaderDisplayName;
+        CachedLeaderData.LeaderName = FText::FromString(CharacterName);
+    }
+
+    // 🔧 修改 - 以配置初始化主将基础倍率与成长参数
+    CachedLeaderData.HealthMultiplier = GameConfig.LeaderHealthMultiplier;
+    CachedLeaderData.DamageMultiplier = GameConfig.LeaderDamageMultiplier;
+    const float InitialScale = FMath::Max(0.01f, GameConfig.LeaderInitialScale);
+    GrowthConfigCache.MaxScale = FMath::Max(InitialScale, GameConfig.LeaderMaxScale);
+    GrowthConfigCache.DamageMultiplierPerSoldier = GameConfig.LeaderDamageMultiplierPerSoldier;
+
+    // 🔧 修改 - 以配置初始化主将基础大小，确保出生尺寸一致
+    BaseScale = InitialScale;
+    CachedLeaderData.Scale = InitialScale;
+
+    // 🔧 修改 - 重新应用初始属性，确保倍率写入属性集
+    ApplyInitialAttributes();
+    UpdateLeaderScale();
+    UpdateDamageMultiplier();
+
+    // 🔧 修改 - 统一应用运行时配置（倍率/掉落/招募/磁场）
+    ApplyRuntimeConfig(GameConfig, bApplyInitialSoldiers);
 }
 
 void AXBPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)

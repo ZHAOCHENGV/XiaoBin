@@ -3,6 +3,7 @@
 #include "Game/XBGameInstance.h"
 #include "Save/XBSaveGame.h"
 #include "Character/XBCharacterBase.h"
+#include "Character/XBPlayerCharacter.h"
 #include "Soldier/XBSoldierCharacter.h"
 #include "Kismet/GameplayStatics.h"
 
@@ -165,7 +166,16 @@ void UXBGameInstance::ApplyGameConfigToLeader(AXBCharacterBase* Leader, bool bAp
 	}
 
 	const FXBGameConfigData GameConfig = GetGameConfig();
-	Leader->ApplyRuntimeConfig(GameConfig, true);
+	if (AXBPlayerCharacter* PlayerLeader = Cast<AXBPlayerCharacter>(Leader))
+	{
+		// 🔧 修改 - 仅玩家主将应用配置界面数据
+		PlayerLeader->ApplyConfigFromGameConfig(GameConfig, true);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Log, TEXT("应用配置跳过：目标非玩家主将 %s"), *Leader->GetName());
+		return;
+	}
 
 	if (!bApplyToSoldiers)
 	{
