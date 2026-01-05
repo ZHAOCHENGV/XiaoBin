@@ -317,8 +317,10 @@ void AXBCharacterBase::ApplyInitialAttributes()
         return;
     }
 
-    AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetMaxHealthAttribute(), CachedLeaderData.MaxHealth);
-    AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetHealthAttribute(), CachedLeaderData.MaxHealth);
+    // 🔧 修改 - 生命值需要同时应用基础值与倍率，确保初始化即反映配置
+    const float EffectiveMaxHealth = FMath::Max(0.01f, CachedLeaderData.MaxHealth * CachedLeaderData.HealthMultiplier);
+    AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetMaxHealthAttribute(), EffectiveMaxHealth);
+    AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetHealthAttribute(), EffectiveMaxHealth);
     AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetHealthMultiplierAttribute(), CachedLeaderData.HealthMultiplier);
     AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetDamageMultiplierAttribute(), CachedLeaderData.DamageMultiplier);
     AbilitySystemComponent->SetNumericAttributeBase(UXBAttributeSet::GetMoveSpeedAttribute(), CachedLeaderData.MoveSpeed);
