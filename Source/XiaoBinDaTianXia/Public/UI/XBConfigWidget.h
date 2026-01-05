@@ -66,11 +66,28 @@ public:
     bool StartGame(bool bSaveToDisk = true);
 
     /**
+     * @brief  设置配置数据
+     * @param  NewConfig 新配置数据
+     * @param  bSyncToUI 是否同步到 UI
+     * @return 无
+     * @note   详细流程分析: 覆盖 ConfigData -> 可选同步到 UI
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Config", meta = (DisplayName = "设置配置数据"))
+    void SetConfigData(const FXBGameConfigData& NewConfig, bool bSyncToUI = true);
+
+    /**
      * @brief  同步 UI 控件数据到配置数据
      * @note   详细流程分析: 由蓝图实现，将当前 UI 值写回 ConfigData
      */
     UFUNCTION(BlueprintImplementableEvent, Category = "XB|Config", meta = (DisplayName = "同步UI到配置"))
     void SyncConfigFromUI();
+
+    /**
+     * @brief  同步配置数据到 UI 控件
+     * @note   详细流程分析: 由蓝图实现，将 ConfigData 刷新到 UI
+     */
+    UFUNCTION(BlueprintImplementableEvent, Category = "XB|Config", meta = (DisplayName = "同步配置到UI"))
+    void SyncUIFromConfig();
 
     /**
      * @brief  保存配置数据
