@@ -118,4 +118,11 @@ public:
 
     UPROPERTY(BlueprintReadWrite, Category = "配置", meta = (DisplayName = "目标主将"))
     TWeakObjectPtr<AXBCharacterBase> TargetLeader;
+
+private:
+    UPROPERTY(VisibleAnywhere, Category = "配置", meta = (DisplayName = "初始配置缓存"))
+    FXBGameConfigData InitialConfigData;
+
+    UPROPERTY(VisibleAnywhere, Category = "配置", meta = (DisplayName = "是否已缓存初始配置"))
+    bool bHasCachedInitialConfig = false;
 };
