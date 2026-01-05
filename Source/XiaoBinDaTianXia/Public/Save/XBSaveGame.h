@@ -71,6 +71,14 @@ struct FXBGameConfigData
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "主将初始大小"))
     float LeaderInitialScale = 1.0f;
 
+    /** 主将最大体型大小 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "主将最大体型大小"))
+    float LeaderMaxScale = 3.0f;
+
+    /** 每士兵伤害加成倍率 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "每士兵伤害加成倍率"))
+    float LeaderDamageMultiplierPerSoldier = 0.01f;
+
     /** 主将死亡掉落士兵数量 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "主将死亡掉落士兵数量"))
     int32 LeaderDeathDropCount = 5;
