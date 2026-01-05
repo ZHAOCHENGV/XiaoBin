@@ -57,6 +57,15 @@ public:
     bool ApplyConfig(bool bSaveToDisk = true);
 
     /**
+     * @brief  开始游戏
+     * @param  bSaveToDisk 是否保存到存档
+     * @return 是否开始成功
+     * @note   详细流程分析: 写入配置 -> 应用到主将与士兵 -> 加载选定地图
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Config", meta = (DisplayName = "开始游戏"))
+    bool StartGame(bool bSaveToDisk = true);
+
+    /**
      * @brief  保存配置数据
      * @return 是否保存成功
      */
@@ -109,4 +118,11 @@ public:
 
     UPROPERTY(BlueprintReadWrite, Category = "配置", meta = (DisplayName = "目标主将"))
     TWeakObjectPtr<AXBCharacterBase> TargetLeader;
+
+private:
+    UPROPERTY(VisibleAnywhere, Category = "配置", meta = (DisplayName = "初始配置缓存"))
+    FXBGameConfigData InitialConfigData;
+
+    UPROPERTY(VisibleAnywhere, Category = "配置", meta = (DisplayName = "是否已缓存初始配置"))
+    bool bHasCachedInitialConfig = false;
 };
