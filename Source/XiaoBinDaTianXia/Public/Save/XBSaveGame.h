@@ -67,6 +67,18 @@ struct FXBGameConfigData
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "主将冲刺速度倍率"))
     float LeaderSprintSpeedMultiplier = 1.5f;
 
+    /** 主将初始大小 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "主将初始大小"))
+    float LeaderInitialScale = 1.0f;
+
+    /** 主将最大体型大小 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "主将最大体型大小"))
+    float LeaderMaxScale = 3.0f;
+
+    /** 每士兵伤害加成倍率 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "每士兵伤害加成倍率"))
+    float LeaderDamageMultiplierPerSoldier = 0.01f;
+
     /** 主将死亡掉落士兵数量 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "主将死亡掉落士兵数量"))
     int32 LeaderDeathDropCount = 5;
@@ -86,6 +98,10 @@ struct FXBGameConfigData
     /** 获取士兵的回复效果 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "获取士兵的回复效果"))
     float SoldierHealthPerRecruit = 50.0f;
+
+    /** 士兵初始大小 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "士兵初始大小"))
+    float SoldierInitialScale = 1.0f;
 
     /** 磁场范围 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "磁场范围"))

@@ -23,5 +23,12 @@ public:
 
 	virtual void Tick(float DeltaTime) override;
 
+	/**
+	 * @brief  初始化主将数据（假人）
+	 * @return 无
+	 * @note   详细流程分析: 使用父类通用初始化，默认从 Actor 内部与数据表读取
+	 */
+	virtual void InitializeLeaderData() override;
+
 
 };

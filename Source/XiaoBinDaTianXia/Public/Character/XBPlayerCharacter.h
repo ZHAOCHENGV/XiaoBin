@@ -30,6 +30,31 @@ public:
     AXBPlayerCharacter();
 
     virtual void BeginPlay() override;
+
+    /**
+     * @brief  初始化主将数据（玩家）
+     * @return 无
+     * @note   详细流程分析: 调用父类通用初始化 -> 可追加玩家专属逻辑
+     */
+    virtual void InitializeLeaderData() override;
+
+    /**
+     * @brief  获取外部初始化配置（玩家从配置界面）
+     * @param  OutConfig 输出配置
+     * @return 是否存在外部配置
+     * @note   详细流程分析: 从 GameInstance 读取配置数据
+     */
+    virtual bool GetExternalInitConfig(FXBGameConfigData& OutConfig) const override;
+
+    /**
+     * @brief  从配置数据初始化玩家主将
+     * @param  GameConfig 配置数据
+     * @param  bApplyInitialSoldiers 是否生成初始士兵
+     * @return 无
+     * @note   详细流程分析: 应用行名/名称/倍率/成长参数 -> 应用基础缩放 -> 初始化属性 -> 应用运行时配置
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Config", meta = (DisplayName = "应用主将配置"))
+    void ApplyConfigFromGameConfig(const FXBGameConfigData& GameConfig, bool bApplyInitialSoldiers = true);
     virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 
     // ==================== 镜头控制 ====================
