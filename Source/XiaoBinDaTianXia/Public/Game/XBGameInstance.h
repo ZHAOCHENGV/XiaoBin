@@ -35,6 +35,24 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "XB|Save", meta = (DisplayName = "加载游戏配置"))
 	bool LoadGameConfig(int32 SlotIndex = 0);
 
+	/**
+	 * @brief  使用自定义名称保存游戏配置
+	 * @param  SlotName 存档名称
+	 * @return 是否保存成功
+	 * @note   详细流程分析: 保障存档对象存在 -> 以名称写入存档
+	 */
+	UFUNCTION(BlueprintCallable, Category = "XB|Save", meta = (DisplayName = "保存游戏配置(名称)"))
+	bool SaveGameConfigByName(const FString& SlotName);
+
+	/**
+	 * @brief  使用自定义名称加载游戏配置
+	 * @param  SlotName 存档名称
+	 * @return 是否加载成功
+	 * @note   详细流程分析: 检查存档存在 -> 读取后更新当前存档对象
+	 */
+	UFUNCTION(BlueprintCallable, Category = "XB|Save", meta = (DisplayName = "加载游戏配置(名称)"))
+	bool LoadGameConfigByName(const FString& SlotName);
+
 	/** 保存场景摆放 */
 	UFUNCTION(BlueprintCallable, Category = "XB|Save", meta = (DisplayName = "保存场景摆放"))
 	bool SaveSceneLayout(int32 SlotIndex = 0);
