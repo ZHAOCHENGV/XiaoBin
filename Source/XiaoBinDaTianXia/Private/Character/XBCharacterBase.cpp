@@ -136,8 +136,14 @@ void AXBCharacterBase::BeginPlay()
             CachedLeaderData.HealthMultiplier = GameConfig.LeaderHealthMultiplier;
             CachedLeaderData.DamageMultiplier = GameConfig.LeaderDamageMultiplier;
 
+            // 🔧 修改 - 以配置初始化主将基础大小，确保出生尺寸一致
+            const float InitialScale = FMath::Max(0.01f, GameConfig.LeaderInitialScale);
+            BaseScale = InitialScale;
+            CachedLeaderData.Scale = InitialScale;
+
             // 🔧 修改 - 重新应用初始属性，确保倍率写入属性集
             ApplyInitialAttributes();
+            UpdateLeaderScale();
             UpdateDamageMultiplier();
         }
     }
