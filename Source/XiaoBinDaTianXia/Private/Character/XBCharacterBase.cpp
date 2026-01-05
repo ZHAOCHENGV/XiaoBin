@@ -103,9 +103,62 @@ void AXBCharacterBase::BeginPlay()
         MagnetFieldComponent->SetFieldEnabled(true);
     }
 
+    // 🔧 修改 - 从全局配置覆盖主将行名，优先用户配置
+    if (UXBGameInstance* GameInstance = GetGameInstance<UXBGameInstance>())
+    {
+        const FXBGameConfigData GameConfig = GameInstance->GetGameConfig();
+        if (!GameConfig.LeaderConfigRowName.IsNone())
+        {
+            ConfigRowName = GameConfig.LeaderConfigRowName;
+        }
+
+        // 🔧 修改 - 游戏初始时同步主将名称，确保 UI 配置能覆盖默认名称
+        if (!GameConfig.LeaderDisplayName.IsEmpty())
+        {
+            // 🔧 修改 - 直接设置 CharacterName，保证后续 UI/血条显示一致
+            CharacterName = GameConfig.LeaderDisplayName;
+        }
+    }
+
     if (ConfigDataTable && !ConfigRowName.IsNone())
     {
         InitializeFromDataTable(ConfigDataTable, ConfigRowName);
+    }
+
+    // 🔧 修改 - 仅在玩家主将初始阶段使用配置覆盖基础数据
+    if (UXBGameInstance* GameInstance = GetGameInstance<UXBGameInstance>())
+    {
+        if (IsA<AXBPlayerCharacter>())
+        {
+            const FXBGameConfigData GameConfig = GameInstance->GetGameConfig();
+
+            if (!GameConfig.LeaderDisplayName.IsEmpty())
+            {
+                // 🔧 修改 - 初始化玩家主将名称，确保 UI 配置生效
+                CharacterName = GameConfig.LeaderDisplayName;
+                CachedLeaderData.LeaderName = FText::FromString(CharacterName);
+            }
+
+            // 🔧 修改 - 以配置初始化主将基础倍率
+            CachedLeaderData.HealthMultiplier = GameConfig.LeaderHealthMultiplier;
+            CachedLeaderData.DamageMultiplier = GameConfig.LeaderDamageMultiplier;
+
+            // 🔧 修改 - 以配置初始化主将基础大小，确保出生尺寸一致
+            const float InitialScale = FMath::Max(0.01f, GameConfig.LeaderInitialScale);
+            BaseScale = InitialScale;
+            CachedLeaderData.Scale = InitialScale;
+
+            // 🔧 修改 - 重新应用初始属性，确保倍率写入属性集
+            ApplyInitialAttributes();
+            UpdateLeaderScale();
+            UpdateDamageMultiplier();
+        }
+    }
+
+    // 🔧 修改 - 统一应用运行时配置（倍率/掉落/招募/磁场）
+    if (UXBGameInstance* GameInstance = GetGameInstance<UXBGameInstance>())
+    {
+        ApplyRuntimeConfig(GameInstance->GetGameConfig(), true);
     }
 }
 
