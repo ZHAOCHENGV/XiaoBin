@@ -36,6 +36,7 @@
 #include "AI/XBSoldierAIController.h"
 #include "Kismet/GameplayStatics.h"
 #include "Game/XBGameInstance.h"
+#include "Character/XBPlayerCharacter.h"
 
 AXBCharacterBase::AXBCharacterBase()
 {
@@ -115,6 +116,30 @@ void AXBCharacterBase::BeginPlay()
     if (ConfigDataTable && !ConfigRowName.IsNone())
     {
         InitializeFromDataTable(ConfigDataTable, ConfigRowName);
+    }
+
+    // 🔧 修改 - 仅在玩家主将初始阶段使用配置覆盖基础数据
+    if (UXBGameInstance* GameInstance = GetGameInstance<UXBGameInstance>())
+    {
+        if (IsA<AXBPlayerCharacter>())
+        {
+            const FXBGameConfigData GameConfig = GameInstance->GetGameConfig();
+
+            if (!GameConfig.LeaderDisplayName.IsEmpty())
+            {
+                // 🔧 修改 - 初始化玩家主将名称，确保 UI 配置生效
+                CharacterName = GameConfig.LeaderDisplayName;
+                CachedLeaderData.LeaderName = FText::FromString(CharacterName);
+            }
+
+            // 🔧 修改 - 以配置初始化主将基础倍率
+            CachedLeaderData.HealthMultiplier = GameConfig.LeaderHealthMultiplier;
+            CachedLeaderData.DamageMultiplier = GameConfig.LeaderDamageMultiplier;
+
+            // 🔧 修改 - 重新应用初始属性，确保倍率写入属性集
+            ApplyInitialAttributes();
+            UpdateDamageMultiplier();
+        }
     }
 
     // 🔧 修改 - 统一应用运行时配置（倍率/掉落/招募/磁场）
@@ -300,15 +325,7 @@ void AXBCharacterBase::ApplyInitialAttributes()
 void AXBCharacterBase::ApplyRuntimeConfig(const FXBGameConfigData& GameConfig, bool bApplyInitialSoldiers)
 {
     // ==================== 主将配置覆盖 ====================
-    if (!GameConfig.LeaderDisplayName.IsEmpty())
-    {
-        CharacterName = GameConfig.LeaderDisplayName;
-        CachedLeaderData.LeaderName = FText::FromString(CharacterName);
-    }
-
-    // 🔧 修改 - 覆盖核心倍率（保持数据驱动）
-    CachedLeaderData.HealthMultiplier = GameConfig.LeaderHealthMultiplier;
-    CachedLeaderData.DamageMultiplier = GameConfig.LeaderDamageMultiplier;
+    // 🔧 修改 - 主将名称/倍率仅在初始阶段写入，运行时不再覆盖
 
     if (GameConfig.LeaderMoveSpeed > 0.0f)
     {
