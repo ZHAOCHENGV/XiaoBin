@@ -167,4 +167,7 @@ private:
 
     UPROPERTY(VisibleAnywhere, Category = "配置", meta = (DisplayName = "是否已缓存初始配置"))
     bool bHasCachedInitialConfig = false;
+
+private:
+    bool LoadConfigByNameInternal(const FString& SlotName);
 };

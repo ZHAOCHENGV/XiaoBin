@@ -149,6 +149,28 @@ bool UXBConfigWidget::LoadConfig()
 
 bool UXBConfigWidget::LoadConfigByName(const FString& SlotName)
 {
+    // 🔧 修改 - 由内部实现处理，确保符号稳定且便于排查
+    return LoadConfigByNameInternal(SlotName);
+}
+
+bool UXBConfigWidget::LoadConfigByNameInternal(const FString& SlotName)
+{
+    UXBGameInstance* GameInstance = GetGameInstance<UXBGameInstance>();
+    if (!GameInstance)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("配置界面读取失败：GameInstance 为空"));
+        return false;
+    }
+
+    // 🔧 修改 - 使用名称加载存档并刷新数据
+    const bool bLoaded = GameInstance->LoadGameConfigByName(SlotName);
+    RefreshConfigFromSave();
+    SyncUIFromConfig();
+    return bLoaded;
+}
+
+bool UXBConfigWidget::LoadConfigByName(const FString& SlotName)
+{
     UXBGameInstance* GameInstance = GetGameInstance<UXBGameInstance>();
     if (!GameInstance)
     {
