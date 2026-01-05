@@ -1,7 +1,6 @@
 ﻿// Copyright XiaoBing Project. All Rights Reserved.
 
 #include "Game/XBGameInstance.h"
-#include "Utils/XBGameplayTags.h"
 #include "Save/XBSaveGame.h"
 #include "Character/XBCharacterBase.h"
 #include "Soldier/XBSoldierCharacter.h"
@@ -16,8 +15,7 @@ void UXBGameInstance::Init()
 {
 	Super::Init();
 
-	// 初始化 GameplayTags
-	InitializeGameplayTags();
+	// 🔧 修改 - NativeGameplayTags 已自动注册，无需手动初始化
 
 	// 尝试加载默认存档
 	if (!LoadGameConfig(0))
@@ -32,13 +30,26 @@ void UXBGameInstance::Shutdown()
 	Super::Shutdown();
 }
 
-void UXBGameInstance::InitializeGameplayTags()
-{
-	FXBGameplayTags::InitializeNativeTags();
-}
-
 bool UXBGameInstance::SaveGameConfig(int32 SlotIndex)
 {
+	const FString SlotName = FString::Printf(TEXT("XBConfig_%d"), SlotIndex);
+	return SaveGameConfigByName(SlotName);
+}
+
+bool UXBGameInstance::LoadGameConfig(int32 SlotIndex)
+{
+	const FString SlotName = FString::Printf(TEXT("XBConfig_%d"), SlotIndex);
+	return LoadGameConfigByName(SlotName);
+}
+
+bool UXBGameInstance::SaveGameConfigByName(const FString& SlotName)
+{
+	if (SlotName.IsEmpty())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("保存配置失败：SlotName 为空"));
+		return false;
+	}
+
 	EnsureSaveGameInstance();
 
 	if (!CurrentSaveGame)
@@ -47,28 +58,29 @@ bool UXBGameInstance::SaveGameConfig(int32 SlotIndex)
 		return false;
 	}
 
-
-    
-	FString SlotName = FString::Printf(TEXT("XBConfig_%d"), SlotIndex);
+	// 🔧 修改 - 使用自定义名称保存配置，以支持多存档插槽
 	return UGameplayStatics::SaveGameToSlot(CurrentSaveGame, SlotName, 0);
 }
 
-bool UXBGameInstance::LoadGameConfig(int32 SlotIndex)
+bool UXBGameInstance::LoadGameConfigByName(const FString& SlotName)
 {
-	FString SlotName = FString::Printf(TEXT("XBConfig_%d"), SlotIndex);
-    
+	if (SlotName.IsEmpty())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("加载配置失败：SlotName 为空"));
+		return false;
+	}
+
 	if (UGameplayStatics::DoesSaveGameExist(SlotName, 0))
 	{
 		CurrentSaveGame = Cast<UXBSaveGame>(
 			UGameplayStatics::LoadGameFromSlot(SlotName, 0));
-        
+
 		if (!CurrentSaveGame)
 		{
 			UE_LOG(LogTemp, Warning, TEXT("加载配置失败：存档对象无效"));
 			return false;
 		}
 
-	
 		return true;
 	}
 
