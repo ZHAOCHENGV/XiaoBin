@@ -57,6 +57,22 @@ public:
     bool ApplyConfig(bool bSaveToDisk = true);
 
     /**
+     * @brief  开始游戏
+     * @param  bSaveToDisk 是否保存到存档
+     * @return 是否开始成功
+     * @note   详细流程分析: 写入配置 -> 应用到主将与士兵 -> 加载选定地图
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Config", meta = (DisplayName = "开始游戏"))
+    bool StartGame(bool bSaveToDisk = true);
+
+    /**
+     * @brief  同步 UI 控件数据到配置数据
+     * @note   详细流程分析: 由蓝图实现，将当前 UI 值写回 ConfigData
+     */
+    UFUNCTION(BlueprintImplementableEvent, Category = "XB|Config", meta = (DisplayName = "同步UI到配置"))
+    void SyncConfigFromUI();
+
+    /**
      * @brief  保存配置数据
      * @return 是否保存成功
      */
@@ -64,11 +80,29 @@ public:
     bool SaveConfig();
 
     /**
+     * @brief  使用自定义名称保存配置数据
+     * @param  SlotName 存档名称
+     * @return 是否保存成功
+     * @note   详细流程分析: 写入 GameConfig -> 使用名称保存
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Config", meta = (DisplayName = "保存配置(名称)"))
+    bool SaveConfigByName(const FString& SlotName);
+
+    /**
      * @brief  读取配置数据
      * @return 是否读取成功
      */
     UFUNCTION(BlueprintCallable, Category = "XB|Config", meta = (DisplayName = "读取配置"))
     bool LoadConfig();
+
+    /**
+     * @brief  使用自定义名称读取配置数据
+     * @param  SlotName 存档名称
+     * @return 是否读取成功
+     * @note   详细流程分析: 使用名称加载 -> 同步到 ConfigData
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Config", meta = (DisplayName = "读取配置(名称)"))
+    bool LoadConfigByName(const FString& SlotName);
 
     /**
      * @brief  重置为默认配置
@@ -109,4 +143,11 @@ public:
 
     UPROPERTY(BlueprintReadWrite, Category = "配置", meta = (DisplayName = "目标主将"))
     TWeakObjectPtr<AXBCharacterBase> TargetLeader;
+
+private:
+    UPROPERTY(VisibleAnywhere, Category = "配置", meta = (DisplayName = "初始配置缓存"))
+    FXBGameConfigData InitialConfigData;
+
+    UPROPERTY(VisibleAnywhere, Category = "配置", meta = (DisplayName = "是否已缓存初始配置"))
+    bool bHasCachedInitialConfig = false;
 };
