@@ -147,23 +147,6 @@ bool UXBConfigWidget::LoadConfig()
     return bLoaded;
 }
 
-
-bool UXBConfigWidget::LoadConfigByName(const FString& SlotName)
-{
-    UXBGameInstance* GameInstance = GetGameInstance<UXBGameInstance>();
-    if (!GameInstance)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("配置界面读取失败：GameInstance 为空"));
-        return false;
-    }
-
-    // 🔧 修改 - 使用名称加载存档并刷新数据
-    const bool bLoaded = GameInstance->LoadGameConfigByName(SlotName);
-    RefreshConfigFromSave();
-    SyncUIFromConfig();
-    return bLoaded;
-}
-
 bool UXBConfigWidget::LoadConfigByName(const FString& SlotName)
 {
     UXBGameInstance* GameInstance = GetGameInstance<UXBGameInstance>();

@@ -1333,6 +1333,12 @@ void AXBSoldierCharacter::ApplyRuntimeConfig(const FXBGameConfigData& GameConfig
     CachedHealthMultiplier = FMath::Max(0.01f, GameConfig.SoldierHealthMultiplier);
     CachedDamageMultiplier = FMath::Max(0.01f, GameConfig.SoldierDamageMultiplier);
 
+    // 🔧 修改 - 以配置初始化士兵大小，确保出生尺寸一致
+    const float InitialScale = FMath::Max(0.01f, GameConfig.SoldierInitialScale);
+    const float BaseScale = IsDataAccessorValid()
+        ? DataAccessor->GetRawData().VisualConfig.MeshScale
+        : 1.0f;
+    SetActorScale3D(FVector(BaseScale * InitialScale));
 
     // 🔧 修改 - 刷新当前血量为新上限，避免配置变化导致负值
     CurrentHealth = GetMaxHealth();
