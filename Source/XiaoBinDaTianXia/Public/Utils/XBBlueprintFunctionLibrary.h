@@ -17,10 +17,13 @@
 #include "CoreMinimal.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "Army/XBSoldierTypes.h"
+// 🔧 修改 - 引入配置结构体，统一蓝图访问入口
+#include "Save/XBSaveGame.h"
 #include "XBBlueprintFunctionLibrary.generated.h"
 
 class AXBCharacterBase;
 class AXBSoldierCharacter;
+class UXBGameInstance;
 
 /**
  * @brief 范围检测结果结构体
@@ -106,6 +109,28 @@ public:
      */
     UFUNCTION(BlueprintPure, Category = "XB|阵营", meta = (DisplayName = "Actor是否存活"))
     static bool IsActorAlive(const AActor* Actor);
+
+    // ==================== 配置数据 ====================
+
+    /**
+     * @brief  获取游戏配置数据
+     * @param  WorldContext 世界上下文
+     * @return 游戏配置数据（未获取则返回默认值）
+     * @note   详细流程分析: 通过 GameInstance 获取配置，避免直接依赖具体角色类
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Config", meta = (DisplayName = "获取游戏配置", WorldContext = "WorldContext"))
+    static FXBGameConfigData GetGameConfigData(const UObject* WorldContext);
+
+    /**
+     * @brief  设置游戏配置数据
+     * @param  WorldContext 世界上下文
+     * @param  NewConfig 新配置数据
+     * @param  bSaveToDisk 是否保存到磁盘
+     * @return 是否设置成功
+     * @note   详细流程分析: 统一配置入口，便于后续敌人/其他系统复用
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Config", meta = (DisplayName = "设置游戏配置", WorldContext = "WorldContext"))
+    static bool SetGameConfigData(const UObject* WorldContext, const FXBGameConfigData& NewConfig, bool bSaveToDisk = true);
 
     // ==================== 范围检测 ====================
 
