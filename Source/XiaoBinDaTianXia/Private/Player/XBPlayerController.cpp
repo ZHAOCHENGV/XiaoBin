@@ -58,6 +58,7 @@ void AXBPlayerController::OnPossess(APawn* InPawn)
 
     // ✨ 新增 - 缓存玩家角色引用
     CachedPlayerCharacter = Cast<AXBPlayerCharacter>(InPawn);
+    
 
     // 🔧 修改 - 进入新场景并开始控制角色时，切换为仅游戏输入模式
     FInputModeGameOnly GameOnlyInputMode;
