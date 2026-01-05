@@ -330,6 +330,8 @@ protected:
     void UpdateSkillEffectScaling();
     void UpdateAttackRangeScaling();
     void UpdateLeaderScale();
+    void SmoothLeaderScale(float DeltaTime);
+    void ApplyLeaderScale(float NewScale);
     void AddHealthWithOverflow(float HealthToAdd);
     void UpdateDamageMultiplier();
 
@@ -362,6 +364,15 @@ protected:
 
     UPROPERTY(BlueprintReadOnly, Category = "成长")
     float BaseScale = 1.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长", meta = (DisplayName = "主将缩放插值速度", ClampMin = "0.0"))
+    float LeaderScaleInterpSpeed = 6.0f;
+
+    UPROPERTY(VisibleAnywhere, Category = "成长", meta = (DisplayName = "目标主将缩放"))
+    float TargetLeaderScale = 1.0f;
+
+    UPROPERTY(VisibleAnywhere, Category = "成长", meta = (DisplayName = "是否存在缩放目标"))
+    bool bHasTargetLeaderScale = false;
 
     UPROPERTY(BlueprintReadOnly, Category = "成长")
     float BaseAttackRange = 150.0f;

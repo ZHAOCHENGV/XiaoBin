@@ -36,6 +36,7 @@
 #include "AI/XBSoldierAIController.h"
 #include "Kismet/GameplayStatics.h"
 #include "Game/XBGameInstance.h"
+#include "Character/XBPlayerCharacter.h"
 
 AXBCharacterBase::AXBCharacterBase()
 {
@@ -102,25 +103,9 @@ void AXBCharacterBase::BeginPlay()
         MagnetFieldComponent->SetFieldEnabled(true);
     }
 
-    // 🔧 修改 - 从全局配置覆盖主将行名，优先用户配置
-    if (UXBGameInstance* GameInstance = GetGameInstance<UXBGameInstance>())
-    {
-        const FXBGameConfigData GameConfig = GameInstance->GetGameConfig();
-        if (!GameConfig.LeaderConfigRowName.IsNone())
-        {
-            ConfigRowName = GameConfig.LeaderConfigRowName;
-        }
-    }
-
     if (ConfigDataTable && !ConfigRowName.IsNone())
     {
         InitializeFromDataTable(ConfigDataTable, ConfigRowName);
-    }
-
-    // 🔧 修改 - 统一应用运行时配置（倍率/掉落/招募/磁场）
-    if (UXBGameInstance* GameInstance = GetGameInstance<UXBGameInstance>())
-    {
-        ApplyRuntimeConfig(GameInstance->GetGameConfig(), true);
     }
 }
 
@@ -153,6 +138,7 @@ void AXBCharacterBase::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
     UpdateSprint(DeltaTime);
+    SmoothLeaderScale(DeltaTime);
 }
 
 void AXBCharacterBase::SetupMovementComponent()
@@ -300,15 +286,7 @@ void AXBCharacterBase::ApplyInitialAttributes()
 void AXBCharacterBase::ApplyRuntimeConfig(const FXBGameConfigData& GameConfig, bool bApplyInitialSoldiers)
 {
     // ==================== 主将配置覆盖 ====================
-    if (!GameConfig.LeaderDisplayName.IsEmpty())
-    {
-        CharacterName = GameConfig.LeaderDisplayName;
-        CachedLeaderData.LeaderName = FText::FromString(CharacterName);
-    }
-
-    // 🔧 修改 - 覆盖核心倍率（保持数据驱动）
-    CachedLeaderData.HealthMultiplier = GameConfig.LeaderHealthMultiplier;
-    CachedLeaderData.DamageMultiplier = GameConfig.LeaderDamageMultiplier;
+    // 🔧 修改 - 主将名称/倍率仅在初始阶段写入，运行时不再覆盖
 
     if (GameConfig.LeaderMoveSpeed > 0.0f)
     {
@@ -825,6 +803,35 @@ void AXBCharacterBase::UpdateLeaderScale()
 {
     const float AdditionalScale = Soldiers.Num() * GrowthConfigCache.ScalePerSoldier;
     const float NewScale = FMath::Min(BaseScale + AdditionalScale, GrowthConfigCache.MaxScale);
+
+    // 🔧 修改 - 设置目标缩放，由 Tick 平滑过渡
+    TargetLeaderScale = NewScale;
+    bHasTargetLeaderScale = true;
+}
+
+void AXBCharacterBase::SmoothLeaderScale(float DeltaTime)
+{
+    if (!bHasTargetLeaderScale)
+    {
+        return;
+    }
+
+    const float CurrentScale = GetActorScale3D().X;
+    const float InterpSpeed = FMath::Max(0.0f, LeaderScaleInterpSpeed);
+    const float NewScale = InterpSpeed > 0.0f
+        ? FMath::FInterpTo(CurrentScale, TargetLeaderScale, DeltaTime, InterpSpeed)
+        : TargetLeaderScale;
+
+    ApplyLeaderScale(NewScale);
+
+    if (FMath::IsNearlyEqual(NewScale, TargetLeaderScale, 0.001f))
+    {
+        bHasTargetLeaderScale = false;
+    }
+}
+
+void AXBCharacterBase::ApplyLeaderScale(float NewScale)
+{
     // 🔧 修改 - 缩放前记录胶囊高度，保证缩放后脚底贴地
     const float OldHalfHeight = GetCapsuleComponent() ? GetCapsuleComponent()->GetScaledCapsuleHalfHeight() : 0.0f;
 
@@ -849,7 +856,7 @@ void AXBCharacterBase::UpdateLeaderScale()
 
     if (CombatComponent && GrowthConfigCache.bEnableAttackRangeScaling)
     {
-        float RangeScale = NewScale * GrowthConfigCache.AttackRangeScaleMultiplier;
+        const float RangeScale = NewScale * GrowthConfigCache.AttackRangeScaleMultiplier;
         CombatComponent->SetAttackRangeScale(RangeScale);
     }
 }
