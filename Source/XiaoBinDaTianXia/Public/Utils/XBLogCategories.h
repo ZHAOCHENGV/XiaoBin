@@ -38,3 +38,7 @@ DECLARE_LOG_CATEGORY_EXTERN(LogXBCharacter, Log, All);
 
 /** @brief 玩家输入日志 */
 DECLARE_LOG_CATEGORY_EXTERN(LogXBInput, Log, All);
+
+// ✨ 新增 - 配置系统日志
+/** @brief 配置系统日志 */
+DECLARE_LOG_CATEGORY_EXTERN(LogXBConfig, Log, All);
