@@ -3,7 +3,14 @@
 #include "UI/XBConfigSaveWidget.h"
 #include "Game/XBGameInstance.h"
 #include "Save/XBSaveSubsystem.h"
+#include "UI/XBConfigWidget.h"
 #include "Utils/XBLogCategories.h"
+
+void UXBConfigSaveWidget::SetTargetConfigWidget(UXBConfigWidget* InConfigWidget)
+{
+    // 🔧 修改 - 缓存配置界面引用，保存时直接从 UI 读取最新数据
+    TargetConfigWidget = InConfigWidget;
+}
 
 void UXBConfigSaveWidget::SetConfigData(const FXBGameConfigData& NewConfig, bool bSyncToUI)
 {
@@ -12,14 +19,22 @@ void UXBConfigSaveWidget::SetConfigData(const FXBGameConfigData& NewConfig, bool
 
     if (bSyncToUI)
     {
-        // 🔧 修改 - 同步到 UI，保证界面显示与数据一致
-        SyncUIFromConfig();
+        // 🔧 修改 - 优先同步到配置界面，避免保存界面维护额外 UI 状态
+        if (TargetConfigWidget.IsValid())
+        {
+            TargetConfigWidget->SetConfigData(ConfigData, true);
+        }
     }
 }
 
 FXBGameConfigData UXBConfigSaveWidget::GetConfigData() const
 {
-    // 🔧 修改 - 直接返回 ConfigData，便于蓝图读取当前配置
+    // 🔧 修改 - 优先从配置界面读取最新数据，避免缓存过期
+    if (TargetConfigWidget.IsValid())
+    {
+        return TargetConfigWidget->GetConfigData();
+    }
+
     return ConfigData;
 }
 
@@ -38,8 +53,16 @@ bool UXBConfigSaveWidget::SaveConfigByName(const FString& SlotName, bool bSaveTo
         return false;
     }
 
-    // 🔧 修改 - 保存前同步 UI，确保保存的是当前界面最新数据
-    SyncConfigFromUI();
+    // 🔧 修改 - 保存前从配置界面同步 UI，确保保存的是当前配置界面最新数据
+    if (TargetConfigWidget.IsValid())
+    {
+        TargetConfigWidget->SyncConfigFromUI();
+        ConfigData = TargetConfigWidget->GetConfigData();
+    }
+    else
+    {
+        UE_LOG(LogXBConfig, Warning, TEXT("保存配置警告：配置界面引用无效，使用本地缓存数据"));
+    }
 
     // 🔧 修改 - 先写入配置，再进行存档保存，确保保存的是最新配置数据
     GameInstance->SetGameConfig(ConfigData, false);

@@ -9,6 +9,7 @@
 
 class UXBSaveSubsystem;
 class UXBGameInstance;
+class UXBConfigWidget;
 
 /**
  * @brief 配置保存界面 Widget
@@ -20,6 +21,15 @@ class XIAOBINDATIANXIA_API UXBConfigSaveWidget : public UUserWidget
     GENERATED_BODY()
 
 public:
+    /**
+     * @brief  设置配置界面引用
+     * @param  InConfigWidget 配置界面
+     * @return 无
+     * @note   详细流程分析: 保存界面通过配置界面获取最新 UI 数据
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Config", meta = (DisplayName = "设置配置界面引用"))
+    void SetTargetConfigWidget(UXBConfigWidget* InConfigWidget);
+
     /**
      * @brief  设置配置数据
      * @param  NewConfig 新配置数据
@@ -48,23 +58,12 @@ public:
     UFUNCTION(BlueprintCallable, Category = "XB|Config", meta = (DisplayName = "保存配置(名称)"))
     bool SaveConfigByName(const FString& SlotName, bool bSaveToDisk = true);
 
-    /**
-     * @brief  同步 UI 控件数据到配置数据
-     * @note   详细流程分析: 由蓝图实现，将当前 UI 值写回 ConfigData
-     */
-    UFUNCTION(BlueprintImplementableEvent, Category = "XB|Config", meta = (DisplayName = "同步UI到配置"))
-    void SyncConfigFromUI();
-
-    /**
-     * @brief  同步配置数据到 UI 控件
-     * @note   详细流程分析: 由蓝图实现，将 ConfigData 刷新到 UI
-     */
-    UFUNCTION(BlueprintImplementableEvent, Category = "XB|Config", meta = (DisplayName = "同步配置到UI"))
-    void SyncUIFromConfig();
-
 public:
     // ==================== UI 数据 ====================
 
     UPROPERTY(BlueprintReadWrite, Category = "配置", meta = (DisplayName = "配置数据"))
     FXBGameConfigData ConfigData;
+
+    UPROPERTY(BlueprintReadWrite, Category = "配置", meta = (DisplayName = "配置界面引用"))
+    TWeakObjectPtr<UXBConfigWidget> TargetConfigWidget;
 };
