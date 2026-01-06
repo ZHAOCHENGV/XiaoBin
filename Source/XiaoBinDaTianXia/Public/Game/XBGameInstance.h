@@ -65,6 +65,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "XB|Save", meta = (DisplayName = "获取当前存档"))
 	UXBSaveGame* GetCurrentSaveGame() const { return CurrentSaveGame; }
 
+	/**
+	 * @brief  设置当前存档
+	 * @param  NewSaveGame 新存档对象
+	 * @return 无
+	 * @note   详细流程分析: 允许外部系统切换存档实例以同步配置
+	 */
+	UFUNCTION(BlueprintCallable, Category = "XB|Save", meta = (DisplayName = "设置当前存档"))
+	void SetCurrentSaveGame(UXBSaveGame* NewSaveGame);
+
 	// ============ 全局配置 ============
 	
 	/** 获取游戏配置 */

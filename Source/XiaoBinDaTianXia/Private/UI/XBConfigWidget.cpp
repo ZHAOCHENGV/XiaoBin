@@ -97,78 +97,11 @@ void UXBConfigWidget::SetConfigData(const FXBGameConfigData& NewConfig, bool bSy
     }
 }
 
-bool UXBConfigWidget::SaveConfig()
+FXBGameConfigData UXBConfigWidget::GetConfigData() const
 {
-    UXBGameInstance* GameInstance = GetGameInstance<UXBGameInstance>();
-    if (!GameInstance)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("配置界面保存失败：GameInstance 为空"));
-        return false;
-    }
-
-    // 🔧 修改 - 保存前同步 UI，保证写入当前控件值
-    SyncConfigFromUI();
-
-    // 🔧 修改 - 保存配置到存档
-    GameInstance->SetGameConfig(ConfigData, true);
-    return true;
+    // 🔧 修改 - 直接返回 ConfigData，便于蓝图侧读取当前配置
+    return ConfigData;
 }
-
-bool UXBConfigWidget::SaveConfigByName(const FString& SlotName)
-{
-    UXBGameInstance* GameInstance = GetGameInstance<UXBGameInstance>();
-    if (!GameInstance)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("配置界面保存失败：GameInstance 为空"));
-        return false;
-    }
-
-    // 🔧 修改 - 保存前同步 UI，保证写入当前控件值
-    SyncConfigFromUI();
-
-    // 🔧 修改 - 先写入配置，再使用名称保存
-    GameInstance->SetGameConfig(ConfigData, false);
-    return GameInstance->SaveGameConfigByName(SlotName);
-}
-
-bool UXBConfigWidget::LoadConfig()
-{
-    UXBGameInstance* GameInstance = GetGameInstance<UXBGameInstance>();
-    if (!GameInstance)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("配置界面读取失败：GameInstance 为空"));
-        return false;
-    }
-
-    // 🔧 修改 - 读取存档并刷新数据
-    const bool bLoaded = GameInstance->LoadGameConfig(0);
-    RefreshConfigFromSave();
-    SyncUIFromConfig();
-    return bLoaded;
-}
-
-bool UXBConfigWidget::LoadConfigByName(const FString& SlotName)
-{
-    // 🔧 修改 - 由内部实现处理，确保符号稳定且便于排查
-    return LoadConfigByNameInternal(SlotName);
-}
-
-bool UXBConfigWidget::LoadConfigByNameInternal(const FString& SlotName)
-{
-    UXBGameInstance* GameInstance = GetGameInstance<UXBGameInstance>();
-    if (!GameInstance)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("配置界面读取失败：GameInstance 为空"));
-        return false;
-    }
-
-    // 🔧 修改 - 使用名称加载存档并刷新数据
-    const bool bLoaded = GameInstance->LoadGameConfigByName(SlotName);
-    RefreshConfigFromSave();
-    SyncUIFromConfig();
-    return bLoaded;
-}
-
 
 bool UXBConfigWidget::ResetToDefault(bool bSaveToDisk)
 {

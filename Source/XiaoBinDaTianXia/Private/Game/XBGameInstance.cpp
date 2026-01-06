@@ -110,9 +110,15 @@ FXBGameConfigData UXBGameInstance::GetGameConfig() const
 	}
 
 	// 🔧 修改 - 未加载存档时返回默认配置
-	UXBSaveGame* DefaultSave = Cast<UXBSaveGame>(
+UXBSaveGame* DefaultSave = Cast<UXBSaveGame>(
 		UGameplayStatics::CreateSaveGameObject(UXBSaveGame::StaticClass()));
 	return DefaultSave ? DefaultSave->GameConfig : FXBGameConfigData();
+}
+
+void UXBGameInstance::SetCurrentSaveGame(UXBSaveGame* NewSaveGame)
+{
+	// 🔧 修改 - 允许外部系统切换存档对象以同步配置
+	CurrentSaveGame = NewSaveGame;
 }
 
 void UXBGameInstance::SetGameConfig(const FXBGameConfigData& NewConfig, bool bSaveToDisk)
