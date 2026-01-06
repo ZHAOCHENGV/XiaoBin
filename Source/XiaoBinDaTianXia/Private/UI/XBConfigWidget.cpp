@@ -19,7 +19,8 @@ void UXBConfigWidget::InitializeConfig(AXBCharacterBase* InLeader)
     if (!bHasCachedInitialConfig)
     {
         // 🔧 修改 - 首次进入界面时缓存 UI 默认值，确保“重置默认”回到界面初始状态
-        InitialConfigData = ConfigData;
+        //InitialConfigData = ConfigData;
+        SetConfigData(InitialConfigData);
         bHasCachedInitialConfig = true;
     }
 }
