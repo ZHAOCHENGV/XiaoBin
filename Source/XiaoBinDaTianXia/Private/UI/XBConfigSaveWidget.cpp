@@ -53,16 +53,16 @@ bool UXBConfigSaveWidget::SaveConfigByName(const FString& SlotName, bool bSaveTo
         return false;
     }
 
-    // 🔧 修改 - 保存前从配置界面同步 UI，确保保存的是当前配置界面最新数据
-    if (TargetConfigWidget.IsValid())
+    // 🔧 修改 - 配置界面未绑定时拒绝保存，避免写入默认值导致数据归零
+    if (!TargetConfigWidget.IsValid())
     {
-        TargetConfigWidget->SyncConfigFromUI();
-        ConfigData = TargetConfigWidget->GetConfigData();
+        UE_LOG(LogXBConfig, Warning, TEXT("保存配置失败：配置界面引用无效，请先设置配置界面"));
+        return false;
     }
-    else
-    {
-        UE_LOG(LogXBConfig, Warning, TEXT("保存配置警告：配置界面引用无效，使用本地缓存数据"));
-    }
+
+    // 🔧 修改 - 保存前从配置界面同步 UI，确保保存的是当前界面最新数据
+    TargetConfigWidget->SyncConfigFromUI();
+    ConfigData = TargetConfigWidget->GetConfigData();
 
     // 🔧 修改 - 先写入配置，再进行存档保存，确保保存的是最新配置数据
     GameInstance->SetGameConfig(ConfigData, false);
