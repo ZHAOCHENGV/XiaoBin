@@ -31,9 +31,6 @@ bool UXBConfigSaveWidget::SaveConfigByName(const FString& SlotName, bool bSaveTo
         return false;
     }
 
-    // 🔧 修改 - 保存前同步 UI，保证写入当前控件值
-    SyncConfigFromUI();
-
     UXBGameInstance* GameInstance = GetGameInstance<UXBGameInstance>();
     if (!GameInstance)
     {
@@ -41,7 +38,10 @@ bool UXBConfigSaveWidget::SaveConfigByName(const FString& SlotName, bool bSaveTo
         return false;
     }
 
-    // 🔧 修改 - 先写入配置，再进行存档保存
+    // 🔧 修改 - 保存前同步 UI，确保保存的是当前界面最新数据
+    SyncConfigFromUI();
+
+    // 🔧 修改 - 先写入配置，再进行存档保存，确保保存的是最新配置数据
     GameInstance->SetGameConfig(ConfigData, false);
 
     if (!bSaveToDisk)
@@ -53,6 +53,13 @@ bool UXBConfigSaveWidget::SaveConfigByName(const FString& SlotName, bool bSaveTo
     if (!SaveSubsystem)
     {
         UE_LOG(LogXBConfig, Warning, TEXT("保存配置失败：SaveSubsystem 为空"));
+        return false;
+    }
+
+    // 🔧 修改 - 若存档名已存在，则拒绝覆盖并返回失败
+    if (SaveSubsystem->DoesSaveGameExist(SlotName, 0))
+    {
+        UE_LOG(LogXBConfig, Warning, TEXT("保存配置失败：存档名已存在 %s"), *SlotName);
         return false;
     }
 
