@@ -12,6 +12,39 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "Game/XBGameInstance.h"
 
+// ✨ 新增 - 统一主将显示名称解析，避免 UI 空值导致名称丢失
+/**
+ * @brief  解析主将显示名称
+ * @param  GameConfig 运行时配置数据
+ * @param  LeaderData 主将缓存数据
+ * @param  ConfigRowName 主将配置行名
+ * @return 解析后的主将显示名称
+ * @note   详细流程分析: 1) 优先使用 UI 配置的自定义名称 2) 无效则回退到数据表主将名称 3) 再回退到行名字符串
+ */
+static FString ResolveLeaderDisplayName(const FXBGameConfigData& GameConfig, const FXBLeaderTableRow& LeaderData, FName ConfigRowName)
+{
+    // 🔧 修改 - 先过滤空格，避免 UI 仅输入空白导致名称无效
+    const FString TrimmedDisplayName = GameConfig.LeaderDisplayName.TrimStartAndEnd();
+    if (!TrimmedDisplayName.IsEmpty())
+    {
+        return TrimmedDisplayName;
+    }
+
+    // 🔧 修改 - UI 名称无效时回退到数据表主将名称，保证展示稳定
+    if (!LeaderData.LeaderName.IsEmpty())
+    {
+        return LeaderData.LeaderName.ToString();
+    }
+
+    // 🔧 修改 - 若数据表名称也为空，则使用行名作为兜底
+    if (!ConfigRowName.IsNone())
+    {
+        return ConfigRowName.ToString();
+    }
+
+    return FString();
+}
+
 AXBPlayerCharacter::AXBPlayerCharacter()
 {
    
@@ -61,10 +94,11 @@ void AXBPlayerCharacter::BeginPlay()
     {
         const FXBGameConfigData GameConfig = GameInstance->GetGameConfig();
 
-        if (!GameConfig.LeaderDisplayName.IsEmpty())
+        const FString ResolvedLeaderName = ResolveLeaderDisplayName(GameConfig, CachedLeaderData, ConfigRowName);
+        if (!ResolvedLeaderName.IsEmpty())
         {
-            // 🔧 修改 - 初始化玩家主将名称，确保 UI 配置生效
-            CharacterName = GameConfig.LeaderDisplayName;
+            // 🔧 修改 - UI 名称无效时回退到行名对应数据，确保主将名称稳定
+            CharacterName = ResolvedLeaderName;
             CachedLeaderData.LeaderName = FText::FromString(CharacterName);
         }
 
@@ -146,10 +180,11 @@ void AXBPlayerCharacter::ApplyConfigFromGameConfig(const FXBGameConfigData& Game
         InitializeFromDataTable(ConfigDataTable, ConfigRowName);
     }
 
-    if (!GameConfig.LeaderDisplayName.IsEmpty())
+    const FString ResolvedLeaderName = ResolveLeaderDisplayName(GameConfig, CachedLeaderData, ConfigRowName);
+    if (!ResolvedLeaderName.IsEmpty())
     {
-        // 🔧 修改 - 初始化玩家主将名称，确保 UI 配置生效
-        CharacterName = GameConfig.LeaderDisplayName;
+        // 🔧 修改 - UI 名称无效时回退到行名对应数据，确保主将名称稳定
+        CharacterName = ResolvedLeaderName;
         CachedLeaderData.LeaderName = FText::FromString(CharacterName);
     }
 

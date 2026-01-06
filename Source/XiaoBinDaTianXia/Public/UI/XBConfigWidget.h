@@ -76,6 +76,14 @@ public:
     void SetConfigData(const FXBGameConfigData& NewConfig, bool bSyncToUI = true);
 
     /**
+     * @brief  获取当前配置数据
+     * @return 当前配置数据
+     * @note   详细流程分析: 直接返回 ConfigData，避免蓝图重复维护镜像变量
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Config", meta = (DisplayName = "获取配置数据"))
+    FXBGameConfigData GetConfigData() const;
+
+    /**
      * @brief  同步 UI 控件数据到配置数据
      * @note   详细流程分析: 由蓝图实现，将当前 UI 值写回 ConfigData
      */
