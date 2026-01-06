@@ -690,7 +690,11 @@ void AXBCharacterBase::AddSoldier(AXBSoldierCharacter* Soldier)
     // 更新编队组件
     if (FormationComponent)
     {
-        FormationComponent->RegenerateFormation(Soldiers.Num());
+        // 🔧 修改 - 仅在槽位不足时扩容，避免缩小导致后续初始士兵落位失败
+        if (FormationComponent->GetFormationSlots().Num() < Soldiers.Num())
+        {
+            FormationComponent->RegenerateFormation(Soldiers.Num());
+        }
         
         if (FormationComponent->GetFormationSlots().IsValidIndex(SlotIndex))
         {
