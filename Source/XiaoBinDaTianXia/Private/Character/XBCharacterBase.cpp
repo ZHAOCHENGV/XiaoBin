@@ -390,6 +390,12 @@ void AXBCharacterBase::ApplyRuntimeConfig(const FXBGameConfigData& GameConfig, b
     }
 }
 
+/**
+ * @brief  生成初始士兵
+ * @param  DesiredCount 期望生成数量
+ * @return 无
+ * @note   详细流程分析: 计算缺失数量 -> 预生成编队槽位 -> 按槽位位置生成士兵 -> 写入队列槽位并完成招募
+ */
 void AXBCharacterBase::SpawnInitialSoldiers(int32 DesiredCount)
 {
     if (DesiredCount <= 0)
@@ -418,17 +424,38 @@ void AXBCharacterBase::SpawnInitialSoldiers(int32 DesiredCount)
     UXBSoldierPoolSubsystem* PoolSubsystem = World->GetSubsystem<UXBSoldierPoolSubsystem>();
     const FVector LeaderLocation = GetActorLocation();
 
+    // 🔧 修改 - 预先生成编队槽位，保证初始士兵直接落位到队列插槽
+    if (FormationComponent)
+    {
+        FormationComponent->RegenerateFormation(DesiredCount);
+    }
+
+    // 🔧 修改 - 缓存初始数量，保证生成与分配槽位保持一致
+    const int32 BaseSoldierCount = Soldiers.Num();
+
     for (int32 i = 0; i < MissingCount; ++i)
     {
-        const float Angle = (360.0f / MissingCount) * i;
-        const float Distance = 150.0f;
-        const FVector Offset = FVector(
-            FMath::Cos(FMath::DegreesToRadians(Angle)) * Distance,
-            FMath::Sin(FMath::DegreesToRadians(Angle)) * Distance,
-            0.0f
-        );
+        const int32 SlotIndex = BaseSoldierCount + i;
+        FVector SpawnLocation = LeaderLocation;
 
-        const FVector SpawnLocation = LeaderLocation + Offset;
+        if (FormationComponent)
+        {
+            // 🔧 修改 - 直接使用编队槽位位置，确保初始士兵在队列插槽中生成
+            SpawnLocation = FormationComponent->GetSlotWorldPosition(SlotIndex);
+        }
+        else
+        {
+            // 🔧 修改 - 无编队组件时使用环形分布作为兜底，避免重叠
+            const float Angle = (360.0f / MissingCount) * i;
+            const float Distance = 150.0f;
+            const FVector Offset = FVector(
+                FMath::Cos(FMath::DegreesToRadians(Angle)) * Distance,
+                FMath::Sin(FMath::DegreesToRadians(Angle)) * Distance,
+                0.0f
+            );
+            SpawnLocation = LeaderLocation + Offset;
+        }
+
         AXBSoldierCharacter* Soldier = nullptr;
 
         if (PoolSubsystem)
@@ -458,7 +485,6 @@ void AXBCharacterBase::SpawnInitialSoldiers(int32 DesiredCount)
         Soldier->FullInitialize(SoldierDataTable, RecruitSoldierRowName, Faction);
 
         // 🔧 修改 - 按顺序分配槽位并进入跟随
-        const int32 SlotIndex = Soldiers.Num();
         Soldier->OnRecruited(this, SlotIndex);
         AddSoldier(Soldier);
     }
