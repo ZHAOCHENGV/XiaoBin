@@ -76,6 +76,14 @@ public:
     void SetConfigData(const FXBGameConfigData& NewConfig, bool bSyncToUI = true);
 
     /**
+     * @brief  获取当前配置数据
+     * @return 当前配置数据
+     * @note   详细流程分析: 直接返回 ConfigData，避免蓝图重复维护镜像变量
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Config", meta = (DisplayName = "获取配置数据"))
+    FXBGameConfigData GetConfigData() const;
+
+    /**
      * @brief  同步 UI 控件数据到配置数据
      * @note   详细流程分析: 由蓝图实现，将当前 UI 值写回 ConfigData
      */
@@ -88,38 +96,6 @@ public:
      */
     UFUNCTION(BlueprintImplementableEvent, Category = "XB|Config", meta = (DisplayName = "同步配置到UI"))
     void SyncUIFromConfig();
-
-    /**
-     * @brief  保存配置数据
-     * @return 是否保存成功
-     */
-    UFUNCTION(BlueprintCallable, Category = "XB|Config", meta = (DisplayName = "保存配置"))
-    bool SaveConfig();
-
-    /**
-     * @brief  使用自定义名称保存配置数据
-     * @param  SlotName 存档名称
-     * @return 是否保存成功
-     * @note   详细流程分析: 写入 GameConfig -> 使用名称保存
-     */
-    UFUNCTION(BlueprintCallable, Category = "XB|Config", meta = (DisplayName = "保存配置(名称)"))
-    bool SaveConfigByName(const FString& SlotName);
-
-    /**
-     * @brief  读取配置数据
-     * @return 是否读取成功
-     */
-    UFUNCTION(BlueprintCallable, Category = "XB|Config", meta = (DisplayName = "读取配置"))
-    bool LoadConfig();
-
-    /**
-     * @brief  使用自定义名称读取配置数据
-     * @param  SlotName 存档名称
-     * @return 是否读取成功
-     * @note   详细流程分析: 使用名称加载 -> 同步到 ConfigData
-     */
-    UFUNCTION(BlueprintCallable, Category = "XB|Config", meta = (DisplayName = "读取配置(名称)"))
-    bool LoadConfigByName(const FString& SlotName);
 
     /**
      * @brief  重置为默认配置
@@ -168,6 +144,4 @@ private:
     UPROPERTY(VisibleAnywhere, Category = "配置", meta = (DisplayName = "是否已缓存初始配置"))
     bool bHasCachedInitialConfig = false;
 
-private:
-    bool LoadConfigByNameInternal(const FString& SlotName);
 };

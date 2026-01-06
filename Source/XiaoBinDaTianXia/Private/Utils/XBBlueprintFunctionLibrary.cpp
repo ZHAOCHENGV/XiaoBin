@@ -12,9 +12,11 @@
 #include "Utils/XBLogCategories.h"
 #include "Character/XBCharacterBase.h"
 #include "Soldier/XBSoldierCharacter.h"
+#include "Game/XBGameInstance.h"
 #include "Engine/World.h"
 #include "CollisionQueryParams.h"
 #include "Engine/OverlapResult.h"
+#include "Kismet/GameplayStatics.h"
 
 // ==================== 阵营关系判断实现 ====================
 
@@ -124,6 +126,49 @@ bool UXBBlueprintFunctionLibrary::IsActorAlive(const AActor* Actor)
 
     // 其他Actor默认存活
     return true;
+}
+
+FXBGameConfigData UXBBlueprintFunctionLibrary::GetGameConfigData(const UObject* WorldContext)
+{
+    if (!WorldContext)
+    {
+        UE_LOG(LogXBConfig, Warning, TEXT("获取游戏配置失败：WorldContext 无效"));
+        return FXBGameConfigData();
+    }
+
+    // 🔧 修改 - 统一通过 GameInstance 读取配置，避免角色类重复逻辑
+    if (const UWorld* World = WorldContext->GetWorld())
+    {
+        if (const UXBGameInstance* GameInstance = World->GetGameInstance<UXBGameInstance>())
+        {
+            return GameInstance->GetGameConfig();
+        }
+    }
+
+    UE_LOG(LogXBConfig, Warning, TEXT("获取游戏配置失败：GameInstance 无效"));
+    return FXBGameConfigData();
+}
+
+bool UXBBlueprintFunctionLibrary::SetGameConfigData(const UObject* WorldContext, const FXBGameConfigData& NewConfig, bool bSaveToDisk)
+{
+    if (!WorldContext)
+    {
+        UE_LOG(LogXBConfig, Warning, TEXT("设置游戏配置失败：WorldContext 无效"));
+        return false;
+    }
+
+    // 🔧 修改 - 统一通过 GameInstance 写入配置，便于后续敌人/系统复用
+    if (UWorld* World = WorldContext->GetWorld())
+    {
+        if (UXBGameInstance* GameInstance = World->GetGameInstance<UXBGameInstance>())
+        {
+            GameInstance->SetGameConfig(NewConfig, bSaveToDisk);
+            return true;
+        }
+    }
+
+    UE_LOG(LogXBConfig, Warning, TEXT("设置游戏配置失败：GameInstance 无效"));
+    return false;
 }
 
 // ==================== 范围检测实现 ====================
