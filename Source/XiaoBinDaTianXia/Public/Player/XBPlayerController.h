@@ -41,6 +41,14 @@ public:
     virtual void PlayerTick(float DeltaTime) override;
     virtual void OnPossess(APawn* InPawn) override;
 
+    /**
+     * @brief 生成主将后重置镜头旋转
+     * @return 无
+     * @note   详细流程分析: 重置Yaw/Pitch缓存 -> 立即应用到主将镜头
+     *         性能/架构注意事项: 仅在配置阶段切换到主将时调用，避免频繁刷新
+     */
+    void ResetCameraAfterSpawnLeader();
+
     // ==================== 镜头控制接口 ====================
 
     /**

@@ -74,6 +74,29 @@ void AXBPlayerController::OnPossess(APawn* InPawn)
     ApplyCameraSettings();
 }
 
+/**
+ * @brief 生成主将后重置镜头旋转
+ * @return 无
+ * @note   详细流程分析: 清理配置阶段旋转缓存 -> 强制回到默认背后视角
+ *         性能/架构注意事项: 仅在主将生成流程调用，避免影响战斗阶段镜头
+ */
+void AXBPlayerController::ResetCameraAfterSpawnLeader()
+{
+    // 🔧 修改 - 生成主将时强制重置Yaw/Pitch，避免继承配置阶段旋转
+    CurrentCameraYawOffset = 0.0f;
+    TargetCameraYawOffset = 0.0f;
+    bIsRotatingLeft = false;
+    bIsRotatingRight = false;
+    bIsResettingRotation = false;
+
+    // 🔧 修改 - 恢复默认俯角缓存，保证镜头回到主将背后视角
+    CurrentCameraPitch = -45.0f;
+    TargetCameraPitch = -45.0f;
+
+    // 🔧 修改 - 立即应用镜头设置，确保切换控制后视角正确
+    ApplyCameraSettings();
+}
+
 void AXBPlayerController::SetupInputComponent()
 {
     Super::SetupInputComponent();
@@ -401,6 +424,21 @@ void AXBPlayerController::HandleMoveInput(const FInputActionValue& InputValue)
 {
     const FVector2D MoveValue = InputValue.Get<FVector2D>();
 
+    // 🔧 修改 - 配置相机Pawn期间不使用自定义移动逻辑，直接走基础控制器方向
+    if (CachedConfigPawn.IsValid())
+    {
+        // 🔧 修改 - 使用控制器当前朝向生成移动方向，保持基础Pawn移动一致性
+        // 🔧 修改 - 避免与AController::ControlRotation成员同名遮蔽
+        const FRotator CurrentControlRotation = GetControlRotation();
+        const FRotator YawRotation(0.0f, CurrentControlRotation.Yaw, 0.0f);
+        const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+        const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
+
+        CachedConfigPawn->AddMovementInput(ForwardDirection, MoveValue.Y);
+        CachedConfigPawn->AddMovementInput(RightDirection, MoveValue.X);
+        return;
+    }
+
     if (APawn* ControlledPawn = GetPawn())
     {
         // ✨ 新增 - 检查角色是否正在释放技能（技能期间禁止移动）
@@ -457,20 +495,22 @@ void AXBPlayerController::HandleLookInput(const FInputActionValue& InputValue)
 {
     const FVector2D LookValue = InputValue.Get<FVector2D>();
 
-    if (!CachedConfigPawn.IsValid())
+    // 🔧 修改 - 配置相机Pawn期间使用基类控制器旋转逻辑
+    if (CachedConfigPawn.IsValid())
+    {
+        AddYawInput(LookValue.X);
+        AddPitchInput(LookValue.Y);
+        return;
+    }
+}
+void AXBPlayerController::HandleCameraZoomInput(const FInputActionValue& InputValue)
+{
+    // 🔧 修改 - 配置相机Pawn期间不使用自定义镜头缩放
+    if (CachedConfigPawn.IsValid())
     {
         return;
     }
 
-    // 🔧 修改 - 配置阶段允许鼠标自由旋转视角
-    CurrentCameraYawOffset += LookValue.X * CameraRotationSpeed * GetWorld()->GetDeltaSeconds();
-    TargetCameraYawOffset = CurrentCameraYawOffset;
-
-    CurrentCameraPitch -= LookValue.Y * CameraRotationSpeed * GetWorld()->GetDeltaSeconds();
-    TargetCameraPitch = CurrentCameraPitch;
-}
-void AXBPlayerController::HandleCameraZoomInput(const FInputActionValue& InputValue)
-{
     const float ZoomValue = InputValue.Get<float>();
     
     float NewDistance = TargetCameraDistance - (ZoomValue * CameraZoomStep);
@@ -479,6 +519,12 @@ void AXBPlayerController::HandleCameraZoomInput(const FInputActionValue& InputVa
 
 void AXBPlayerController::HandleCameraRotateLeftStarted()
 {
+    // 🔧 修改 - 配置相机Pawn期间不使用自定义镜头旋转
+    if (CachedConfigPawn.IsValid())
+    {
+        return;
+    }
+
     bIsRotatingLeft = true;
     bIsResettingRotation = false;
 }
@@ -490,6 +536,12 @@ void AXBPlayerController::HandleCameraRotateLeftCompleted()
 
 void AXBPlayerController::HandleCameraRotateRightStarted()
 {
+    // 🔧 修改 - 配置相机Pawn期间不使用自定义镜头旋转
+    if (CachedConfigPawn.IsValid())
+    {
+        return;
+    }
+
     bIsRotatingRight = true;
     bIsResettingRotation = false;
 }
@@ -501,6 +553,12 @@ void AXBPlayerController::HandleCameraRotateRightCompleted()
 
 void AXBPlayerController::HandleCameraResetInput()
 {
+    // 🔧 修改 - 配置相机Pawn期间不使用自定义镜头重置
+    if (CachedConfigPawn.IsValid())
+    {
+        return;
+    }
+
     ResetCamera();
 }
 
