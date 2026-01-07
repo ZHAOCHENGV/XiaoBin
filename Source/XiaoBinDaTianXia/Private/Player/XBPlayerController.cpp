@@ -424,6 +424,20 @@ void AXBPlayerController::HandleMoveInput(const FInputActionValue& InputValue)
 {
     const FVector2D MoveValue = InputValue.Get<FVector2D>();
 
+    // 🔧 修改 - 配置相机Pawn期间不使用自定义移动逻辑，直接走基础控制器方向
+    if (CachedConfigPawn.IsValid())
+    {
+        // 🔧 修改 - 使用控制器当前朝向生成移动方向，保持基础Pawn移动一致性
+        const FRotator ControlRotation = GetControlRotation();
+        const FRotator YawRotation(0.0f, ControlRotation.Yaw, 0.0f);
+        const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+        const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
+
+        CachedConfigPawn->AddMovementInput(ForwardDirection, MoveValue.Y);
+        CachedConfigPawn->AddMovementInput(RightDirection, MoveValue.X);
+        return;
+    }
+
     if (APawn* ControlledPawn = GetPawn())
     {
         // ✨ 新增 - 检查角色是否正在释放技能（技能期间禁止移动）
@@ -480,20 +494,22 @@ void AXBPlayerController::HandleLookInput(const FInputActionValue& InputValue)
 {
     const FVector2D LookValue = InputValue.Get<FVector2D>();
 
-    if (!CachedConfigPawn.IsValid())
+    // 🔧 修改 - 配置相机Pawn期间使用基类控制器旋转逻辑
+    if (CachedConfigPawn.IsValid())
+    {
+        AddYawInput(LookValue.X);
+        AddPitchInput(LookValue.Y);
+        return;
+    }
+}
+void AXBPlayerController::HandleCameraZoomInput(const FInputActionValue& InputValue)
+{
+    // 🔧 修改 - 配置相机Pawn期间不使用自定义镜头缩放
+    if (CachedConfigPawn.IsValid())
     {
         return;
     }
 
-    // 🔧 修改 - 配置阶段允许鼠标自由旋转视角
-    CurrentCameraYawOffset += LookValue.X * CameraRotationSpeed * GetWorld()->GetDeltaSeconds();
-    TargetCameraYawOffset = CurrentCameraYawOffset;
-
-    CurrentCameraPitch -= LookValue.Y * CameraRotationSpeed * GetWorld()->GetDeltaSeconds();
-    TargetCameraPitch = CurrentCameraPitch;
-}
-void AXBPlayerController::HandleCameraZoomInput(const FInputActionValue& InputValue)
-{
     const float ZoomValue = InputValue.Get<float>();
     
     float NewDistance = TargetCameraDistance - (ZoomValue * CameraZoomStep);
@@ -502,6 +518,12 @@ void AXBPlayerController::HandleCameraZoomInput(const FInputActionValue& InputVa
 
 void AXBPlayerController::HandleCameraRotateLeftStarted()
 {
+    // 🔧 修改 - 配置相机Pawn期间不使用自定义镜头旋转
+    if (CachedConfigPawn.IsValid())
+    {
+        return;
+    }
+
     bIsRotatingLeft = true;
     bIsResettingRotation = false;
 }
@@ -513,6 +535,12 @@ void AXBPlayerController::HandleCameraRotateLeftCompleted()
 
 void AXBPlayerController::HandleCameraRotateRightStarted()
 {
+    // 🔧 修改 - 配置相机Pawn期间不使用自定义镜头旋转
+    if (CachedConfigPawn.IsValid())
+    {
+        return;
+    }
+
     bIsRotatingRight = true;
     bIsResettingRotation = false;
 }
@@ -524,6 +552,12 @@ void AXBPlayerController::HandleCameraRotateRightCompleted()
 
 void AXBPlayerController::HandleCameraResetInput()
 {
+    // 🔧 修改 - 配置相机Pawn期间不使用自定义镜头重置
+    if (CachedConfigPawn.IsValid())
+    {
+        return;
+    }
+
     ResetCamera();
 }
 
