@@ -23,6 +23,7 @@
 
 class AXBSoldierCharacter;
 class UXBSoldierPerceptionSubsystem;
+class AXBCharacterBase;
 
 // ============================================
 // 行为执行结果枚举
@@ -206,6 +207,18 @@ protected:
 
     /** @brief 获取感知子系统 */
     UXBSoldierPerceptionSubsystem* GetPerceptionSubsystem() const;
+
+    // ✨ 新增 - 统一阵营解析入口，避免跨主将误伤
+    /**
+     * @brief 解析目标阵营信息（优先使用士兵所属主将阵营）
+     * @param Target 目标Actor
+     * @param OutFaction 输出阵营
+     * @param OutLeaderOwner 输出所属主将
+     * @return 是否为可识别的战斗单位
+     * @note   详细流程分析: 判定目标类型 -> 若为士兵则优先取主将阵营 -> 输出阵营/主将
+     *         性能/架构注意事项: 该方法仅做轻量级类型判断，避免重复逻辑散落
+     */
+    bool ResolveTargetFaction(AActor* Target, EXBFaction& OutFaction, AXBCharacterBase*& OutLeaderOwner) const;
 
     /** @brief 播放攻击蒙太奇 */
     bool PlayAttackMontage();
