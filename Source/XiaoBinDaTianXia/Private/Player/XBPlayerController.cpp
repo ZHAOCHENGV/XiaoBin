@@ -428,8 +428,9 @@ void AXBPlayerController::HandleMoveInput(const FInputActionValue& InputValue)
     if (CachedConfigPawn.IsValid())
     {
         // 🔧 修改 - 使用控制器当前朝向生成移动方向，保持基础Pawn移动一致性
-        const FRotator ControlRotation = GetControlRotation();
-        const FRotator YawRotation(0.0f, ControlRotation.Yaw, 0.0f);
+        // 🔧 修改 - 避免与AController::ControlRotation成员同名遮蔽
+        const FRotator CurrentControlRotation = GetControlRotation();
+        const FRotator YawRotation(0.0f, CurrentControlRotation.Yaw, 0.0f);
         const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
         const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
 
