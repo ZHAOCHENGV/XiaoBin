@@ -275,6 +275,16 @@ public:
     UFUNCTION(BlueprintCallable, Category = "死亡", meta = (DisplayName = "设置伤害来源"))
     void SetLastDamageInstigator(AActor* InInstigator) { LastDamageInstigator = InInstigator; }
 
+    /**
+     * @brief  处理受到伤害的回调（可被子类覆写）
+     * @param  DamageSource 伤害来源
+     * @param  DamageAmount 伤害数值
+     * @return 无
+     * @note   详细流程分析: 基类默认不处理 -> 子类可接入AI/技能逻辑
+     *         性能/架构注意事项: 仅在真实伤害发生时调用，避免无意义事件
+     */
+    virtual void HandleDamageReceived(AActor* DamageSource, float DamageAmount);
+
     // ============ 委托事件 ============
 
     UPROPERTY(BlueprintAssignable, Category = "事件")

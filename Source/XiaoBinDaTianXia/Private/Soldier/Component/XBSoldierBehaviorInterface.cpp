@@ -76,6 +76,47 @@ UXBSoldierPerceptionSubsystem* UXBSoldierBehaviorInterface::GetPerceptionSubsyst
     return CachedPerceptionSubsystem.Get();
 }
 
+// ✨ 新增 - 统一阵营解析入口，避免跨主将误伤
+/**
+ * @brief 解析目标阵营信息（优先使用士兵所属主将阵营）
+ * @param Target 目标Actor
+ * @param OutFaction 输出阵营
+ * @param OutLeaderOwner 输出所属主将
+ * @return 是否为可识别的战斗单位
+ * @note   详细流程分析: 判定目标类型 -> 若为士兵则优先取主将阵营 -> 输出阵营/主将
+ *         性能/架构注意事项: 该方法仅做轻量级类型判断，避免重复逻辑散落
+ */
+bool UXBSoldierBehaviorInterface::ResolveTargetFaction(AActor* Target, EXBFaction& OutFaction, AXBCharacterBase*& OutLeaderOwner) const
+{
+    // 初始化输出，避免上层使用脏数据
+    OutFaction = EXBFaction::Neutral;
+    OutLeaderOwner = nullptr;
+
+    // 目标为空直接返回
+    if (!Target)
+    {
+        return false;
+    }
+
+    // 若为士兵，优先使用其所属主将阵营
+    if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(Target))
+    {
+        OutLeaderOwner = TargetSoldier->GetLeaderCharacter();
+        OutFaction = OutLeaderOwner ? OutLeaderOwner->GetFaction() : TargetSoldier->GetFaction();
+        return true;
+    }
+
+    // 若为主将，直接读取主将阵营
+    if (AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(Target))
+    {
+        OutLeaderOwner = TargetLeader;
+        OutFaction = TargetLeader->GetFaction();
+        return true;
+    }
+
+    return false;
+}
+
 void UXBSoldierBehaviorInterface::UpdateAttackCooldown(float DeltaTime)
 {
     if (AttackCooldownTimer > 0.0f)
@@ -203,8 +244,8 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
                 if (EnemySoldier->GetSoldierState() == EXBSoldierState::Dead) continue;
                 // 🔧 修改 - 草丛隐身单位不可锁定
                 if (EnemySoldier->IsHiddenInBush()) continue;
-                CandidateFaction = EnemySoldier->GetFaction();
-                CandidateLeaderOwner = EnemySoldier->GetLeaderCharacter();
+                // 🔧 修改 - 优先使用士兵所属主将阵营，避免跨主将误判
+                ResolveTargetFaction(EnemySoldier, CandidateFaction, CandidateLeaderOwner);
                 bIsSoldier = true;
             }
             else if (AXBCharacterBase* EnemyLeader = Cast<AXBCharacterBase>(Candidate))
@@ -212,8 +253,7 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
                 if (EnemyLeader->IsDead()) continue;
                 // 🔧 修改 - 草丛隐身主将不可锁定
                 if (EnemyLeader->IsHiddenInBush()) continue;
-                CandidateFaction = EnemyLeader->GetFaction();
-                CandidateLeaderOwner = EnemyLeader;
+                ResolveTargetFaction(EnemyLeader, CandidateFaction, CandidateLeaderOwner);
                 bIsLeader = true;
             }
             else
@@ -410,17 +450,7 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
             // 🔧 修改 - 仅统计敌方目标，避免把友军聚集当作拥挤
             EXBFaction TargetFaction = EXBFaction::Neutral;
             AXBCharacterBase* TargetLeaderOwner = nullptr;
-            if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(FriendlyTarget))
-            {
-                TargetFaction = TargetSoldier->GetFaction();
-                TargetLeaderOwner = TargetSoldier->GetLeaderCharacter();
-            }
-            else if (AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(FriendlyTarget))
-            {
-                TargetFaction = TargetLeader->GetFaction();
-                TargetLeaderOwner = TargetLeader;
-            }
-            else
+            if (!ResolveTargetFaction(FriendlyTarget, TargetFaction, TargetLeaderOwner))
             {
                 continue;
             }
@@ -488,7 +518,12 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
             continue;
         }
 
-        const EXBFaction CandidateFaction = Candidate->GetFaction();
+        // 🔧 修改 - 优先读取所属主将阵营，避免跨主将误伤
+        EXBFaction CandidateFaction = Candidate->GetFaction();
+        if (AXBCharacterBase* CandidateLeader = Candidate->GetLeaderCharacter())
+        {
+            CandidateFaction = CandidateLeader->GetFaction();
+        }
         if (!UXBBlueprintFunctionLibrary::AreFactionsHostile(MyFaction, CandidateFaction))
         {
             continue;
@@ -542,7 +577,13 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
             continue;
         }
 
-        const EXBFaction CandidateFaction = Candidate->GetFaction();
+        // 🔧 修改 - 使用统一阵营解析，避免在主将类型上误调用接口
+        EXBFaction CandidateFaction = EXBFaction::Neutral;
+        AXBCharacterBase* CandidateLeaderOwner = nullptr;
+        if (!ResolveTargetFaction(Candidate, CandidateFaction, CandidateLeaderOwner))
+        {
+            continue;
+        }
         if (!UXBBlueprintFunctionLibrary::AreFactionsHostile(MyFaction, CandidateFaction))
         {
             continue;
@@ -590,7 +631,14 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
                 continue;
             }
 
-            const EXBFaction CandidateFaction = Candidate->GetFaction();
+            // 🔧 修改 - 优先读取所属主将阵营，避免跨主将误伤
+            // 🔧 修改 - 使用统一阵营解析，避免在主将类型上误调用接口
+            EXBFaction CandidateFaction = EXBFaction::Neutral;
+            AXBCharacterBase* CandidateLeaderOwner = nullptr;
+            if (!ResolveTargetFaction(Candidate, CandidateFaction, CandidateLeaderOwner))
+            {
+                continue;
+            }
             if (!UXBBlueprintFunctionLibrary::AreFactionsHostile(MyFaction, CandidateFaction))
             {
                 continue;
@@ -625,7 +673,14 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
                 continue;
             }
 
-            const EXBFaction CandidateFaction = Candidate->GetFaction();
+            // 🔧 修改 - 优先读取所属主将阵营，避免跨主将误伤
+            // 🔧 修改 - 使用统一阵营解析，避免在主将类型上误调用接口
+            EXBFaction CandidateFaction = EXBFaction::Neutral;
+            AXBCharacterBase* CandidateLeaderOwner = nullptr;
+            if (!ResolveTargetFaction(Candidate, CandidateFaction, CandidateLeaderOwner))
+            {
+                continue;
+            }
             if (!UXBBlueprintFunctionLibrary::AreFactionsHostile(MyFaction, CandidateFaction))
             {
                 continue;
@@ -719,7 +774,13 @@ bool UXBSoldierBehaviorInterface::IsTargetValid(AActor* Target) const
         {
             return false;
         }
-        return UXBBlueprintFunctionLibrary::AreFactionsHostile(Soldier->GetFaction(), TargetSoldier->GetFaction());
+        // 🔧 修改 - 使用所属主将阵营作为有效阵营，避免跨主将误伤
+        EXBFaction TargetFaction = TargetSoldier->GetFaction();
+        if (AXBCharacterBase* TargetLeader = TargetSoldier->GetLeaderCharacter())
+        {
+            TargetFaction = TargetLeader->GetFaction();
+        }
+        return UXBBlueprintFunctionLibrary::AreFactionsHostile(Soldier->GetFaction(), TargetFaction);
     }
 
     // 检查是否是将领且已死亡
@@ -908,7 +969,13 @@ void UXBSoldierBehaviorInterface::ApplyDamageToTarget(AActor* Target, float Dama
     // 对士兵应用伤害
     if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(Target))
     {
-        if (!UXBBlueprintFunctionLibrary::AreFactionsHostile(Soldier->GetFaction(), TargetSoldier->GetFaction()))
+        // 🔧 修改 - 使用所属主将阵营作为有效阵营，避免跨主将误伤
+        EXBFaction TargetFaction = TargetSoldier->GetFaction();
+        if (AXBCharacterBase* TargetLeader = TargetSoldier->GetLeaderCharacter())
+        {
+            TargetFaction = TargetLeader->GetFaction();
+        }
+        if (!UXBBlueprintFunctionLibrary::AreFactionsHostile(Soldier->GetFaction(), TargetFaction))
         {
             return;
         }
