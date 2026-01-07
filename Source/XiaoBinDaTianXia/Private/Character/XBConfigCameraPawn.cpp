@@ -11,19 +11,19 @@
 #include "Character/XBConfigCameraPawn.h"
 #include "Camera/CameraComponent.h"
 #include "GameFramework/SpringArmComponent.h"
-#include "GameFramework/FloatingPawnMovement.h"
 
 AXBConfigCameraPawn::AXBConfigCameraPawn()
 {
 	PrimaryActorTick.bCanEverTick = false;
 
-	// ✨ 新增 - 根组件
-	Root = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
-	SetRootComponent(Root);
+	// 🔧 修改 - 继承 DefaultPawn 的移动/旋转逻辑
+	bUseControllerRotationYaw = false;
+	bUseControllerRotationPitch = false;
+	bUseControllerRotationRoll = false;
 
 	// ✨ 新增 - 弹簧臂
 	SpringArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("SpringArm"));
-	SpringArm->SetupAttachment(Root);
+	SpringArm->SetupAttachment(RootComponent);
 	SpringArm->TargetArmLength = 1200.0f;
 	SpringArm->SetRelativeRotation(FRotator(-45.0f, 0.0f, 0.0f));
 	SpringArm->bUsePawnControlRotation = false;
@@ -35,10 +35,6 @@ AXBConfigCameraPawn::AXBConfigCameraPawn()
 	Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
 	Camera->SetupAttachment(SpringArm, USpringArmComponent::SocketName);
 	Camera->bUsePawnControlRotation = false;
-
-	// ✨ 新增 - 浮空移动
-	FloatingMovement = CreateDefaultSubobject<UFloatingPawnMovement>(TEXT("FloatingMovement"));
-	FloatingMovement->MaxSpeed = 1500.0f;
 }
 
 /**

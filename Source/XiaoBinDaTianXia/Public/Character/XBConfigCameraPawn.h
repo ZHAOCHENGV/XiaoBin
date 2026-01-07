@@ -11,19 +11,18 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/Pawn.h"
+#include "GameFramework/DefaultPawn.h"
 #include "XBConfigCameraPawn.generated.h"
 
 class USpringArmComponent;
 class UCameraComponent;
-class UFloatingPawnMovement;
 
 /**
  * @brief 配置阶段浮空相机Pawn
- * @note 提供自由飞行移动与镜头控制
+ * @note 继承 DefaultPawn，复用其移动与旋转逻辑
  */
 UCLASS()
-class XIAOBINDATIANXIA_API AXBConfigCameraPawn : public APawn
+class XIAOBINDATIANXIA_API AXBConfigCameraPawn : public ADefaultPawn
 {
 	GENERATED_BODY()
 
@@ -58,17 +57,11 @@ public:
 	void SetCameraPitchOffset(float NewPitchOffset);
 
 protected:
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "根组件"))
-	TObjectPtr<USceneComponent> Root;
-
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "弹簧臂"))
 	TObjectPtr<USpringArmComponent> SpringArm;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "摄像机"))
 	TObjectPtr<UCameraComponent> Camera;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "浮空移动"))
-	TObjectPtr<UFloatingPawnMovement> FloatingMovement;
 
 	// ✨ 新增 - 镜头距离限制
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "配置", meta = (DisplayName = "最小镜头距离", ClampMin = "100.0"))
