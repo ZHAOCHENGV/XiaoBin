@@ -16,6 +16,9 @@
 #include "InputMappingContext.h"
 #include "Input/XBInputConfig.h"
 #include "Character/XBPlayerCharacter.h"
+#include "Character/XBConfigCameraPawn.h"
+#include "Game/XBGameMode.h"
+#include "Utils/XBGameplayTags.h"
 #include "Character/Components/XBCombatComponent.h"
 
 AXBPlayerController::AXBPlayerController()
@@ -24,6 +27,8 @@ AXBPlayerController::AXBPlayerController()
     TargetCameraDistance = DefaultCameraDistance;
     CurrentCameraYawOffset = 0.0f;
     TargetCameraYawOffset = 0.0f;
+    CurrentCameraPitch = -45.0f;
+    TargetCameraPitch = -45.0f;
 }
 
 void AXBPlayerController::BeginPlay()
@@ -58,6 +63,7 @@ void AXBPlayerController::OnPossess(APawn* InPawn)
 
     // ✨ 新增 - 缓存玩家角色引用
     CachedPlayerCharacter = Cast<AXBPlayerCharacter>(InPawn);
+    CachedConfigPawn = Cast<AXBConfigCameraPawn>(InPawn);
     
 
     // 🔧 修改 - 进入新场景并开始控制角色时，切换为仅游戏输入模式
@@ -129,6 +135,15 @@ void AXBPlayerController::BindInputActions()
             &AXBPlayerController::HandleCameraZoomInput);
     }
 
+    if (InputConfig->LookAction)
+    {
+        EnhancedInput->BindAction(
+            InputConfig->LookAction,
+            ETriggerEvent::Triggered,
+            this,
+            &AXBPlayerController::HandleLookInput);
+    }
+
     if (InputConfig->CameraRotateLeftAction)
     {
         EnhancedInput->BindAction(
@@ -193,6 +208,32 @@ void AXBPlayerController::BindInputActions()
             ETriggerEvent::Triggered, 
             this, 
             &AXBPlayerController::HandleDisengageCombat);
+    }
+
+    // ✨ 新增 - 配置阶段生成主将（回车）
+    if (InputConfig->SpawnLeaderAction)
+    {
+        EnhancedInput->BindAction(
+            InputConfig->SpawnLeaderAction,
+            ETriggerEvent::Started,
+            this,
+            &AXBPlayerController::HandleSpawnLeaderInput);
+    }
+    else
+    {
+        const FGameplayTag SpawnLeaderTag = FXBGameplayTags::Get().InputTag_SpawnLeader;
+        if (const UInputAction* SpawnLeaderAction = InputConfig->FindInputActionByTag(SpawnLeaderTag))
+        {
+            EnhancedInput->BindAction(
+                const_cast<UInputAction*>(SpawnLeaderAction),
+                ETriggerEvent::Started,
+                this,
+                &AXBPlayerController::HandleSpawnLeaderInput);
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("未配置生成主将输入，请在输入配置中绑定回车"));
+        }
     }
 
     UE_LOG(LogTemp, Log, TEXT("输入操作已成功绑定!!!"));
@@ -323,14 +364,19 @@ void AXBPlayerController::UpdateCameraRotation(float DeltaTime)
 
 void AXBPlayerController::ApplyCameraSettings()
 {
-    AXBPlayerCharacter* PlayerChar = Cast<AXBPlayerCharacter>(GetPawn());
-    if (!PlayerChar)
+    if (AXBPlayerCharacter* PlayerChar = Cast<AXBPlayerCharacter>(GetPawn()))
     {
+        PlayerChar->SetCameraDistance(CurrentCameraDistance);
+        PlayerChar->SetCameraYawOffset(CurrentCameraYawOffset);
         return;
     }
 
-    PlayerChar->SetCameraDistance(CurrentCameraDistance);
-    PlayerChar->SetCameraYawOffset(CurrentCameraYawOffset);
+    if (AXBConfigCameraPawn* ConfigPawn = Cast<AXBConfigCameraPawn>(GetPawn()))
+    {
+        ConfigPawn->SetCameraDistance(CurrentCameraDistance);
+        ConfigPawn->SetCameraYawOffset(CurrentCameraYawOffset);
+        ConfigPawn->SetCameraPitchOffset(CurrentCameraPitch);
+    }
 }
 
 FVector AXBPlayerController::CalculateMoveDirection(const FVector2D& InputVector) const
@@ -407,6 +453,28 @@ void AXBPlayerController::HandleDashInputCompleted()
     }
 }
 
+/**
+ * @brief 处理镜头视角输入
+ * @param InputValue 输入值（2D向量）
+ * @note   详细流程分析: 读取输入 -> 旋转Yaw/Pitch -> 写入目标偏移
+ *         性能/架构注意事项: 仅在配置Pawn期间处理Pitch，避免影响战斗镜头
+ */
+void AXBPlayerController::HandleLookInput(const FInputActionValue& InputValue)
+{
+    const FVector2D LookValue = InputValue.Get<FVector2D>();
+
+    if (!CachedConfigPawn.IsValid())
+    {
+        return;
+    }
+
+    // 🔧 修改 - 配置阶段允许鼠标自由旋转视角
+    CurrentCameraYawOffset += LookValue.X * CameraRotationSpeed * GetWorld()->GetDeltaSeconds();
+    TargetCameraYawOffset = CurrentCameraYawOffset;
+
+    CurrentCameraPitch -= LookValue.Y * CameraRotationSpeed * GetWorld()->GetDeltaSeconds();
+    TargetCameraPitch = CurrentCameraPitch;
+}
 void AXBPlayerController::HandleCameraZoomInput(const FInputActionValue& InputValue)
 {
     const float ZoomValue = InputValue.Get<float>();
@@ -474,5 +542,36 @@ void AXBPlayerController::HandleRecallInput()
     {
         PlayerChar->RecallAllSoldiers();
         UE_LOG(LogTemp, Log, TEXT("Recall Input Triggered"));
+    }
+}
+
+/**
+ * @brief 处理生成主将输入
+ * @return 无
+ * @note   详细流程分析: 校验配置Pawn -> 调用GameMode生成主将 -> 切换控制
+ *         性能/架构注意事项: 仅在配置阶段触发，避免重复生成
+ */
+void AXBPlayerController::HandleSpawnLeaderInput()
+{
+    if (UWorld* World = GetWorld())
+    {
+        if (AXBGameMode* GameMode = World->GetAuthGameMode<AXBGameMode>())
+        {
+            // 🔧 修改 - 仅在配置阶段且控制配置Pawn时生成主将
+            if (!CachedConfigPawn.IsValid())
+            {
+                UE_LOG(LogTemp, Warning, TEXT("当前未控制配置Pawn，忽略生成主将请求"));
+                return;
+            }
+
+            if (GameMode->SpawnPlayerLeader(this))
+            {
+                UE_LOG(LogTemp, Log, TEXT("已确认进入游戏阶段，主将生成完成"));
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("生成主将失败或条件未满足"));
+            }
+        }
     }
 }

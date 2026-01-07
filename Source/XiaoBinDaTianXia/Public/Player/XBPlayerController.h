@@ -26,6 +26,7 @@ class UInputAction;
 class UXBInputConfig;
 struct FInputActionValue;
 class AXBPlayerCharacter;
+class AXBConfigCameraPawn;
 
 UCLASS()
 class XIAOBINDATIANXIA_API AXBPlayerController : public APlayerController
@@ -164,11 +165,15 @@ protected:
     UPROPERTY()
     TWeakObjectPtr<AXBPlayerCharacter> CachedPlayerCharacter;
 
+    UPROPERTY()
+    TWeakObjectPtr<AXBConfigCameraPawn> CachedConfigPawn;
+
     // ==================== 输入回调 ====================
 
     void HandleMoveInput(const FInputActionValue& InputValue);
     void HandleDashInputStarted();
     void HandleDashInputCompleted();
+    void HandleLookInput(const FInputActionValue& InputValue);
     void HandleCameraZoomInput(const FInputActionValue& InputValue);
     void HandleCameraRotateLeftStarted();
     void HandleCameraRotateLeftCompleted();
@@ -178,6 +183,7 @@ protected:
     void HandleAttackInput();
     void HandleSkillInput();
     void HandleRecallInput();
+    void HandleSpawnLeaderInput();
 
 private:
     // ==================== 镜头状态 ====================
@@ -233,4 +239,8 @@ private:
     void UpdateCameraRotation(float DeltaTime);
     void ApplyCameraSettings();
     FVector CalculateMoveDirection(const FVector2D& InputVector) const;
+
+    // ✨ 新增 - 镜头Pitch状态
+    float CurrentCameraPitch = -45.0f;
+    float TargetCameraPitch = -45.0f;
 };

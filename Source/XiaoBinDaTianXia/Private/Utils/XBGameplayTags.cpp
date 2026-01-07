@@ -14,6 +14,7 @@ UE_DEFINE_GAMEPLAY_TAG_COMMENT(TAG_Input_CameraRotateLeft, "Input.Camera.RotateL
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(TAG_Input_CameraRotateRight, "Input.Camera.RotateRight", "镜头右旋（E键）");
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(TAG_Input_CameraReset, "Input.Camera.Reset", "镜头重置（滚轮按下）");
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(TAG_Input_CameraZoom, "Input.Camera.Zoom", "镜头缩放（滚轮）");
+UE_DEFINE_GAMEPLAY_TAG_COMMENT(TAG_Input_SpawnLeader, "Input.SpawnLeader", "生成主将（回车键）");
 
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(TAG_State_Combat, "State.Combat", "战斗状态");
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(TAG_State_Dead, "State.Dead", "死亡状态");
@@ -76,6 +77,7 @@ FXBGameplayTags::FXBGameplayTags()
     InputTag_CameraRotateRight = TAG_Input_CameraRotateRight;
     InputTag_CameraReset = TAG_Input_CameraReset;
     InputTag_CameraZoom = TAG_Input_CameraZoom;
+    InputTag_SpawnLeader = TAG_Input_SpawnLeader;
 
     State_Combat = TAG_State_Combat;
     State_Dead = TAG_State_Dead;

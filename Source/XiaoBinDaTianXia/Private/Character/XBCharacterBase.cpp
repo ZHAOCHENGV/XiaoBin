@@ -1179,6 +1179,19 @@ void AXBCharacterBase::CancelNoEnemyDisengage()
 }
 
 /**
+ * @brief  处理受到伤害的回调（基类默认空实现）
+ * @param  DamageSource 伤害来源
+ * @param  DamageAmount 伤害数值
+ * @return 无
+ * @note   详细流程分析: 基类保持空实现 -> 子类按需扩展
+ *         性能/架构注意事项: 避免在基类中绑定具体AI逻辑
+ */
+void AXBCharacterBase::HandleDamageReceived(AActor* DamageSource, float DamageAmount)
+{
+    // 🔧 修改 - 基类不处理，避免影响所有主将逻辑
+}
+
+/**
  * @brief ??????????
  * @param HitTarget ?????
  * @return ?
@@ -1214,8 +1227,7 @@ void AXBCharacterBase::OnAttackHit(AActor* HitTarget)
         // ?? ?? - ????????????
         bHasLastAttackedEnemyFaction = true;
         LastAttackedEnemyFaction = TargetLeader->GetFaction();
-        // ?? ?? - ??????????
-        TargetLeader->EnterCombat();
+        // 🔧 修改 - 敌方主将被命中不自动进入战斗，避免其士兵被动参战
 
         UE_LOG(LogXBCombat, Log, TEXT("?? %s ?????? %s??????????????"),
             *GetName(), *TargetLeader->GetName());

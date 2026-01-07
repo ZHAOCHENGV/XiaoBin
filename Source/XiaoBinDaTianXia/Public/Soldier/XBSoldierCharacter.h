@@ -622,6 +622,24 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI", meta = (DisplayName = "AI控制器类"))
     TSubclassOf<AXBSoldierAIController> SoldierAIControllerClass;
 
+    // ✨ 新增 - 跟随状态自动寻敌配置
+    /**
+     * @brief 跟随/待机状态下的自动寻敌检查间隔
+     * @note   详细流程分析: 仅在跟随/待机状态按间隔触发扫描，降低性能开销
+     *         性能/架构注意事项: 间隔过低会增加扫描成本，建议 >= 0.1s
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI", meta = (DisplayName = "自动寻敌检查间隔", ClampMin = "0.05"))
+    float AutoEngageCheckInterval = 0.25f;
+
+    // ✨ 新增 - 自动反击开关
+    /**
+     * @brief 是否启用跟随/待机状态的自动反击
+     * @note   详细流程分析: 受击或视野内发现敌人时触发进入战斗
+     *         性能/架构注意事项: 关闭后士兵仅随主将触发战斗
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI", meta = (DisplayName = "启用自动反击"))
+    bool bEnableAutoEngage = true;
+
     // ==================== 内部方法 ====================
 
     void HandleDeath();
@@ -629,6 +647,15 @@ protected:
     void ApplyVisualConfig();
     void FaceTarget(AActor* Target, float DeltaTime);
     FVector CalculateAvoidanceDirection(const FVector& DesiredDirection);
+
+    // ✨ 新增 - 跟随/待机自动反击入口
+    /**
+     * @brief 跟随/待机状态下自动进入战斗
+     * @param DeltaTime 帧间隔
+     * @note   详细流程分析: 校验主将战斗状态 -> 累计计时 -> 触发寻敌 -> 若命中则进入战斗并锁定目标
+     *         性能/架构注意事项: 仅在跟随/待机且主将已命中敌方主将时执行，避免无意义扫描
+     */
+    void TryAutoEngage(float DeltaTime);
 
     // 休眠系统内部方法
     void EnableActiveComponents();
@@ -656,6 +683,9 @@ private:
     void SpawnAndPossessAIController();
     void InitializeAI();
     FTimerHandle DelayedAIStartTimerHandle;
+
+    // ✨ 新增 - 自动反击计时器
+    float AutoEngageCheckTimer = 0.0f;
 
     UPROPERTY()
     TObjectPtr<UAnimSequence> LoadedSleepingAnimation;
