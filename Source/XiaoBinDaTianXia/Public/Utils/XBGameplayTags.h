@@ -25,6 +25,7 @@ public:
     FGameplayTag InputTag_CameraRotateRight;
     FGameplayTag InputTag_CameraReset;
     FGameplayTag InputTag_CameraZoom;
+    FGameplayTag InputTag_SpawnLeader;
 
     // ============ 状态 Tags ============
     FGameplayTag State_Combat;
@@ -98,6 +99,7 @@ UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Input_CameraRotateLeft);
 UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Input_CameraRotateRight);
 UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Input_CameraReset);
 UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Input_CameraZoom);
+UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_Input_SpawnLeader);
 
 // ============ 状态 Tags ============
 UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_State_Combat);

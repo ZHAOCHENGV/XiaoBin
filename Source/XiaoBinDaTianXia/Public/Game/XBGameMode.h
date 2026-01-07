@@ -6,6 +6,8 @@
 #include "XBGameMode.generated.h"
 
 class AXBSoldierCharacter;
+class AXBPlayerCharacter;
+class APlayerController;
 /**
  * 游戏模式基类
  */
@@ -30,6 +32,16 @@ public:
 	/** 进入游戏阶段 */
 	UFUNCTION(BlueprintCallable, Category = "XB|GameMode")
 	void EnterPlayPhase();
+
+	/**
+	 * @brief 生成玩家主将并切换控制
+	 * @param PlayerController 玩家控制器
+	 * @return 是否生成成功
+	 * @note   详细流程分析: 获取控制器Pawn -> 以当前位置信息生成主将 -> 切换控制 -> 进入游戏阶段
+	 *         性能/架构注意事项: 仅在配置阶段调用，避免重复生成
+	 */
+	UFUNCTION(BlueprintCallable, Category = "XB|GameMode")
+	bool SpawnPlayerLeader(APlayerController* PlayerController);
 
 	/** 暂停游戏 */
 	UFUNCTION(BlueprintCallable, Category = "XB|GameMode")
@@ -73,6 +85,10 @@ protected:
 	/** 是否处于配置阶段 */
 	UPROPERTY(BlueprintReadOnly, Category = "XB|GameMode")
 	bool bIsConfigPhase = true;
+
+	/** 玩家主将类（按回车生成） */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "XB|GameMode", meta = (DisplayName = "玩家主将类"))
+	TSubclassOf<AXBPlayerCharacter> PlayerLeaderClass;
 
 	/** 配置阶段开始事件 */
 	UFUNCTION(BlueprintImplementableEvent, Category = "XB|GameMode")
