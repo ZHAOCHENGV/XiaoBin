@@ -577,11 +577,12 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
             continue;
         }
 
-        // 🔧 修改 - 优先读取所属主将阵营，避免跨主将误伤
-        EXBFaction CandidateFaction = Candidate->GetFaction();
-        if (AXBCharacterBase* CandidateLeader = Candidate->GetLeaderCharacter())
+        // 🔧 修改 - 使用统一阵营解析，避免在主将类型上误调用接口
+        EXBFaction CandidateFaction = EXBFaction::Neutral;
+        AXBCharacterBase* CandidateLeaderOwner = nullptr;
+        if (!ResolveTargetFaction(Candidate, CandidateFaction, CandidateLeaderOwner))
         {
-            CandidateFaction = CandidateLeader->GetFaction();
+            continue;
         }
         if (!UXBBlueprintFunctionLibrary::AreFactionsHostile(MyFaction, CandidateFaction))
         {
@@ -631,10 +632,12 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
             }
 
             // 🔧 修改 - 优先读取所属主将阵营，避免跨主将误伤
-            EXBFaction CandidateFaction = Candidate->GetFaction();
-            if (AXBCharacterBase* CandidateLeader = Candidate->GetLeaderCharacter())
+            // 🔧 修改 - 使用统一阵营解析，避免在主将类型上误调用接口
+            EXBFaction CandidateFaction = EXBFaction::Neutral;
+            AXBCharacterBase* CandidateLeaderOwner = nullptr;
+            if (!ResolveTargetFaction(Candidate, CandidateFaction, CandidateLeaderOwner))
             {
-                CandidateFaction = CandidateLeader->GetFaction();
+                continue;
             }
             if (!UXBBlueprintFunctionLibrary::AreFactionsHostile(MyFaction, CandidateFaction))
             {
@@ -671,10 +674,12 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
             }
 
             // 🔧 修改 - 优先读取所属主将阵营，避免跨主将误伤
-            EXBFaction CandidateFaction = Candidate->GetFaction();
-            if (AXBCharacterBase* CandidateLeader = Candidate->GetLeaderCharacter())
+            // 🔧 修改 - 使用统一阵营解析，避免在主将类型上误调用接口
+            EXBFaction CandidateFaction = EXBFaction::Neutral;
+            AXBCharacterBase* CandidateLeaderOwner = nullptr;
+            if (!ResolveTargetFaction(Candidate, CandidateFaction, CandidateLeaderOwner))
             {
-                CandidateFaction = CandidateLeader->GetFaction();
+                continue;
             }
             if (!UXBBlueprintFunctionLibrary::AreFactionsHostile(MyFaction, CandidateFaction))
             {
