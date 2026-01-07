@@ -74,6 +74,29 @@ void AXBPlayerController::OnPossess(APawn* InPawn)
     ApplyCameraSettings();
 }
 
+/**
+ * @brief 生成主将后重置镜头旋转
+ * @return 无
+ * @note   详细流程分析: 清理配置阶段旋转缓存 -> 强制回到默认背后视角
+ *         性能/架构注意事项: 仅在主将生成流程调用，避免影响战斗阶段镜头
+ */
+void AXBPlayerController::ResetCameraAfterSpawnLeader()
+{
+    // 🔧 修改 - 生成主将时强制重置Yaw/Pitch，避免继承配置阶段旋转
+    CurrentCameraYawOffset = 0.0f;
+    TargetCameraYawOffset = 0.0f;
+    bIsRotatingLeft = false;
+    bIsRotatingRight = false;
+    bIsResettingRotation = false;
+
+    // 🔧 修改 - 恢复默认俯角缓存，保证镜头回到主将背后视角
+    CurrentCameraPitch = -45.0f;
+    TargetCameraPitch = -45.0f;
+
+    // 🔧 修改 - 立即应用镜头设置，确保切换控制后视角正确
+    ApplyCameraSettings();
+}
+
 void AXBPlayerController::SetupInputComponent()
 {
     Super::SetupInputComponent();
