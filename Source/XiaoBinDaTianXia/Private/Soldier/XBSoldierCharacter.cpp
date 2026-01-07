@@ -1828,28 +1828,7 @@ float AXBSoldierCharacter::TakeSoldierDamage(float DamageAmount, AActor* DamageS
     UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 受到 %.1f 伤害, 剩余血量: %.1f"), 
         *GetName(), ActualDamage, CurrentHealth);
 
-    // 🔧 修改 - 受击时若敌对则立即进入战斗并锁定攻击源
-    if (CurrentHealth > 0.0f && DamageSource && BehaviorInterface)
-    {
-        // 优先使用攻击源所属主将阵营，避免同阵营误判
-        EXBFaction SourceFaction = UXBBlueprintFunctionLibrary::GetActorFaction(DamageSource);
-        if (AXBSoldierCharacter* SourceSoldier = Cast<AXBSoldierCharacter>(DamageSource))
-        {
-            if (AXBCharacterBase* SourceLeader = SourceSoldier->GetLeaderCharacter())
-            {
-                SourceFaction = SourceLeader->GetFaction();
-            }
-        }
-
-        if (UXBBlueprintFunctionLibrary::AreFactionsHostile(Faction, SourceFaction))
-        {
-            EnterCombat();
-            CurrentAttackTarget = DamageSource;
-            BehaviorInterface->RecordEnemySeen();
-            UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 受击进入战斗，目标: %s"),
-                *GetName(), *DamageSource->GetName());
-        }
-    }
+    // 🔧 修改 - 受击不再直接触发战斗，确保仅由主将主动攻击敌方主将时进入战斗
 
     if (CurrentHealth <= 0.0f)
     {
@@ -1863,8 +1842,8 @@ float AXBSoldierCharacter::TakeSoldierDamage(float DamageAmount, AActor* DamageS
 /**
  * @brief 跟随/待机状态下自动进入战斗
  * @param DeltaTime 帧间隔
- * @note   详细流程分析: 累计计时 -> 触发寻敌 -> 若命中则进入战斗并锁定目标
- *         性能/架构注意事项: 仅在跟随/待机且已招募时执行，避免无意义扫描
+ * @note   详细流程分析: 校验主将战斗状态 -> 累计计时 -> 触发寻敌 -> 若命中则进入战斗并锁定目标
+ *         性能/架构注意事项: 仅在跟随/待机且主将已命中敌方主将时执行，避免无意义扫描
  */
 void AXBSoldierCharacter::TryAutoEngage(float DeltaTime)
 {
@@ -1880,13 +1859,23 @@ void AXBSoldierCharacter::TryAutoEngage(float DeltaTime)
         return;
     }
 
-    // 草丛隐身主将时禁止自动战斗
-    if (const AXBCharacterBase* Leader = GetLeaderCharacter())
+    // 🔧 修改 - 必须存在主将并且主将已命中敌方主将，士兵才允许自动进入战斗
+    const AXBCharacterBase* Leader = GetLeaderCharacter();
+    if (!Leader)
     {
-        if (Leader->IsHiddenInBush())
-        {
-            return;
-        }
+        return;
+    }
+
+    // 草丛隐身主将时禁止自动战斗
+    if (Leader->IsHiddenInBush())
+    {
+        return;
+    }
+
+    // 主将未处于战斗或未命中敌方主将时，不允许士兵自动进入战斗
+    if (!Leader->HasEnemiesInCombat() || !Leader->GetLastAttackedEnemyLeader())
+    {
+        return;
     }
 
     // 没有行为接口无法执行寻敌
