@@ -137,6 +137,44 @@ bool AXBGameMode::SpawnPlayerLeader(APlayerController* PlayerController)
 		}
 	}
 
+	// 🔧 修改 - 向下检测地面，确保主将落地踩地
+	FVector SpawnLocation = SpawnOrigin;
+	float CapsuleHalfHeight = 0.0f;
+	if (SpawnClass)
+	{
+		if (const AXBPlayerCharacter* LeaderCDO = SpawnClass->GetDefaultObject<AXBPlayerCharacter>())
+		{
+			if (const UCapsuleComponent* CapsuleComp = LeaderCDO->GetCapsuleComponent())
+			{
+				CapsuleHalfHeight = CapsuleComp->GetScaledCapsuleHalfHeight();
+			}
+		}
+	}
+
+	// ✨ 新增 - 使用射线检测，找到配置相机正下方的地面高度
+	if (CurrentPawn)
+	{
+		FHitResult HitResult;
+		const FVector TraceStart = SpawnOrigin + FVector(0.0f, 0.0f, 500.0f);
+		const FVector TraceEnd = SpawnOrigin - FVector(0.0f, 0.0f, 5000.0f);
+		FCollisionQueryParams QueryParams;
+		QueryParams.AddIgnoredActor(CurrentPawn);
+
+		const bool bHit = World->LineTraceSingleByChannel(
+			HitResult,
+			TraceStart,
+			TraceEnd,
+			ECC_WorldStatic,
+			QueryParams
+		);
+
+		if (bHit)
+		{
+			// 🔧 修改 - 加上胶囊半高，保证角色底部落在地面
+			SpawnLocation = HitResult.Location + FVector(0.0f, 0.0f, CapsuleHalfHeight);
+		}
+	}
+
 	FActorSpawnParameters SpawnParams;
 	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
 	SpawnParams.Owner = PlayerController;
