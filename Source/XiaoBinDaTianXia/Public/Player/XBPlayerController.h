@@ -173,6 +173,7 @@ protected:
     void HandleMoveInput(const FInputActionValue& InputValue);
     void HandleDashInputStarted();
     void HandleDashInputCompleted();
+    void HandleLookInput(const FInputActionValue& InputValue);
     void HandleCameraZoomInput(const FInputActionValue& InputValue);
     void HandleCameraRotateLeftStarted();
     void HandleCameraRotateLeftCompleted();
@@ -238,4 +239,8 @@ private:
     void UpdateCameraRotation(float DeltaTime);
     void ApplyCameraSettings();
     FVector CalculateMoveDirection(const FVector2D& InputVector) const;
+
+    // ✨ 新增 - 镜头Pitch状态
+    float CurrentCameraPitch = -45.0f;
+    float TargetCameraPitch = -45.0f;
 };

@@ -77,6 +77,11 @@ public:
     TObjectPtr<UInputAction> CameraZoomAction;
 
     
+    /** 镜头视角旋转 (Axis2D: Mouse Move) */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XB|Input|Camera", meta = (DisplayName = "镜头视角"))
+    TObjectPtr<UInputAction> LookAction;
+
+    
     /** 镜头向左持续旋转 (Bool: Q) */
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XB|Input|Camera", meta = (DisplayName = "镜头左旋"))
     TObjectPtr<UInputAction> CameraRotateLeftAction;
@@ -107,6 +112,10 @@ public:
     /** 召回/解散士兵 (Bool: R key) */
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XB|Input|Combat", meta = (DisplayName = "召回士兵"))
     TObjectPtr<UInputAction> RecallAction;
+
+    /** 生成主将 (Bool: Enter key) */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XB|Input|Extended", meta = (DisplayName = "生成主将"))
+    TObjectPtr<UInputAction> SpawnLeaderAction;
 
     // ============ 扩展配置 ============
 

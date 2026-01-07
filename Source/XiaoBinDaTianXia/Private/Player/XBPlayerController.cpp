@@ -27,6 +27,8 @@ AXBPlayerController::AXBPlayerController()
     TargetCameraDistance = DefaultCameraDistance;
     CurrentCameraYawOffset = 0.0f;
     TargetCameraYawOffset = 0.0f;
+    CurrentCameraPitch = -45.0f;
+    TargetCameraPitch = -45.0f;
 }
 
 void AXBPlayerController::BeginPlay()
@@ -133,6 +135,15 @@ void AXBPlayerController::BindInputActions()
             &AXBPlayerController::HandleCameraZoomInput);
     }
 
+    if (InputConfig->LookAction)
+    {
+        EnhancedInput->BindAction(
+            InputConfig->LookAction,
+            ETriggerEvent::Triggered,
+            this,
+            &AXBPlayerController::HandleLookInput);
+    }
+
     if (InputConfig->CameraRotateLeftAction)
     {
         EnhancedInput->BindAction(
@@ -200,14 +211,29 @@ void AXBPlayerController::BindInputActions()
     }
 
     // ✨ 新增 - 配置阶段生成主将（回车）
-    const FGameplayTag SpawnLeaderTag = FXBGameplayTags::Get().InputTag_SpawnLeader;
-    if (const UInputAction* SpawnLeaderAction = InputConfig->FindInputActionByTag(SpawnLeaderTag))
+    if (InputConfig->SpawnLeaderAction)
     {
         EnhancedInput->BindAction(
-            const_cast<UInputAction*>(SpawnLeaderAction),
+            InputConfig->SpawnLeaderAction,
             ETriggerEvent::Started,
             this,
             &AXBPlayerController::HandleSpawnLeaderInput);
+    }
+    else
+    {
+        const FGameplayTag SpawnLeaderTag = FXBGameplayTags::Get().InputTag_SpawnLeader;
+        if (const UInputAction* SpawnLeaderAction = InputConfig->FindInputActionByTag(SpawnLeaderTag))
+        {
+            EnhancedInput->BindAction(
+                const_cast<UInputAction*>(SpawnLeaderAction),
+                ETriggerEvent::Started,
+                this,
+                &AXBPlayerController::HandleSpawnLeaderInput);
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("未配置生成主将输入，请在输入配置中绑定回车"));
+        }
     }
 
     UE_LOG(LogTemp, Log, TEXT("输入操作已成功绑定!!!"));
@@ -349,6 +375,7 @@ void AXBPlayerController::ApplyCameraSettings()
     {
         ConfigPawn->SetCameraDistance(CurrentCameraDistance);
         ConfigPawn->SetCameraYawOffset(CurrentCameraYawOffset);
+        ConfigPawn->SetCameraPitchOffset(CurrentCameraPitch);
     }
 }
 
@@ -426,6 +453,28 @@ void AXBPlayerController::HandleDashInputCompleted()
     }
 }
 
+/**
+ * @brief 处理镜头视角输入
+ * @param InputValue 输入值（2D向量）
+ * @note   详细流程分析: 读取输入 -> 旋转Yaw/Pitch -> 写入目标偏移
+ *         性能/架构注意事项: 仅在配置Pawn期间处理Pitch，避免影响战斗镜头
+ */
+void AXBPlayerController::HandleLookInput(const FInputActionValue& InputValue)
+{
+    const FVector2D LookValue = InputValue.Get<FVector2D>();
+
+    if (!CachedConfigPawn.IsValid())
+    {
+        return;
+    }
+
+    // 🔧 修改 - 配置阶段允许鼠标自由旋转视角
+    CurrentCameraYawOffset += LookValue.X * CameraRotationSpeed * GetWorld()->GetDeltaSeconds();
+    TargetCameraYawOffset = CurrentCameraYawOffset;
+
+    CurrentCameraPitch -= LookValue.Y * CameraRotationSpeed * GetWorld()->GetDeltaSeconds();
+    TargetCameraPitch = CurrentCameraPitch;
+}
 void AXBPlayerController::HandleCameraZoomInput(const FInputActionValue& InputValue)
 {
     const float ZoomValue = InputValue.Get<float>();
@@ -504,16 +553,17 @@ void AXBPlayerController::HandleRecallInput()
  */
 void AXBPlayerController::HandleSpawnLeaderInput()
 {
-    // 🔧 修改 - 仅在配置阶段且控制配置Pawn时生成主将
-    if (!CachedConfigPawn.IsValid())
-    {
-        return;
-    }
-
     if (UWorld* World = GetWorld())
     {
         if (AXBGameMode* GameMode = World->GetAuthGameMode<AXBGameMode>())
         {
+            // 🔧 修改 - 仅在配置阶段且控制配置Pawn时生成主将
+            if (!CachedConfigPawn.IsValid())
+            {
+                UE_LOG(LogTemp, Warning, TEXT("当前未控制配置Pawn，忽略生成主将请求"));
+                return;
+            }
+
             if (GameMode->SpawnPlayerLeader(this))
             {
                 UE_LOG(LogTemp, Log, TEXT("已确认进入游戏阶段，主将生成完成"));

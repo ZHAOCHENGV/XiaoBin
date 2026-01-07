@@ -68,3 +68,18 @@ void AXBConfigCameraPawn::SetCameraYawOffset(float NewYawOffset)
 	const FRotator CurrentRotation = SpringArm->GetRelativeRotation();
 	SpringArm->SetRelativeRotation(FRotator(CurrentRotation.Pitch, NewYawOffset, 0.0f));
 }
+
+/**
+ * @brief 设置镜头Pitch偏移
+ * @param NewPitchOffset 新Pitch偏移
+ * @return 无
+ * @note   详细流程分析: 夹取范围 -> 写入弹簧臂
+ *         性能/架构注意事项: 避免过低或过高导致眩晕
+ */
+void AXBConfigCameraPawn::SetCameraPitchOffset(float NewPitchOffset)
+{
+	// 🔧 修改 - 夹取Pitch，避免极端视角
+	const float ClampedPitch = FMath::Clamp(NewPitchOffset, MinCameraPitch, MaxCameraPitch);
+	const FRotator CurrentRotation = SpringArm->GetRelativeRotation();
+	SpringArm->SetRelativeRotation(FRotator(ClampedPitch, CurrentRotation.Yaw, 0.0f));
+}

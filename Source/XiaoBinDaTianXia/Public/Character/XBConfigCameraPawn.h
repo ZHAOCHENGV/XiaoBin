@@ -48,6 +48,15 @@ public:
 	 */
 	void SetCameraYawOffset(float NewYawOffset);
 
+	/**
+	 * @brief 设置镜头Pitch偏移
+	 * @param NewPitchOffset 新Pitch偏移
+	 * @return 无
+	 * @note   详细流程分析: 夹取范围 -> 写入弹簧臂
+	 *         性能/架构注意事项: 避免过低或过高导致眩晕
+	 */
+	void SetCameraPitchOffset(float NewPitchOffset);
+
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "根组件"))
 	TObjectPtr<USceneComponent> Root;
@@ -67,4 +76,11 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "配置", meta = (DisplayName = "最大镜头距离", ClampMin = "200.0"))
 	float MaxCameraDistance = 2500.0f;
+
+	// ✨ 新增 - 镜头Pitch限制
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "配置", meta = (DisplayName = "最小镜头Pitch", ClampMin = "-89.0", ClampMax = "0.0"))
+	float MinCameraPitch = -80.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "配置", meta = (DisplayName = "最大镜头Pitch", ClampMin = "-89.0", ClampMax = "0.0"))
+	float MaxCameraPitch = -20.0f;
 };
