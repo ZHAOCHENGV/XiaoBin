@@ -96,6 +96,7 @@ bool AXBGameMode::SpawnPlayerLeader(APlayerController* PlayerController)
 
 	APawn* CurrentPawn = PlayerController->GetPawn();
 	const FVector SpawnOrigin = CurrentPawn ? CurrentPawn->GetActorLocation() : FVector::ZeroVector;
+	// 🔧 修改 - 记录配置相机Pawn朝向，保证主将初始朝向一致
 	const FRotator SpawnRotation = CurrentPawn ? CurrentPawn->GetActorRotation() : FRotator::ZeroRotator;
 
 	// 🔧 修改 - 向下检测地面，确保主将落地踩地
@@ -150,6 +151,9 @@ bool AXBGameMode::SpawnPlayerLeader(APlayerController* PlayerController)
 	// 🔧 修改 - 切换控制器到主将
 	PlayerController->Possess(NewLeader);
 	UE_LOG(LogXBCharacter, Log, TEXT("已生成玩家主将: %s"), *NewLeader->GetName());
+
+	// 🔧 修改 - 再次设置主将朝向，避免控制器接管导致朝向偏移
+	NewLeader->SetActorRotation(SpawnRotation);
 
 	// 🔧 修改 - 生成后销毁配置相机Pawn，避免重复占用
 	if (AXBConfigCameraPawn* ConfigPawn = Cast<AXBConfigCameraPawn>(CurrentPawn))
