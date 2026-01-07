@@ -103,15 +103,15 @@ struct XIAOBINDATIANXIA_API FXBLeaderTableRow : public FTableRowBase
 
     /** @brief 每个士兵提供的体型缩放 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长配置", meta = (DisplayName = "每士兵体型加成"))
-    float ScalePerSoldier = 0.01f;
+    float ScalePerSoldier = 0.1f;
 
     /** @brief 最大体型缩放 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长配置", meta = (DisplayName = "最大体型缩放", ClampMin = "1.0"))
-    float MaxScale = 2.0f;
+    float MaxScale = 3.0f;
     
     /** @brief 每个士兵增加的伤害倍率 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长配置", meta = (DisplayName = "每士兵伤害倍率加成"))
-    float DamageMultiplierPerSoldier = 0.01f;
+    float DamageMultiplierPerSoldier = 0.f;
 
     /** @brief 最大伤害倍率 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "成长配置", meta = (DisplayName = "最大伤害倍率", ClampMin = "1.0"))
