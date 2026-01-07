@@ -247,6 +247,9 @@ void AXBSoldierCharacter::Tick(float DeltaTime)
     {
         UpdateDropFlight(DeltaTime);
     }
+
+    // 🔧 修改 - 跟随/待机状态下尝试自动反击，修复无主将战斗不响应问题
+    TryAutoEngage(DeltaTime);
 }
 
 void AXBSoldierCharacter::EnableMovementAndTick()
@@ -1825,12 +1828,84 @@ float AXBSoldierCharacter::TakeSoldierDamage(float DamageAmount, AActor* DamageS
     UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 受到 %.1f 伤害, 剩余血量: %.1f"), 
         *GetName(), ActualDamage, CurrentHealth);
 
+    // 🔧 修改 - 受击不再直接触发战斗，确保仅由主将主动攻击敌方主将时进入战斗
+
     if (CurrentHealth <= 0.0f)
     {
         HandleDeath();
     }
 
     return ActualDamage;
+}
+
+// ✨ 新增 - 跟随/待机自动反击入口
+/**
+ * @brief 跟随/待机状态下自动进入战斗
+ * @param DeltaTime 帧间隔
+ * @note   详细流程分析: 校验主将战斗状态 -> 累计计时 -> 触发寻敌 -> 若命中则进入战斗并锁定目标
+ *         性能/架构注意事项: 仅在跟随/待机且主将已命中敌方主将时执行，避免无意义扫描
+ */
+void AXBSoldierCharacter::TryAutoEngage(float DeltaTime)
+{
+    // 未启用自动反击则直接返回
+    if (!bEnableAutoEngage)
+    {
+        return;
+    }
+
+    // 仅在被招募且处于跟随/待机状态下执行
+    if (!bIsRecruited || (CurrentState != EXBSoldierState::Following && CurrentState != EXBSoldierState::Idle))
+    {
+        return;
+    }
+
+    // 🔧 修改 - 必须存在主将并且主将已命中敌方主将，士兵才允许自动进入战斗
+    const AXBCharacterBase* Leader = GetLeaderCharacter();
+    if (!Leader)
+    {
+        return;
+    }
+
+    // 草丛隐身主将时禁止自动战斗
+    if (Leader->IsHiddenInBush())
+    {
+        return;
+    }
+
+    // 主将未处于战斗或未命中敌方主将时，不允许士兵自动进入战斗
+    if (!Leader->HasEnemiesInCombat() || !Leader->GetLastAttackedEnemyLeader())
+    {
+        return;
+    }
+
+    // 没有行为接口无法执行寻敌
+    if (!BehaviorInterface)
+    {
+        return;
+    }
+
+    // 计时器未到则不执行扫描
+    AutoEngageCheckTimer -= DeltaTime;
+    if (AutoEngageCheckTimer > 0.0f)
+    {
+        return;
+    }
+    AutoEngageCheckTimer = FMath::Max(0.05f, AutoEngageCheckInterval);
+
+    // 尝试寻找敌人并进入战斗
+    AActor* FoundEnemy = nullptr;
+    if (BehaviorInterface->SearchForEnemy(FoundEnemy) && FoundEnemy)
+    {
+        // 🔧 修改 - 再次确认敌对关系，避免同阵营误判
+        if (UXBBlueprintFunctionLibrary::AreActorsHostile(this, FoundEnemy))
+        {
+            EnterCombat();
+            CurrentAttackTarget = FoundEnemy;
+            BehaviorInterface->RecordEnemySeen();
+            UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 自动发现敌人并进入战斗: %s"),
+                *GetName(), *FoundEnemy->GetName());
+        }
+    }
 }
 
 bool AXBSoldierCharacter::PerformAttack(AActor* Target)

@@ -171,6 +171,8 @@ void UXBAttributeSet::HandleHealthChanged(const FGameplayEffectModCallbackData& 
             {
                 TargetCharacter->SetLastDamageInstigator(SourceActor);
             }
+            // 🔧 修改 - 触发目标的受伤回调，用于AI响应
+            TargetCharacter->HandleDamageReceived(SourceActor, DamageDone);
         }
         // 输出目标信息
         if (TargetActor)
