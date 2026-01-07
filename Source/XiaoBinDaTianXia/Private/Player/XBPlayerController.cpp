@@ -370,13 +370,7 @@ void AXBPlayerController::ApplyCameraSettings()
         PlayerChar->SetCameraYawOffset(CurrentCameraYawOffset);
         return;
     }
-
-    if (AXBConfigCameraPawn* ConfigPawn = Cast<AXBConfigCameraPawn>(GetPawn()))
-    {
-        ConfigPawn->SetCameraDistance(CurrentCameraDistance);
-        ConfigPawn->SetCameraYawOffset(CurrentCameraYawOffset);
-        ConfigPawn->SetCameraPitchOffset(CurrentCameraPitch);
-    }
+    
 }
 
 FVector AXBPlayerController::CalculateMoveDirection(const FVector2D& InputVector) const
