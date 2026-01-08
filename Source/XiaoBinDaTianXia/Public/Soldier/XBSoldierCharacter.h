@@ -687,6 +687,9 @@ private:
     // ✨ 新增 - 自动反击计时器
     float AutoEngageCheckTimer = 0.0f;
 
+    // ✨ 新增 - 超距强制跟随锁定，避免战斗/跟随反复切换
+    bool bForceFollowByDistance = false;
+
     UPROPERTY()
     TObjectPtr<UAnimSequence> LoadedSleepingAnimation;
     UPROPERTY()
