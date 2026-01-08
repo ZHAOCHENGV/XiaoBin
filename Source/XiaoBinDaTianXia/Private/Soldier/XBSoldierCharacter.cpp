@@ -260,8 +260,8 @@ void AXBSoldierCharacter::Tick(float DeltaTime)
         }
     }
 
-    // 🔧 修改 - 超距时强制退出战斗并保持跟随状态
-    if (bForceFollowByDistance)
+    // 🔧 修改 - 超距时强制清理战斗并回归跟随，避免反复切换
+    if (bForceFollowByDistance && (CurrentState != EXBSoldierState::Following || CurrentAttackTarget.IsValid()))
     {
         // 🔧 修改 - 超距时统一清理战斗数据并切回跟随，避免目标残留
         ForceFollowByDistance();
@@ -1757,6 +1757,8 @@ void AXBSoldierCharacter::EnterCombat()
         const float DistToLeader = FVector::Dist2D(GetActorLocation(), Leader->GetActorLocation());
         if (DistToLeader >= DisengageDistance)
         {
+            // 🔧 修改 - 超距时锁定跟随状态，避免后续进入战斗
+            bForceFollowByDistance = true;
             ReturnToFormation();
             UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 距离主将过远，禁止进入战斗: %.0f >= %.0f"),
                 *GetName(), DistToLeader, DisengageDistance);
@@ -1915,6 +1917,8 @@ void AXBSoldierCharacter::TryAutoEngage(float DeltaTime)
     const float DistToLeader = FVector::Dist2D(GetActorLocation(), Leader->GetActorLocation());
     if (DistToLeader >= DisengageDistance)
     {
+        // 🔧 修改 - 超距时锁定跟随状态，避免自动进入战斗
+        bForceFollowByDistance = true;
         return;
     }
 
