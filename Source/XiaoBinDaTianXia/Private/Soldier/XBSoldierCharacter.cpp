@@ -248,6 +248,25 @@ void AXBSoldierCharacter::Tick(float DeltaTime)
         UpdateDropFlight(DeltaTime);
     }
 
+    // 🔧 修改 - 统一刷新超距强制跟随标记，避免战斗/跟随状态反复切换
+    bForceFollowByDistance = false;
+    if (AXBCharacterBase* Leader = GetLeaderCharacter())
+    {
+        const float DisengageDistance = GetDisengageDistance();
+        const float DistToLeader = FVector::Dist2D(GetActorLocation(), Leader->GetActorLocation());
+        if (DistToLeader >= DisengageDistance)
+        {
+            bForceFollowByDistance = true;
+        }
+    }
+
+    // 🔧 修改 - 超距时强制退出战斗并保持跟随状态
+    if (bForceFollowByDistance)
+    {
+        // 🔧 修改 - 超距时统一清理战斗数据并切回跟随，避免目标残留
+        ForceFollowByDistance();
+    }
+
     // 🔧 修改 - 跟随/待机状态下尝试自动反击，修复无主将战斗不响应问题
     TryAutoEngage(DeltaTime);
 }
@@ -1732,6 +1751,25 @@ void AXBSoldierCharacter::EnterCombat()
             UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 因主将草丛隐身，禁止进入战斗"), *GetName());
             return;
         }
+
+        // 🔧 修改 - 主将距离超过脱离距离时禁止进入战斗，避免战斗与跟随反复切换
+        const float DisengageDistance = GetDisengageDistance();
+        const float DistToLeader = FVector::Dist2D(GetActorLocation(), Leader->GetActorLocation());
+        if (DistToLeader >= DisengageDistance)
+        {
+            ReturnToFormation();
+            UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 距离主将过远，禁止进入战斗: %.0f >= %.0f"),
+                *GetName(), DistToLeader, DisengageDistance);
+            return;
+        }
+    }
+
+    // 🔧 修改 - 超距强制跟随时禁止进入战斗，避免重复切换状态
+    if (bForceFollowByDistance)
+    {
+        ReturnToFormation();
+        UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 处于超距跟随锁定，禁止进入战斗"), *GetName());
+        return;
     }
 
     if (CurrentState == EXBSoldierState::Dead || CurrentState == EXBSoldierState::Dormant || CurrentState == EXBSoldierState::Dropping)
@@ -1862,6 +1900,20 @@ void AXBSoldierCharacter::TryAutoEngage(float DeltaTime)
     // 🔧 修改 - 必须存在主将并且主将已命中敌方主将，士兵才允许自动进入战斗
     const AXBCharacterBase* Leader = GetLeaderCharacter();
     if (!Leader)
+    {
+        return;
+    }
+
+    // 🔧 修改 - 超距强制跟随时禁止自动进入战斗，避免反复切换状态
+    if (bForceFollowByDistance)
+    {
+        return;
+    }
+
+    // 🔧 修改 - 主将距离超过脱离距离时禁止自动进入战斗，避免反复切换状态
+    const float DisengageDistance = GetDisengageDistance();
+    const float DistToLeader = FVector::Dist2D(GetActorLocation(), Leader->GetActorLocation());
+    if (DistToLeader >= DisengageDistance)
     {
         return;
     }
@@ -2015,6 +2067,44 @@ void AXBSoldierCharacter::ReturnToFormation()
     }
     
     SetSoldierState(EXBSoldierState::Following);
+}
+
+/**
+ * @brief  超距时强制清理战斗并切回跟随
+ * @return 无
+ * @note   详细流程分析: 清理目标 -> 停止行为树/移动 -> 退出战斗模式 -> 切回跟随状态
+ *         性能/架构注意事项: 仅在超距判定触发时调用，避免重复开销
+ */
+void AXBSoldierCharacter::ForceFollowByDistance()
+{
+    if (CurrentState == EXBSoldierState::Dead || CurrentState == EXBSoldierState::Dormant || CurrentState == EXBSoldierState::Dropping)
+    {
+        return;
+    }
+
+    // 🔧 修改 - 超距强制清理战斗目标，避免残留锁定
+    CurrentAttackTarget = nullptr;
+
+    // 🔧 修改 - 停止行为树，避免继续执行战斗逻辑
+    if (AXBSoldierAIController* SoldierAI = Cast<AXBSoldierAIController>(GetController()))
+    {
+        SoldierAI->StopBehaviorTreeLogic();
+    }
+
+    // 🔧 修改 - 退出战斗模式，切回跟随移动
+    if (FollowComponent)
+    {
+        FollowComponent->ExitCombatMode();
+    }
+
+    if (AAIController* AICtrl = Cast<AAIController>(GetController()))
+    {
+        AICtrl->StopMovement();
+    }
+
+    SetSoldierState(EXBSoldierState::Following);
+
+    UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 超距强制切回跟随并清理战斗目标"), *GetName());
 }
 
 FVector AXBSoldierCharacter::CalculateAvoidanceDirection(const FVector& DesiredDirection)
