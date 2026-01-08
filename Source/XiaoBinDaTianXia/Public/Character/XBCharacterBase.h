@@ -246,6 +246,14 @@ public:
     UFUNCTION(BlueprintCallable, Category = "战斗", meta = (DisplayName = "设置战斗敌人状态"))
     void SetHasEnemiesInCombat(bool bInCombat);
 
+    /**
+     * @brief  获取士兵是否处于脱战逃跑状态
+     * @return 是否正在脱战逃跑
+     * @note   用于敌方士兵判断追击终止，避免影响正常战斗入场逻辑
+     */
+    UFUNCTION(BlueprintPure, Category = "战斗", meta = (DisplayName = "士兵脱战逃跑中"))
+    bool IsSoldiersEscaping() const { return bIsSoldiersEscaping; }
+
     UFUNCTION(BlueprintCallable, Category = "战斗")
     virtual void OnAttackHit(AActor* HitTarget);
 
@@ -472,6 +480,10 @@ protected:
 
     UPROPERTY(BlueprintReadOnly, Category = "战斗", meta = (DisplayName = "战斗中有敌人"))
     bool bHasEnemiesInCombat = false;
+
+    // 🔧 修改 - 记录主将脱离战斗时的士兵逃跑状态，供敌方士兵同步停止追击
+    UPROPERTY(BlueprintReadOnly, Category = "战斗", meta = (DisplayName = "士兵脱战逃跑中"))
+    bool bIsSoldiersEscaping = false;
 
     // ==================== 草丛隐身 ====================
 

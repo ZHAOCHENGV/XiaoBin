@@ -1445,6 +1445,9 @@ void AXBCharacterBase::SetHiddenInBush(bool bEnableHidden)
 
 void AXBCharacterBase::SetSoldiersEscaping(bool bEscaping)
 {
+    // 🔧 修改 - 记录脱战逃跑状态，供敌方士兵判断是否需要停止追击
+    bIsSoldiersEscaping = bEscaping;
+
     for (AXBSoldierCharacter* Soldier : Soldiers)
     {
         if (Soldier)
