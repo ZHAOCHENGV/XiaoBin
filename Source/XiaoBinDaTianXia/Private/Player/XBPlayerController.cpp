@@ -398,8 +398,11 @@ void AXBPlayerController::ApplyCameraSettings()
 
 FVector AXBPlayerController::CalculateMoveDirection(const FVector2D& InputVector) const
 {
-    const FVector WorldForward = FVector::ForwardVector;
-    const FVector WorldRight = FVector::RightVector;
+    // 🔧 修改 - 根据视角朝向计算移动方向，保证前进跟随相机朝向
+    const FRotator CurrentControlRotation = GetControlRotation();
+    const FRotator YawRotation(0.0f, CurrentControlRotation.Yaw, 0.0f);
+    const FVector WorldForward = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+    const FVector WorldRight = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
 
     FVector MoveDirection = WorldForward * InputVector.Y + WorldRight * InputVector.X;
     
