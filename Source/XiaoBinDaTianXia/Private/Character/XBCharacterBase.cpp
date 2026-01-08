@@ -340,6 +340,9 @@ void AXBCharacterBase::ApplyRuntimeConfig(const FXBGameConfigData& GameConfig, b
     // 🔧 修改 - 冲刺倍率由配置直接覆盖
     SprintSpeedMultiplier = GameConfig.LeaderSprintSpeedMultiplier;
 
+    // ✨ 新增 - 冲刺持续时间由配置直接覆盖
+    SprintDuration = GameConfig.LeaderSprintDuration;
+
     // 🔧 修改 - 掉落数量由配置覆盖
     SoldierDropConfig.DropCount = GameConfig.LeaderDeathDropCount;
 
@@ -492,6 +495,35 @@ void AXBCharacterBase::SpawnInitialSoldiers(int32 DesiredCount)
 
 // ==================== 冲刺系统实现 ====================
 
+void AXBCharacterBase::TriggerSprint()
+{
+    // 🔧 修改 - 冲刺中或死亡时禁止重复触发，避免无意义计时器
+    if (bIsDead || bIsSprinting)
+    {
+        return;
+    }
+
+    // 🔧 修改 - 先启动冲刺，再按配置持续时间安排结束
+    StartSprint();
+
+    if (SprintDuration > 0.0f)
+    {
+        GetWorldTimerManager().ClearTimer(SprintDurationTimerHandle);
+        GetWorldTimerManager().SetTimer(
+            SprintDurationTimerHandle,
+            this,
+            &AXBCharacterBase::StopSprint,
+            SprintDuration,
+            false
+        );
+    }
+    else
+    {
+        // 🔧 修改 - 配置为 0 时视为不启用持续冲刺，立即恢复
+        StopSprint();
+    }
+}
+
 void AXBCharacterBase::StartSprint()
 {
     if (bIsDead || bIsSprinting)
@@ -512,6 +544,9 @@ void AXBCharacterBase::StopSprint()
     {
         return;
     }
+
+    // 🔧 修改 - 停止冲刺时清理按键冲刺计时器
+    GetWorldTimerManager().ClearTimer(SprintDurationTimerHandle);
 
     bIsSprinting = false;
     TargetMoveSpeed = BaseMoveSpeed;
