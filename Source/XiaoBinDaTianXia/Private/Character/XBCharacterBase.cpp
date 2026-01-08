@@ -847,10 +847,8 @@ void AXBCharacterBase::UpdateDamageMultiplier()
     const float BaseDamageMultiplier = CachedLeaderData.DamageMultiplier;
     const float AdditionalMultiplier = Soldiers.Num() * GrowthConfigCache.DamageMultiplierPerSoldier;
     
-    const float NewMultiplier = FMath::Min(
-        BaseDamageMultiplier + AdditionalMultiplier,
-        GrowthConfigCache.MaxDamageMultiplier
-    );
+    // 🔧 修改 - 取消伤害倍率上限，确保士兵加成全部生效
+    const float NewMultiplier = BaseDamageMultiplier + AdditionalMultiplier;
 
     AbilitySystemComponent->SetNumericAttributeBase(
         UXBAttributeSet::GetDamageMultiplierAttribute(),
