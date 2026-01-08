@@ -261,10 +261,10 @@ void AXBSoldierCharacter::Tick(float DeltaTime)
     }
 
     // 🔧 修改 - 超距时强制退出战斗并保持跟随状态
-    if (bForceFollowByDistance && CurrentState == EXBSoldierState::Combat)
+    if (bForceFollowByDistance)
     {
-        UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 距离主将过远，强制退出战斗"), *GetName());
-        ExitCombat();
+        // 🔧 修改 - 超距时统一清理战斗数据并切回跟随，避免目标残留
+        ForceFollowByDistance();
     }
 
     // 🔧 修改 - 跟随/待机状态下尝试自动反击，修复无主将战斗不响应问题
@@ -2067,6 +2067,44 @@ void AXBSoldierCharacter::ReturnToFormation()
     }
     
     SetSoldierState(EXBSoldierState::Following);
+}
+
+/**
+ * @brief  超距时强制清理战斗并切回跟随
+ * @return 无
+ * @note   详细流程分析: 清理目标 -> 停止行为树/移动 -> 退出战斗模式 -> 切回跟随状态
+ *         性能/架构注意事项: 仅在超距判定触发时调用，避免重复开销
+ */
+void AXBSoldierCharacter::ForceFollowByDistance()
+{
+    if (CurrentState == EXBSoldierState::Dead || CurrentState == EXBSoldierState::Dormant || CurrentState == EXBSoldierState::Dropping)
+    {
+        return;
+    }
+
+    // 🔧 修改 - 超距强制清理战斗目标，避免残留锁定
+    CurrentAttackTarget = nullptr;
+
+    // 🔧 修改 - 停止行为树，避免继续执行战斗逻辑
+    if (AXBSoldierAIController* SoldierAI = Cast<AXBSoldierAIController>(GetController()))
+    {
+        SoldierAI->StopBehaviorTreeLogic();
+    }
+
+    // 🔧 修改 - 退出战斗模式，切回跟随移动
+    if (FollowComponent)
+    {
+        FollowComponent->ExitCombatMode();
+    }
+
+    if (AAIController* AICtrl = Cast<AAIController>(GetController()))
+    {
+        AICtrl->StopMovement();
+    }
+
+    SetSoldierState(EXBSoldierState::Following);
+
+    UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 超距强制切回跟随并清理战斗目标"), *GetName());
 }
 
 FVector AXBSoldierCharacter::CalculateAvoidanceDirection(const FVector& DesiredDirection)

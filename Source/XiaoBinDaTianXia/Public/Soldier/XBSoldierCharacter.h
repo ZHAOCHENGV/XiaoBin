@@ -648,6 +648,14 @@ protected:
     void FaceTarget(AActor* Target, float DeltaTime);
     FVector CalculateAvoidanceDirection(const FVector& DesiredDirection);
 
+    /**
+     * @brief  超距时强制清理战斗并切回跟随
+     * @return 无
+     * @note   详细流程分析: 清理目标 -> 停止行为树/移动 -> 退出战斗模式 -> 切回跟随状态
+     *         性能/架构注意事项: 仅在超距判定触发时调用，避免重复开销
+     */
+    void ForceFollowByDistance();
+
     // ✨ 新增 - 跟随/待机自动反击入口
     /**
      * @brief 跟随/待机状态下自动进入战斗
