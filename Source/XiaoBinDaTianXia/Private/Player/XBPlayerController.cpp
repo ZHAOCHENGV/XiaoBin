@@ -398,11 +398,28 @@ void AXBPlayerController::ApplyCameraSettings()
 
 FVector AXBPlayerController::CalculateMoveDirection(const FVector2D& InputVector) const
 {
-    // 🔧 修改 - 根据视角朝向计算移动方向，保证前进跟随相机朝向
-    const FRotator CurrentControlRotation = GetControlRotation();
-    const FRotator YawRotation(0.0f, CurrentControlRotation.Yaw, 0.0f);
-    const FVector WorldForward = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
-    const FVector WorldRight = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
+    FVector WorldForward = FVector::ForwardVector;
+    FVector WorldRight = FVector::RightVector;
+
+    if (bUseCameraForwardForMovement)
+    {
+        // 🔧 修改 - 优先使用镜头Yaw方向，确保前进与镜头朝向一致
+        if (CachedPlayerCharacter.IsValid() && CachedPlayerCharacter->GetCameraComponent())
+        {
+            const FRotator CameraRotation = CachedPlayerCharacter->GetCameraComponent()->GetComponentRotation();
+            const FRotator YawRotation(0.0f, CameraRotation.Yaw, 0.0f);
+            WorldForward = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+            WorldRight = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
+        }
+        else
+        {
+            // 🔧 修改 - 无有效镜头组件时回退控制器朝向，避免方向计算失效
+            const FRotator CurrentControlRotation = GetControlRotation();
+            const FRotator YawRotation(0.0f, CurrentControlRotation.Yaw, 0.0f);
+            WorldForward = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+            WorldRight = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
+        }
+    }
 
     FVector MoveDirection = WorldForward * InputVector.Y + WorldRight * InputVector.X;
     
