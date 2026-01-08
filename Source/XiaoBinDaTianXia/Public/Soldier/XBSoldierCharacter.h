@@ -219,6 +219,14 @@ public:
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|AI", meta = (DisplayName = "获取脱离距离"))
     float GetDisengageDistance() const;
 
+    /**
+     * @brief  是否处于超距强制跟随锁定
+     * @return 是否锁定跟随
+     * @note   详细流程分析: 由 Tick 判定并刷新标记，供 AI/行为接口统一判断
+     *         性能/架构注意事项: 仅返回缓存状态，不做额外计算
+     */
+    bool IsForceFollowByDistance() const { return bForceFollowByDistance; }
+
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|AI", meta = (DisplayName = "获取返回延迟"))
     float GetReturnDelay() const;
 
