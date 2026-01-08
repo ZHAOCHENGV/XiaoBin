@@ -219,6 +219,14 @@ public:
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|AI", meta = (DisplayName = "获取脱离距离"))
     float GetDisengageDistance() const;
 
+    /**
+     * @brief  超距时强制清理战斗并切回跟随
+     * @return 无
+     * @note   详细流程分析: 清理目标 -> 停止行为树/移动 -> 退出战斗模式 -> 切回跟随状态
+     *         性能/架构注意事项: 仅在超距判定触发时调用，避免重复开销
+     */
+    void ForceFollowByDistance();
+
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|AI", meta = (DisplayName = "获取返回延迟"))
     float GetReturnDelay() const;
 

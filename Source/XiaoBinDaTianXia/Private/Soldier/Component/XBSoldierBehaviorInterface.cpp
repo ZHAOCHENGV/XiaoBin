@@ -62,6 +62,15 @@ void UXBSoldierBehaviorInterface::TickComponent(float DeltaTime, ELevelTick Tick
 
     // 更新攻击冷却
     UpdateAttackCooldown(DeltaTime);
+
+    // 🔧 修改 - 超距或需要脱战时强制回到跟随状态，避免状态反复切换
+    if (ShouldDisengage())
+    {
+        if (AXBSoldierCharacter* Soldier = GetOwnerSoldier())
+        {
+            Soldier->ForceFollowByDistance();
+        }
+    }
 }
 
 // ==================== 内部辅助方法 ====================
@@ -159,6 +168,12 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
     UWorld* World = GetWorld();
 
     if (!Soldier || !World)
+    {
+        return false;
+    }
+
+    // 🔧 修改 - 超距或需要脱战时禁止寻敌，避免战斗/跟随反复切换
+    if (ShouldDisengage())
     {
         return false;
     }
