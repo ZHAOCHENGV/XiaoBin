@@ -473,16 +473,14 @@ void AXBPlayerController::HandleDashInputStarted()
                 return;
             }
         }
-        CharBase->StartSprint();
+        // 🔧 修改 - 按键触发冲刺改为持续时间制
+        CharBase->TriggerSprint();
     }
 }
 
 void AXBPlayerController::HandleDashInputCompleted()
 {
-    if (AXBCharacterBase* CharBase = Cast<AXBCharacterBase>(GetPawn()))
-    {
-        CharBase->StopSprint();
-    }
+    // 🔧 修改 - 冲刺为持续时间制，松开按键不再立即结束
 }
 
 /**
