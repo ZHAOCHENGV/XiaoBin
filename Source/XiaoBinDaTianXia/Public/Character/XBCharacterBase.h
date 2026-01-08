@@ -453,6 +453,9 @@ protected:
     // ✨ 新增 - 按键冲刺持续时间计时器
     FTimerHandle SprintDurationTimerHandle;
 
+    // ✨ 新增 - 无输入触发时的自动冲刺移动开关
+    bool bAutoSprintMove = false;
+
     // ==================== 配置 ====================
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "配置", meta = (DisplayName = "配置数据表"))
