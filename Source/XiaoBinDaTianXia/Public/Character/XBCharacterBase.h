@@ -196,6 +196,15 @@ public:
 
     // ============ 冲刺系统（共用） ============
 
+    /**
+     * @brief  触发冲刺（按键触发）
+     * @return 无
+     * @note   详细流程分析: 检查死亡/冲刺状态 -> 启动冲刺 -> 根据配置持续时间安排结束
+     *         性能/架构注意事项: 冲刺期间重复触发无效，避免反复创建计时器
+     */
+    UFUNCTION(BlueprintCallable, Category = "移动", meta = (DisplayName = "触发冲刺"))
+    void TriggerSprint();
+
     UFUNCTION(BlueprintCallable, Category = "移动", meta = (DisplayName = "开始冲刺"))
     virtual void StartSprint();
 
@@ -429,6 +438,9 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "移动", meta = (DisplayName = "冲刺速度倍率", ClampMin = "1.0", ClampMax = "5.0"))
     float SprintSpeedMultiplier = 2.0f;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "移动", meta = (DisplayName = "冲刺持续时间", ClampMin = "0.0"))
+    float SprintDuration = 1.0f;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "移动", meta = (DisplayName = "速度变化平滑度", ClampMin = "1.0"))
     float SpeedInterpRate = 15.0f;
 
@@ -437,6 +449,9 @@ protected:
 
     UPROPERTY(BlueprintReadOnly, Category = "移动")
     float TargetMoveSpeed = 0.0f;
+
+    // ✨ 新增 - 按键冲刺持续时间计时器
+    FTimerHandle SprintDurationTimerHandle;
 
     // ==================== 配置 ====================
 
