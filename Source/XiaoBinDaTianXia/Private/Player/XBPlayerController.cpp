@@ -398,8 +398,11 @@ void AXBPlayerController::ApplyCameraSettings()
 
 FVector AXBPlayerController::CalculateMoveDirection(const FVector2D& InputVector) const
 {
-    const FVector WorldForward = FVector::ForwardVector;
-    const FVector WorldRight = FVector::RightVector;
+    // 🔧 修改 - 根据视角朝向计算移动方向，保证前进跟随相机朝向
+    const FRotator CurrentControlRotation = GetControlRotation();
+    const FRotator YawRotation(0.0f, CurrentControlRotation.Yaw, 0.0f);
+    const FVector WorldForward = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+    const FVector WorldRight = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
 
     FVector MoveDirection = WorldForward * InputVector.Y + WorldRight * InputVector.X;
     
@@ -473,16 +476,14 @@ void AXBPlayerController::HandleDashInputStarted()
                 return;
             }
         }
-        CharBase->StartSprint();
+        // 🔧 修改 - 按键触发冲刺改为持续时间制
+        CharBase->TriggerSprint();
     }
 }
 
 void AXBPlayerController::HandleDashInputCompleted()
 {
-    if (AXBCharacterBase* CharBase = Cast<AXBCharacterBase>(GetPawn()))
-    {
-        CharBase->StopSprint();
-    }
+    // 🔧 修改 - 冲刺为持续时间制，松开按键不再立即结束
 }
 
 /**
