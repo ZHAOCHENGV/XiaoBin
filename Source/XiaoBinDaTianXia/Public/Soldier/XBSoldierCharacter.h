@@ -219,6 +219,9 @@ public:
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|AI", meta = (DisplayName = "获取脱离距离"))
     float GetDisengageDistance() const;
 
+    UFUNCTION(BlueprintPure, Category = "XB|Soldier|AI", meta = (DisplayName = "获取追击距离"))
+    float GetChaseDistance() const;
+
     /**
      * @brief  是否处于超距强制跟随锁定
      * @return 是否锁定跟随
@@ -705,6 +708,9 @@ private:
 
     // ✨ 新增 - 超距强制跟随锁定，避免战斗/跟随反复切换
     bool bForceFollowByDistance = false;
+
+    // ✨ 新增 - 追击超距强制跟随锁定，避免追击过远
+    bool bForceFollowByChaseDistance = false;
 
     UPROPERTY()
     TObjectPtr<UAnimSequence> LoadedSleepingAnimation;

@@ -124,6 +124,9 @@ public:
     UFUNCTION(BlueprintPure, Category = "XB|Data|AI", meta = (DisplayName = "获取脱离距离"))
     float GetDisengageDistance() const { return CachedTableRow.AIConfig.DisengageDistance; }
 
+    UFUNCTION(BlueprintPure, Category = "XB|Data|AI", meta = (DisplayName = "获取追击距离"))
+    float GetChaseDistance() const { return CachedTableRow.AIConfig.ChaseDistance; }
+
     UFUNCTION(BlueprintPure, Category = "XB|Data|AI", meta = (DisplayName = "获取返回延迟"))
     float GetReturnDelay() const { return CachedTableRow.AIConfig.ReturnDelay; }
 

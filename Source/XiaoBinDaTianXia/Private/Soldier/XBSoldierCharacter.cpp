@@ -250,6 +250,7 @@ void AXBSoldierCharacter::Tick(float DeltaTime)
 
     // 🔧 修改 - 统一刷新超距强制跟随标记，避免战斗/跟随状态反复切换
     bForceFollowByDistance = false;
+    bForceFollowByChaseDistance = false;
     if (AXBCharacterBase* Leader = GetLeaderCharacter())
     {
         const float DisengageDistance = GetDisengageDistance();
@@ -258,10 +259,26 @@ void AXBSoldierCharacter::Tick(float DeltaTime)
         {
             bForceFollowByDistance = true;
         }
+
+        // 🔧 修改 - 追击逃跑目标时超出追击距离，强制回到主将
+        if (CurrentState == EXBSoldierState::Combat && CurrentAttackTarget.IsValid())
+        {
+            if (const AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(CurrentAttackTarget.Get()))
+            {
+                if (TargetSoldier->IsEscaping())
+                {
+                    const float ChaseDistance = GetChaseDistance();
+                    if (DistToLeader >= ChaseDistance)
+                    {
+                        bForceFollowByChaseDistance = true;
+                    }
+                }
+            }
+        }
     }
 
-    // 🔧 修改 - 超距时强制清理战斗并回归跟随，避免反复切换
-    if (bForceFollowByDistance && (CurrentState != EXBSoldierState::Following || CurrentAttackTarget.IsValid()))
+    // 🔧 修改 - 超距或追击超距时强制清理战斗并回归跟随，避免反复切换
+    if ((bForceFollowByDistance || bForceFollowByChaseDistance) && (CurrentState != EXBSoldierState::Following || CurrentAttackTarget.IsValid()))
     {
         // 🔧 修改 - 超距时统一清理战斗数据并切回跟随，避免目标残留
         ForceFollowByDistance();
@@ -1416,6 +1433,11 @@ float AXBSoldierCharacter::GetVisionRange() const
 float AXBSoldierCharacter::GetDisengageDistance() const
 {
     return IsDataAccessorValid() ? DataAccessor->GetDisengageDistance() : 1000.0f;
+}
+
+float AXBSoldierCharacter::GetChaseDistance() const
+{
+    return IsDataAccessorValid() ? DataAccessor->GetChaseDistance() : 1200.0f;
 }
 
 float AXBSoldierCharacter::GetReturnDelay() const
