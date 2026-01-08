@@ -67,6 +67,10 @@ struct FXBGameConfigData
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "主将冲刺速度倍率"))
     float LeaderSprintSpeedMultiplier = 1.5f;
 
+    /** 主将冲刺持续时间 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "主将冲刺持续时间", ClampMin = "0.0"))
+    float LeaderSprintDuration = 1.0f;
+
     /** 主将初始大小 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "主将初始大小"))
     float LeaderInitialScale = 1.0f;
