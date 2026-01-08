@@ -264,6 +264,38 @@ void AXBSoldierCharacter::Tick(float DeltaTime)
         }
     }
 
+    // 🔧 修改 - 主将主动脱离战斗时，追击其阵营的敌方士兵需要同步停止追击
+    if (CurrentState == EXBSoldierState::Combat && CurrentAttackTarget.IsValid())
+    {
+        // 若目标是主将，且主将已脱战，则强制退出战斗并回归编队
+        if (AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(CurrentAttackTarget.Get()))
+        {
+            // 通过主将战斗态判定脱战，避免敌方士兵持续追击
+            if (!TargetLeader->IsInCombat())
+            {
+                UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 目标主将 %s 已脱离战斗，停止追击并回队"),
+                    *GetName(), *TargetLeader->GetName());
+                ExitCombat();
+                ReturnToFormation();
+            }
+        }
+        // 若目标是士兵，且其主将已脱战，则同样停止追击
+        else if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(CurrentAttackTarget.Get()))
+        {
+            // 仅在目标主将已脱战时退出战斗，避免误伤正常交战
+            if (AXBCharacterBase* TargetSoldierLeader = TargetSoldier->GetLeaderCharacter())
+            {
+                if (!TargetSoldierLeader->IsInCombat())
+                {
+                    UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 目标士兵 %s 所属主将已脱离战斗，停止追击并回队"),
+                        *GetName(), *TargetSoldier->GetName());
+                    ExitCombat();
+                    ReturnToFormation();
+                }
+            }
+        }
+    }
+
     // 🔧 修改 - 跟随/待机状态下尝试自动反击，修复无主将战斗不响应问题
     TryAutoEngage(DeltaTime);
 }
