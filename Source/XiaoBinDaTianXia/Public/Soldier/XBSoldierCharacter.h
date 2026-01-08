@@ -219,6 +219,17 @@ public:
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|AI", meta = (DisplayName = "获取脱离距离"))
     float GetDisengageDistance() const;
 
+    UFUNCTION(BlueprintPure, Category = "XB|Soldier|AI", meta = (DisplayName = "获取追击距离"))
+    float GetChaseDistance() const;
+
+    /**
+     * @brief  是否处于超距强制跟随锁定
+     * @return 是否锁定跟随
+     * @note   详细流程分析: 由 Tick 判定并刷新标记，供 AI/行为接口统一判断
+     *         性能/架构注意事项: 仅返回缓存状态，不做额外计算
+     */
+    bool IsForceFollowByDistance() const { return bForceFollowByDistance; }
+
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|AI", meta = (DisplayName = "获取返回延迟"))
     float GetReturnDelay() const;
 
@@ -648,6 +659,14 @@ protected:
     void FaceTarget(AActor* Target, float DeltaTime);
     FVector CalculateAvoidanceDirection(const FVector& DesiredDirection);
 
+    /**
+     * @brief  超距时强制清理战斗并切回跟随
+     * @return 无
+     * @note   详细流程分析: 清理目标 -> 停止行为树/移动 -> 退出战斗模式 -> 切回跟随状态
+     *         性能/架构注意事项: 仅在超距判定触发时调用，避免重复开销
+     */
+    void ForceFollowByDistance();
+
     // ✨ 新增 - 跟随/待机自动反击入口
     /**
      * @brief 跟随/待机状态下自动进入战斗
@@ -686,6 +705,12 @@ private:
 
     // ✨ 新增 - 自动反击计时器
     float AutoEngageCheckTimer = 0.0f;
+
+    // ✨ 新增 - 超距强制跟随锁定，避免战斗/跟随反复切换
+    bool bForceFollowByDistance = false;
+
+    // ✨ 新增 - 追击超距强制跟随锁定，避免追击过远
+    bool bForceFollowByChaseDistance = false;
 
     UPROPERTY()
     TObjectPtr<UAnimSequence> LoadedSleepingAnimation;

@@ -340,6 +340,15 @@ void AXBCharacterBase::ApplyRuntimeConfig(const FXBGameConfigData& GameConfig, b
     // 🔧 修改 - 冲刺倍率由配置直接覆盖
     SprintSpeedMultiplier = GameConfig.LeaderSprintSpeedMultiplier;
 
+    // ✨ 新增 - 冲刺持续时间由配置直接覆盖
+    SprintDuration = GameConfig.LeaderSprintDuration;
+
+    // 🔧 修改 - 提升伤害倍率上限，确保高倍率配置不会被上限截断
+    GrowthConfigCache.MaxDamageMultiplier = FMath::Max(
+        GrowthConfigCache.MaxDamageMultiplier,
+        GameConfig.LeaderDamageMultiplier
+    );
+
     // 🔧 修改 - 掉落数量由配置覆盖
     SoldierDropConfig.DropCount = GameConfig.LeaderDeathDropCount;
 
@@ -492,6 +501,38 @@ void AXBCharacterBase::SpawnInitialSoldiers(int32 DesiredCount)
 
 // ==================== 冲刺系统实现 ====================
 
+void AXBCharacterBase::TriggerSprint()
+{
+    // 🔧 修改 - 冲刺中或死亡时禁止重复触发，避免无意义计时器
+    if (bIsDead || bIsSprinting)
+    {
+        return;
+    }
+
+    // 🔧 修改 - 无移动输入时启用自动前进，满足静止触发冲刺也能移动
+    bAutoSprintMove = GetLastMovementInputVector().IsNearlyZero() && GetVelocity().IsNearlyZero();
+
+    // 🔧 修改 - 先启动冲刺，再按配置持续时间安排结束
+    StartSprint();
+
+    if (SprintDuration > 0.0f)
+    {
+        GetWorldTimerManager().ClearTimer(SprintDurationTimerHandle);
+        GetWorldTimerManager().SetTimer(
+            SprintDurationTimerHandle,
+            this,
+            &AXBCharacterBase::StopSprint,
+            SprintDuration,
+            false
+        );
+    }
+    else
+    {
+        // 🔧 修改 - 配置为 0 时视为不启用持续冲刺，立即恢复
+        StopSprint();
+    }
+}
+
 void AXBCharacterBase::StartSprint()
 {
     if (bIsDead || bIsSprinting)
@@ -513,8 +554,14 @@ void AXBCharacterBase::StopSprint()
         return;
     }
 
+    // 🔧 修改 - 停止冲刺时清理按键冲刺计时器
+    GetWorldTimerManager().ClearTimer(SprintDurationTimerHandle);
+
     bIsSprinting = false;
     TargetMoveSpeed = BaseMoveSpeed;
+
+    // 🔧 修改 - 冲刺结束时关闭自动前进开关
+    bAutoSprintMove = false;
 
     SetSoldiersEscaping(false);
     OnSprintStateChanged.Broadcast(false);
@@ -566,6 +613,19 @@ void AXBCharacterBase::UpdateSprint(float DeltaTime)
     {
         float NewSpeed = FMath::FInterpTo(CurrentSpeed, TargetMoveSpeed, DeltaTime, SpeedInterpRate);
         CMC->MaxWalkSpeed = NewSpeed;
+    }
+
+    // 🔧 修改 - 玩家开始输入时关闭自动前进，避免覆盖玩家方向
+    if (bIsSprinting && bAutoSprintMove && !GetLastMovementInputVector().IsNearlyZero())
+    {
+        bAutoSprintMove = false;
+    }
+
+    // 🔧 修改 - 静止触发冲刺时持续给前进输入，保证冲刺期间保持移动
+    if (bIsSprinting && bAutoSprintMove && CMC->MovementMode == MOVE_Walking)
+    {
+        const FVector ForwardDirection = GetActorForwardVector();
+        AddMovementInput(ForwardDirection, 1.0f);
     }
 }
 
@@ -787,10 +847,8 @@ void AXBCharacterBase::UpdateDamageMultiplier()
     const float BaseDamageMultiplier = CachedLeaderData.DamageMultiplier;
     const float AdditionalMultiplier = Soldiers.Num() * GrowthConfigCache.DamageMultiplierPerSoldier;
     
-    const float NewMultiplier = FMath::Min(
-        BaseDamageMultiplier + AdditionalMultiplier,
-        GrowthConfigCache.MaxDamageMultiplier
-    );
+    // 🔧 修改 - 取消伤害倍率上限，确保士兵加成全部生效
+    const float NewMultiplier = BaseDamageMultiplier + AdditionalMultiplier;
 
     AbilitySystemComponent->SetNumericAttributeBase(
         UXBAttributeSet::GetDamageMultiplierAttribute(),
@@ -851,6 +909,12 @@ void AXBCharacterBase::OnCombatAttackStateChanged(bool bIsAttacking)
     }
 
     bool bShouldBlock = CombatComponent->ShouldBlockMovement();
+
+    // 🔧 修改 - 冲刺中被攻击/技能打断移动时，立即退出冲刺
+    if (bShouldBlock && bIsSprinting)
+    {
+        StopSprint();
+    }
     
     if (UCharacterMovementComponent* MovementComp = GetCharacterMovement())
     {

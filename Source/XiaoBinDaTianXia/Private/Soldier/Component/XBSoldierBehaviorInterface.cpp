@@ -163,6 +163,12 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
         return false;
     }
 
+    // 🔧 修改 - 超距强制跟随时禁止寻敌，避免战斗/跟随反复切换
+    if (Soldier->IsForceFollowByDistance())
+    {
+        return false;
+    }
+
     // 缓存主将引用与自身阵营，用于后续筛选器中的高频访问
     AXBCharacterBase* MyLeader = Soldier->GetLeaderCharacter();
     EXBFaction MyFaction = Soldier->GetFaction();
