@@ -52,6 +52,10 @@ struct XIAOBINDATIANXIA_API FXBSoldierAIConfig
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|战斗", meta = (DisplayName = "脱离距离", ClampMin = "100.0"))
     float DisengageDistance = 1000.0f;
 
+    /** @brief 追击距离（追击逃跑目标时，超出则返回将领） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|战斗", meta = (DisplayName = "追击距离", ClampMin = "100.0"))
+    float ChaseDistance = 1200.0f;
+
     /** @brief 无敌人后返回将领的延迟时间（秒） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|战斗", meta = (DisplayName = "返回延迟", ClampMin = "0.0"))
     float ReturnDelay = 2.0f;
