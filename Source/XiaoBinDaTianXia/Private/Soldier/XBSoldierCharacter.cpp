@@ -248,6 +248,22 @@ void AXBSoldierCharacter::Tick(float DeltaTime)
         UpdateDropFlight(DeltaTime);
     }
 
+    // 🔧 修改 - 战斗中若距离主将过远，强制退出战斗并回到跟随状态
+    if (CurrentState == EXBSoldierState::Combat)
+    {
+        if (AXBCharacterBase* Leader = GetLeaderCharacter())
+        {
+            const float DisengageDistance = GetDisengageDistance();
+            const float DistToLeader = FVector::Dist2D(GetActorLocation(), Leader->GetActorLocation());
+            if (DistToLeader >= DisengageDistance)
+            {
+                UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 距离主将过远，强制退出战斗: %.0f >= %.0f"),
+                    *GetName(), DistToLeader, DisengageDistance);
+                ExitCombat();
+            }
+        }
+    }
+
     // 🔧 修改 - 跟随/待机状态下尝试自动反击，修复无主将战斗不响应问题
     TryAutoEngage(DeltaTime);
 }
@@ -1732,6 +1748,17 @@ void AXBSoldierCharacter::EnterCombat()
             UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 因主将草丛隐身，禁止进入战斗"), *GetName());
             return;
         }
+
+        // 🔧 修改 - 主将距离超过脱离距离时禁止进入战斗，避免战斗与跟随反复切换
+        const float DisengageDistance = GetDisengageDistance();
+        const float DistToLeader = FVector::Dist2D(GetActorLocation(), Leader->GetActorLocation());
+        if (DistToLeader >= DisengageDistance)
+        {
+            ReturnToFormation();
+            UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 距离主将过远，禁止进入战斗: %.0f >= %.0f"),
+                *GetName(), DistToLeader, DisengageDistance);
+            return;
+        }
     }
 
     if (CurrentState == EXBSoldierState::Dead || CurrentState == EXBSoldierState::Dormant || CurrentState == EXBSoldierState::Dropping)
@@ -1862,6 +1889,14 @@ void AXBSoldierCharacter::TryAutoEngage(float DeltaTime)
     // 🔧 修改 - 必须存在主将并且主将已命中敌方主将，士兵才允许自动进入战斗
     const AXBCharacterBase* Leader = GetLeaderCharacter();
     if (!Leader)
+    {
+        return;
+    }
+
+    // 🔧 修改 - 主将距离超过脱离距离时禁止自动进入战斗，避免反复切换状态
+    const float DisengageDistance = GetDisengageDistance();
+    const float DistToLeader = FVector::Dist2D(GetActorLocation(), Leader->GetActorLocation());
+    if (DistToLeader >= DisengageDistance)
     {
         return;
     }

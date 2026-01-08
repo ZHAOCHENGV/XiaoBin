@@ -169,6 +169,12 @@ protected:
     UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "XB|Camera", meta = (DisplayName = "镜头重置平滑度", ClampMin = "1.0"))
     float CameraResetInterpSpeed = 5.0f;
 
+    /**
+     * @brief 是否使用镜头朝向作为移动方向
+     */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "XB|Camera", meta = (DisplayName = "移动方向跟随镜头"))
+    bool bUseCameraForwardForMovement = true;
+
 
     UPROPERTY()
     TWeakObjectPtr<AXBPlayerCharacter> CachedPlayerCharacter;
