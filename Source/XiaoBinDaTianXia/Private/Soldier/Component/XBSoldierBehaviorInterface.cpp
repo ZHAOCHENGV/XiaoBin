@@ -1163,6 +1163,36 @@ bool UXBSoldierBehaviorInterface::ShouldDisengage() const
     }
 
     // 🔧 修改 - 战斗中也需要遵循距离脱战规则，避免士兵远离主将
+    // 🔧 修改 - 士兵处于战斗时，仅允许主将主动脱战带走士兵
+    // 说明：主将脱战会统一调用士兵 ExitCombat，因此此处避免单兵自行脱战
+    if (Soldier->GetSoldierState() == EXBSoldierState::Combat)
+    {
+        if (const AXBCharacterBase* LeaderCharacter = Soldier->GetLeaderCharacter())
+        {
+            if (LeaderCharacter->IsInCombat())
+            {
+                return false;
+            }
+        }
+    }
+
+    // ✨ 新增 - 目标状态判定：用于处理目标脱离战斗后的追击逻辑
+    // 说明：当目标不处于战斗时，士兵允许追击，但必须受“追击距离”上限约束
+    bool bTargetInCombat = true;
+    if (AActor* CurrentTarget = Soldier->CurrentAttackTarget.Get())
+    {
+        // 说明：目标类型不同，对应的战斗状态来源不同，必须区分读取以避免误判
+        // 目标是士兵：检查其战斗状态
+        if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(CurrentTarget))
+        {
+            bTargetInCombat = (TargetSoldier->GetSoldierState() == EXBSoldierState::Combat);
+        }
+        // 目标是将领：检查其战斗状态
+        else if (AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(CurrentTarget))
+        {
+            bTargetInCombat = TargetLeader->IsInCombat();
+        }
+    }
 
     // ✨ 新增 - 目标状态判定：用于处理目标脱离战斗后的追击逻辑
     // 说明：当目标不处于战斗时，士兵允许追击，但必须受“追击距离”上限约束
