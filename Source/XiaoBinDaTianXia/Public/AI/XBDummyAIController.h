@@ -21,6 +21,14 @@ class AXBDummyCharacter;
 class AXBCharacterBase;
 class USplineComponent;
 
+// ✨ 新增 - 假人主将AI内部状态
+UENUM()
+enum class EXBDummyLeaderAIState : uint8
+{
+	Behavior,
+	Combat
+};
+
 /**
  * @brief 假人AI控制器
  * @note 负责运行行为树并写入受击响应黑板
