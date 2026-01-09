@@ -1157,6 +1157,23 @@ bool UXBSoldierBehaviorInterface::ShouldDisengage() const
 
     // 🔧 修改 - 战斗中也需要遵循距离脱战规则，避免士兵远离主将
 
+    // ✨ 新增 - 目标状态判定：用于处理目标脱离战斗后的追击逻辑
+    // 说明：当目标不处于战斗时，士兵允许追击，但必须受“追击距离”上限约束
+    bool bTargetInCombat = true;
+    if (AActor* CurrentTarget = Soldier->CurrentAttackTarget.Get())
+    {
+        // 目标是士兵：检查其战斗状态
+        if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(CurrentTarget))
+        {
+            bTargetInCombat = (TargetSoldier->GetSoldierState() == EXBSoldierState::Combat);
+        }
+        // 目标是将领：检查其战斗状态
+        else if (AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(CurrentTarget))
+        {
+            bTargetInCombat = TargetLeader->IsInCombat();
+        }
+    }
+
     // 条件1：距离将领过远
     float DisengageDistance = Soldier->GetDisengageDistance();
     float DistToLeader = GetDistanceToLeader();
@@ -1165,6 +1182,12 @@ bool UXBSoldierBehaviorInterface::ShouldDisengage() const
         UE_LOG(LogXBAI, Verbose, TEXT("士兵 %s 距离将领过远: %.0f >= %.0f"),
             *Soldier->GetName(), DistToLeader, DisengageDistance);
         return true;
+    }
+
+    // 🔧 修改 - 目标脱离战斗时，优先进入追击模式，仅按追击距离判定是否脱战
+    if (!bTargetInCombat)
+    {
+        return false;
     }
 
     // 条件2：长时间无敌人
