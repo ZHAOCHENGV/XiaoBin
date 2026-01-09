@@ -180,7 +180,7 @@ struct XIAOBINDATIANXIA_API FXBSoldierTableRow : public FTableRowBase
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "基础", meta = (DisplayName = "描述"))
     FText Description;
 
-    /** @brief 士兵标签（用于技能系统等） #1#
+    /** @brief 士兵标签（用于技能系统等）*/
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "基础", meta = (DisplayName = "士兵标签"))
     FGameplayTagContainer SoldierTags;
 
