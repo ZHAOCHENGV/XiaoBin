@@ -1151,7 +1151,7 @@ bool UXBSoldierBehaviorInterface::IsAtFormationPosition() const
  * @brief  判断是否需要脱离战斗
  * @param  无
  * @return 是否脱离战斗
- * @note   详细流程分析: 先处理“目标为跟随态”超距脱战 -> 再限制战斗中仅由主将脱战 -> 目标非战斗时仅保留距离限制 -> 否则按无敌人时间判定
+ * @note   详细流程分析: 先处理“目标为跟随态”超距脱战 -> 距离超限强制脱战 -> 目标非战斗时仅保留距离限制 -> 否则按无敌人时间判定
  *         性能/架构注意事项: 通过快速距离判断避免频繁感知查询，降低每帧开销
  */
 bool UXBSoldierBehaviorInterface::ShouldDisengage() const
@@ -1194,21 +1194,7 @@ bool UXBSoldierBehaviorInterface::ShouldDisengage() const
         return true;
     }
 
-    // 🔧 修改 - 战斗中也需要遵循距离脱战规则，避免士兵远离主将
-    // 🔧 修改 - 士兵处于战斗时，仅允许主将主动脱战带走士兵
-    // 说明：主将脱战会统一调用士兵 ExitCombat，因此此处避免单兵自行脱战
-    if (Soldier->GetSoldierState() == EXBSoldierState::Combat)
-    {
-        if (const AXBCharacterBase* LeaderCharacter = Soldier->GetLeaderCharacter())
-        {
-            if (LeaderCharacter->IsInCombat())
-            {
-                return false;
-            }
-        }
-    }
-
-    // 条件1：距离将领过远
+    // 🔧 修改 - 距离超限时允许强制脱战，即使主将仍处于战斗
     if (DistToLeader >= DisengageDistance)
     {
         UE_LOG(LogXBAI, Verbose, TEXT("士兵 %s 距离将领过远: %.0f >= %.0f"),

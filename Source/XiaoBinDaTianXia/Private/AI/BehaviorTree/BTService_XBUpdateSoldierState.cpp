@@ -236,9 +236,18 @@ void UBTService_XBUpdateSoldierState::TickNode(UBehaviorTreeComponent& OwnerComp
         // 写入撤退标记
         BlackboardComp->SetValueAsBool(XBSoldierBBKeys::ShouldRetreat, bShouldRetreat);
         
-        // 🔧 修改 - 战斗中不允许士兵自行脱战，仅由主将主动脱战或追击跟随目标超距时回收
+        // 🔧 修改 - 距离超限时允许强制脱战，并继续保留追击跟随目标的回收逻辑
         if (bShouldRetreat && Soldier->GetSoldierState() == EXBSoldierState::Combat)
         {
+            // ✨ 新增 - 距离超限时强制脱战，避免主将战斗导致脱战抖动
+            if (DistToLeader >= DisengageDistanceValue)
+            {
+                Soldier->ExitCombat();
+                Soldier->ReturnToFormation();
+                UE_LOG(LogXBAI, Log, TEXT("士兵 %s 超距强制脱战回队列"), *Soldier->GetName());
+                return;
+            }
+
             // ✨ 新增 - 目标为跟随态时允许脱战，避免追击导致编队散开
             bool bTargetIsFollowing = false;
             if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(CurrentTarget))
