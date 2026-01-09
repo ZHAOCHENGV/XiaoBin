@@ -216,7 +216,7 @@ void UBTService_XBUpdateSoldierState::TickNode(UBehaviorTreeComponent& OwnerComp
         // 写入主将距离
         BlackboardComp->SetValueAsFloat(XBSoldierBBKeys::DistanceToLeader, DistToLeader);
         
-        // 使用数据表脱离距离
+        // 🔧 修改 - 使用数据表追击距离作为脱战阈值
         float DisengageDistanceValue = Soldier->GetDisengageDistance();
         // 初始化撤退标记
         bool bShouldRetreat = false;
@@ -236,15 +236,31 @@ void UBTService_XBUpdateSoldierState::TickNode(UBehaviorTreeComponent& OwnerComp
         // 写入撤退标记
         BlackboardComp->SetValueAsBool(XBSoldierBBKeys::ShouldRetreat, bShouldRetreat);
         
-        // 若需要撤退且正在战斗则退出战斗
+        // 🔧 修改 - 战斗中不允许士兵自行脱战，仅由主将主动脱战或追击跟随目标超距时回收
         if (bShouldRetreat && Soldier->GetSoldierState() == EXBSoldierState::Combat)
         {
-            // 🔧 修改 - 仅处理超距回队，脱战延迟由将领统一调度
-            if (DistToLeader >= DisengageDistanceValue)
+            // ✨ 新增 - 目标为跟随态时允许脱战，避免追击导致编队散开
+            bool bTargetIsFollowing = false;
+            if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(CurrentTarget))
+            {
+                bTargetIsFollowing = (TargetSoldier->GetSoldierState() == EXBSoldierState::Following);
+            }
+
+            if (bTargetIsFollowing)
             {
                 Soldier->ExitCombat();
                 Soldier->ReturnToFormation();
-                UE_LOG(LogXBAI, Log, TEXT("士兵 %s 超距回队列"), *Soldier->GetName());
+                UE_LOG(LogXBAI, Log, TEXT("士兵 %s 追击跟随目标超距脱战回队列"), *Soldier->GetName());
+            }
+            else if (AXBCharacterBase* LeaderCharacter = Soldier->GetLeaderCharacter())
+            {
+                // 说明：主将脱战会统一调用士兵 ExitCombat，这里仅在主将已脱战时执行回归
+                if (!LeaderCharacter->IsInCombat())
+                {
+                    Soldier->ExitCombat();
+                    Soldier->ReturnToFormation();
+                    UE_LOG(LogXBAI, Log, TEXT("士兵 %s 跟随主将脱战回队列"), *Soldier->GetName());
+                }
             }
         }
     }
