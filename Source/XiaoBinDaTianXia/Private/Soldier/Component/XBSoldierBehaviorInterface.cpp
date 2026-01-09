@@ -1178,37 +1178,19 @@ bool UXBSoldierBehaviorInterface::ShouldDisengage() const
 
     // ✨ 新增 - 目标状态判定：用于处理目标脱离战斗后的追击逻辑
     // 说明：当目标不处于战斗时，士兵允许追击，但必须受“追击距离”上限约束
-    bool bTargetInCombat = true;
+    bool bIsTargetInCombat = true;
     if (AActor* CurrentTarget = Soldier->CurrentAttackTarget.Get())
     {
         // 说明：目标类型不同，对应的战斗状态来源不同，必须区分读取以避免误判
         // 目标是士兵：检查其战斗状态
         if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(CurrentTarget))
         {
-            bTargetInCombat = (TargetSoldier->GetSoldierState() == EXBSoldierState::Combat);
+            bIsTargetInCombat = (TargetSoldier->GetSoldierState() == EXBSoldierState::Combat);
         }
         // 目标是将领：检查其战斗状态
         else if (AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(CurrentTarget))
         {
-            bTargetInCombat = TargetLeader->IsInCombat();
-        }
-    }
-
-    // ✨ 新增 - 目标状态判定：用于处理目标脱离战斗后的追击逻辑
-    // 说明：当目标不处于战斗时，士兵允许追击，但必须受“追击距离”上限约束
-    bool bTargetInCombat = true;
-    if (AActor* CurrentTarget = Soldier->CurrentAttackTarget.Get())
-    {
-        // 说明：目标类型不同，对应的战斗状态来源不同，必须区分读取以避免误判
-        // 目标是士兵：检查其战斗状态
-        if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(CurrentTarget))
-        {
-            bTargetInCombat = (TargetSoldier->GetSoldierState() == EXBSoldierState::Combat);
-        }
-        // 目标是将领：检查其战斗状态
-        else if (AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(CurrentTarget))
-        {
-            bTargetInCombat = TargetLeader->IsInCombat();
+            bIsTargetInCombat = TargetLeader->IsInCombat();
         }
     }
 
@@ -1224,7 +1206,7 @@ bool UXBSoldierBehaviorInterface::ShouldDisengage() const
 
     // 🔧 修改 - 目标脱离战斗时，优先进入追击模式，仅按追击距离判定是否脱战
     // 说明：此处直接返回 false 是为了维持追击，直到超过追击距离由上方条件触发脱战
-    if (!bTargetInCombat)
+    if (!bIsTargetInCombat)
     {
         return false;
     }
