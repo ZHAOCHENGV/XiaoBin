@@ -1147,6 +1147,13 @@ bool UXBSoldierBehaviorInterface::IsAtFormationPosition() const
 
 // ==================== 决策辅助实现 ====================
 
+/**
+ * @brief  判断是否需要脱离战斗
+ * @param  无
+ * @return 是否脱离战斗
+ * @note   详细流程分析: 优先检查追击距离 -> 目标非战斗时仅保留距离限制 -> 否则按无敌人时间判定
+ *         性能/架构注意事项: 通过快速距离判断避免频繁感知查询，降低每帧开销
+ */
 bool UXBSoldierBehaviorInterface::ShouldDisengage() const
 {
     AXBSoldierCharacter* Soldier = GetOwnerSoldier();
@@ -1156,6 +1163,36 @@ bool UXBSoldierBehaviorInterface::ShouldDisengage() const
     }
 
     // 🔧 修改 - 战斗中也需要遵循距离脱战规则，避免士兵远离主将
+    // 🔧 修改 - 士兵处于战斗时，仅允许主将主动脱战带走士兵
+    // 说明：主将脱战会统一调用士兵 ExitCombat，因此此处避免单兵自行脱战
+    if (Soldier->GetSoldierState() == EXBSoldierState::Combat)
+    {
+        if (const AXBCharacterBase* LeaderCharacter = Soldier->GetLeaderCharacter())
+        {
+            if (LeaderCharacter->IsInCombat())
+            {
+                return false;
+            }
+        }
+    }
+
+    // ✨ 新增 - 目标状态判定：用于处理目标脱离战斗后的追击逻辑
+    // 说明：当目标不处于战斗时，士兵允许追击，但必须受“追击距离”上限约束
+    bool bIsTargetInCombat = true;
+    if (AActor* CurrentTarget = Soldier->CurrentAttackTarget.Get())
+    {
+        // 说明：目标类型不同，对应的战斗状态来源不同，必须区分读取以避免误判
+        // 目标是士兵：检查其战斗状态
+        if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(CurrentTarget))
+        {
+            bIsTargetInCombat = (TargetSoldier->GetSoldierState() == EXBSoldierState::Combat);
+        }
+        // 目标是将领：检查其战斗状态
+        else if (AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(CurrentTarget))
+        {
+            bIsTargetInCombat = TargetLeader->IsInCombat();
+        }
+    }
 
     // 条件1：距离将领过远
     float DisengageDistance = Soldier->GetDisengageDistance();
@@ -1165,6 +1202,13 @@ bool UXBSoldierBehaviorInterface::ShouldDisengage() const
         UE_LOG(LogXBAI, Verbose, TEXT("士兵 %s 距离将领过远: %.0f >= %.0f"),
             *Soldier->GetName(), DistToLeader, DisengageDistance);
         return true;
+    }
+
+    // 🔧 修改 - 目标脱离战斗时，优先进入追击模式，仅按追击距离判定是否脱战
+    // 说明：此处直接返回 false 是为了维持追击，直到超过追击距离由上方条件触发脱战
+    if (!bIsTargetInCombat)
+    {
+        return false;
     }
 
     // 条件2：长时间无敌人

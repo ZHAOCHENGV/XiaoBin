@@ -63,8 +63,8 @@ protected:
     UPROPERTY(EditAnywhere, Category = "配置", meta = (DisplayName = "检测目标失效"))
     bool bCheckTargetValidity = true;
 
-    // 🔧 修改 - 简单注释: 脱离距离
-    /** @brief 脱离战斗距离（超过距离返回主将） */
-    UPROPERTY(EditAnywhere, Category = "配置", meta = (DisplayName = "脱离距离", ClampMin = "100.0"))
+    // 🔧 修改 - 简单注释: 追击距离
+    /** @brief 追击距离（目标非战斗状态时，超过距离回归主将） */
+    UPROPERTY(EditAnywhere, Category = "配置", meta = (DisplayName = "追击距离", ClampMin = "100.0"))
     float DisengageDistance = 1000.0f;
 };

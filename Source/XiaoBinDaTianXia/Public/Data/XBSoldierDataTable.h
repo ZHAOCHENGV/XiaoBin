@@ -48,8 +48,9 @@ struct XIAOBINDATIANXIA_API FXBSoldierAIConfig
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|检测", meta = (DisplayName = "视野范围", ClampMin = "100.0"))
     float VisionRange = 800.0f;
 
-    /** @brief 脱离战斗距离（超过此距离自动返回将领） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|战斗", meta = (DisplayName = "脱离距离", ClampMin = "100.0"))
+    // 🔧 修改 - 追击距离用于限制离队追击，避免士兵过远脱离主将
+    /** @brief 追击距离（目标非战斗状态时，超过此距离退出战斗并回归跟随） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|战斗", meta = (DisplayName = "追击距离", ClampMin = "100.0"))
     float DisengageDistance = 1000.0f;
 
     /** @brief 无敌人后返回将领的延迟时间（秒） */
