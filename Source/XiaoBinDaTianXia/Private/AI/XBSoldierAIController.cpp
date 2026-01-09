@@ -624,7 +624,7 @@ void AXBSoldierAIController::UpdateDistanceValuesSafe()
             float DistToLeader = FVector::Dist(SoldierLocation, Leader->GetActorLocation());
             BlackboardComp->SetValueAsFloat(XBSoldierBBKeys::DistanceToLeader, DistToLeader);
             
-            // 从数据表读取脱离距离
+            // 🔧 修改 - 从数据表读取追击距离作为脱战阈值
             float DisengageDistance = 1000.0f; // 默认值
             // 后续可以从 Soldier 的 CachedTableRow 读取
             BlackboardComp->SetValueAsBool(XBSoldierBBKeys::ShouldRetreat, DistToLeader >= DisengageDistance);

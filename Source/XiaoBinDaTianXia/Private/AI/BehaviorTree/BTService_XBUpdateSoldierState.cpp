@@ -216,7 +216,7 @@ void UBTService_XBUpdateSoldierState::TickNode(UBehaviorTreeComponent& OwnerComp
         // 写入主将距离
         BlackboardComp->SetValueAsFloat(XBSoldierBBKeys::DistanceToLeader, DistToLeader);
         
-        // 使用数据表脱离距离
+        // 🔧 修改 - 使用数据表追击距离作为脱战阈值
         float DisengageDistanceValue = Soldier->GetDisengageDistance();
         // 初始化撤退标记
         bool bShouldRetreat = false;
