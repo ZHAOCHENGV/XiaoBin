@@ -20,6 +20,63 @@
 class UGameplayAbility;
 class UAnimMontage;
 class UGameplayEffect;
+class USplineComponent;
+
+/**
+ * @brief 假人主将移动方式
+ */
+UENUM(BlueprintType)
+enum class EXBLeaderAIMoveMode : uint8
+{
+    Stand UMETA(DisplayName = "原地站立"),
+    Wander UMETA(DisplayName = "范围内移动"),
+    Route UMETA(DisplayName = "固定路线")
+};
+
+/**
+ * @brief 主将AI配置（假人主将）
+ */
+USTRUCT(BlueprintType)
+struct XIAOBINDATIANXIA_API FXBLeaderAIConfig
+{
+    GENERATED_BODY()
+
+    /** @brief 是否启用AI */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI", meta = (DisplayName = "启用AI"))
+    bool bEnableAI = true;
+
+    /** @brief 移动方式 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "移动方式"))
+    EXBLeaderAIMoveMode MoveMode = EXBLeaderAIMoveMode::Stand;
+
+    /** @brief 视野范围 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|感知", meta = (DisplayName = "视野范围", ClampMin = "100.0"))
+    float VisionRange = 2000.0f;
+
+    /** @brief 目标检索间隔 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|感知", meta = (DisplayName = "目标检索间隔", ClampMin = "0.1"))
+    float TargetSearchInterval = 0.5f;
+
+    /** @brief 随机移动半径 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "随机移动半径", ClampMin = "100.0"))
+    float WanderRadius = 800.0f;
+
+    /** @brief 随机移动间隔 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "随机移动间隔", ClampMin = "0.1"))
+    float WanderInterval = 2.0f;
+
+    /** @brief 随机移动到达半径 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "随机移动到达半径", ClampMin = "10.0"))
+    float WanderAcceptanceRadius = 120.0f;
+
+    /** @brief 路线到达半径 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "路线到达半径", ClampMin = "10.0"))
+    float RouteAcceptanceRadius = 120.0f;
+
+    /** @brief 原地站立回位半径 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "站立回位半径", ClampMin = "10.0"))
+    float StandReturnRadius = 150.0f;
+};
 
 /**
  * @brief 技能配置结构体
@@ -140,4 +197,10 @@ struct XIAOBINDATIANXIA_API FXBLeaderTableRow : public FTableRowBase
     /** @brief 主将骨骼网格 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "视觉配置", meta = (DisplayName = "主将骨骼网格"))
     TSoftObjectPtr<USkeletalMesh> SkeletalMesh;
+
+    // ============ AI配置 ============
+
+    /** @brief 主将AI配置（假人） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI配置", meta = (DisplayName = "主将AI配置"))
+    FXBLeaderAIConfig AIConfig;
 };

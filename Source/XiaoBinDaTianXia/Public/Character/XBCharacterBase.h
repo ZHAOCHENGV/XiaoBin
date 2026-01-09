@@ -194,6 +194,15 @@ public:
     UFUNCTION(BlueprintPure, Category = "组件")
     UXBCombatComponent* GetCombatComponent() const { return CombatComponent; }
 
+    /**
+     * @brief  获取主将AI配置
+     * @return AI配置
+     * @note   详细流程分析: 直接返回数据表缓存
+     *         性能/架构注意事项: 仅供读取，不应在外部修改
+     */
+    UFUNCTION(BlueprintPure, Category = "AI", meta = (DisplayName = "获取主将AI配置"))
+    const FXBLeaderAIConfig& GetLeaderAIConfig() const { return CachedLeaderData.AIConfig; }
+
     // ============ 冲刺系统（共用） ============
 
     /**

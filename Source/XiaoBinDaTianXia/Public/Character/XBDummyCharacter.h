@@ -7,6 +7,8 @@
 #include "XBDummyCharacter.generated.h"
 
 class AXBDummyAIController;
+class USplineComponent;
+class AActor;
 
 UCLASS()
 class XIAOBINDATIANXIA_API AXBDummyCharacter : public AXBCharacterBase
@@ -50,7 +52,23 @@ public:
 	 */
 	bool ExecuteDamageResponseAttack();
 
+	/**
+	 * @brief  获取巡逻路线样条组件
+	 * @return 样条组件指针（可能为空）
+	 * @note   详细流程分析: 读取路线Actor -> 查找第一个Spline组件
+	 *         性能/架构注意事项: 仅在AI初始化时调用，避免每帧查找
+	 */
+	USplineComponent* GetPatrolSplineComponent() const;
+
 private:
+	// ✨ 新增 - 巡逻路线Actor（需包含Spline组件）
+	/**
+	 * @brief 巡逻路线Actor
+	 * @note  用于固定路线行走模式
+	 */
+	UPROPERTY(EditInstanceOnly, BlueprintReadWrite, Category = "AI", meta = (DisplayName = "巡逻路线Actor", AllowPrivateAccess = "true"))
+	TObjectPtr<AActor> PatrolSplineActor;
+
 	// ✨ 新增 - 假人受击响应延迟
 	/**
 	 * @brief 受击响应延迟最小值
