@@ -160,6 +160,14 @@ protected:
 	AXBDummyCharacter* GetDummyPawn() const;
 
 private:
+	// ✨ 新增 - 主将AI状态
+	UENUM()
+	enum class EXBDummyLeaderAIState : uint8
+	{
+		Behavior,
+		Combat
+	};
+
 	// ✨ 新增 - 行为树资源
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI", meta = (DisplayName = "行为树资源", AllowPrivateAccess = "true"))
 	TObjectPtr<UBehaviorTree> BehaviorTreeAsset;
