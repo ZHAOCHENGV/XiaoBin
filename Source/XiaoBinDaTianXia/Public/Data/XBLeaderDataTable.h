@@ -20,6 +20,7 @@
 class UGameplayAbility;
 class UAnimMontage;
 class UGameplayEffect;
+class UBehaviorTree;
 class USplineComponent;
 
 /**
@@ -44,6 +45,10 @@ struct XIAOBINDATIANXIA_API FXBLeaderAIConfig
     /** @brief 是否启用AI */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI", meta = (DisplayName = "启用AI"))
     bool bEnableAI = true;
+
+    /** @brief 行为树资源 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|行为", meta = (DisplayName = "行为树资源"))
+    TSoftObjectPtr<UBehaviorTree> BehaviorTree;
 
     /** @brief 移动方式 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "移动方式"))
@@ -76,6 +81,40 @@ struct XIAOBINDATIANXIA_API FXBLeaderAIConfig
     /** @brief 原地站立回位半径 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "站立回位半径", ClampMin = "10.0"))
     float StandReturnRadius = 150.0f;
+
+    // ==================== 黑板键配置 ====================
+
+    /** @brief 目标主将黑板键 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|黑板", meta = (DisplayName = "目标主将键"))
+    FName TargetLeaderKey = TEXT("TargetLeader");
+
+    /** @brief 行为目的地黑板键 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|黑板", meta = (DisplayName = "行为目的地键"))
+    FName BehaviorDestinationKey = TEXT("BehaviorDestination");
+
+    /** @brief 行为中心黑板键 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|黑板", meta = (DisplayName = "行为中心键"))
+    FName BehaviorCenterKey = TEXT("BehaviorCenter");
+
+    /** @brief 初始位置黑板键 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|黑板", meta = (DisplayName = "初始位置键"))
+    FName HomeLocationKey = TEXT("HomeLocation");
+
+    /** @brief 巡逻路线索引黑板键 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|黑板", meta = (DisplayName = "路线索引键"))
+    FName RouteIndexKey = TEXT("RoutePointIndex");
+
+    /** @brief 行为模式黑板键 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|黑板", meta = (DisplayName = "行为模式键"))
+    FName MoveModeKey = TEXT("MoveMode");
+
+    /** @brief 是否战斗黑板键 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|黑板", meta = (DisplayName = "战斗状态键"))
+    FName InCombatKey = TEXT("IsInCombat");
+
+    /** @brief 受击响应黑板键 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|黑板", meta = (DisplayName = "受击响应键"))
+    FName DamageResponseKey = TEXT("DamageResponseReady");
 };
 
 /**
