@@ -6,6 +6,7 @@
 #include "Character/Components/XBCombatComponent.h"
 #include "Utils/XBLogCategories.h"
 #include "TimerManager.h"
+#include "Components/SplineComponent.h"
 
 
 
@@ -131,6 +132,24 @@ bool AXBDummyCharacter::ExecuteDamageResponseAttack()
 	// 🔧 修改 - 两者都在冷却则不释放
 	UE_LOG(LogXBCombat, Log, TEXT("假人 %s 技能与普攻均在冷却中"), *GetName());
 	return false;
+}
+
+/**
+ * @brief  获取巡逻路线样条组件
+ * @return 样条组件指针（可能为空）
+ * @note   详细流程分析: 读取路线Actor -> 查找第一个Spline组件
+ *         性能/架构注意事项: 仅在AI初始化时调用，避免每帧查找
+ */
+USplineComponent* AXBDummyCharacter::GetPatrolSplineComponent() const
+{
+	// 🔧 修改 - 未配置路线Actor时直接返回
+	if (!PatrolSplineActor)
+	{
+		return nullptr;
+	}
+
+	// 🔧 修改 - 仅查找第一个样条组件
+	return PatrolSplineActor->FindComponentByClass<USplineComponent>();
 }
 
 // ✨ 新增 - 延迟后触发攻击请求
