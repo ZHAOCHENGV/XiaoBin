@@ -21,17 +21,32 @@ AXBDummyAIController::AXBDummyAIController()
 	PrimaryActorTick.bCanEverTick = false;
 }
 
+/**
+ * @brief  初始化假人AI配置缓存
+ * @param  Dummy 假人主将
+ * @return 无
+ * @note   详细流程分析: 读取主将AI配置 -> 缓存到控制器
+ *         性能/架构注意事项: 仅在初始化阶段调用，避免运行期频繁写入
+ */
+void AXBDummyAIController::InitializeLeaderAIConfig(const AXBDummyCharacter* Dummy)
+{
+	// 🔧 修改 - Dummy 无效时直接返回，避免空指针访问
+	if (!Dummy)
+	{
+		return;
+	}
+
+	// 🔧 修改 - 缓存配置，避免每帧读取数据表
+	CachedAIConfig = Dummy->GetLeaderAIConfig();
+	bLeaderAIInitialized = true;
+}
+
 void AXBDummyAIController::OnPossess(APawn* InPawn)
 {
 	Super::OnPossess(InPawn);
 
-	// 🔧 修改 - 初始化假人主将AI配置
-	if (AXBDummyCharacter* Dummy = Cast<AXBDummyCharacter>(InPawn))
-	{
-		// 🔧 修改 - 缓存配置，避免每帧读取数据表
-		CachedAIConfig = Dummy->GetLeaderAIConfig();
-		bLeaderAIInitialized = true;
-	}
+	// 🔧 修改 - AI配置改为玩家主将生成后统一初始化，避免抢在数据表加载前读取
+	bLeaderAIInitialized = false;
 
 	// 🔧 修改 - 行为树由玩家主将生成后统一启动，避免过早启动
 	bBehaviorTreeStarted = false;
@@ -51,14 +66,10 @@ void AXBDummyAIController::StartBehaviorTreeAfterPlayerSpawn()
 		return;
 	}
 
-	// 🔧 修改 - 若配置未初始化，尝试从当前Pawn补全
-	if (!bLeaderAIInitialized)
+	// 🔧 修改 - 玩家主将生成后强制刷新AI配置，确保已从数据表初始化完成
+	if (AXBDummyCharacter* Dummy = Cast<AXBDummyCharacter>(GetPawn()))
 	{
-		if (AXBDummyCharacter* Dummy = Cast<AXBDummyCharacter>(GetPawn()))
-		{
-			CachedAIConfig = Dummy->GetLeaderAIConfig();
-			bLeaderAIInitialized = true;
-		}
+		InitializeLeaderAIConfig(Dummy);
 	}
 
 	if (!bLeaderAIInitialized)

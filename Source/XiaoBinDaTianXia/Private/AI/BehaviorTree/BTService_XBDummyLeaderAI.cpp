@@ -219,7 +219,8 @@ void UBTService_XBDummyLeaderAI::InitializeBlackboard(AXBDummyCharacter* Dummy, 
 	// 🔧 修改 - 写入初始位置和行为中心，保证站立/随机移动有基准
 	Blackboard->SetValueAsVector(HomeLocationKey, HomeLocation);
 	Blackboard->SetValueAsVector(BehaviorCenterKey, HomeLocation);
-	Blackboard->SetValueAsEnum(MoveModeKey, static_cast<uint8>(AIConfig.MoveMode));
+	// 🔧 修改 - 行为树黑板使用整数保存枚举，避免蓝图无法读取C++枚举
+	Blackboard->SetValueAsInt(MoveModeKey, static_cast<int32>(AIConfig.MoveMode));
 	Blackboard->SetValueAsInt(RouteIndexKey, 0);
 	Blackboard->SetValueAsBool(InCombatKey, false);
 	Blackboard->SetValueAsVector(BehaviorDestinationKey, HomeLocation);
