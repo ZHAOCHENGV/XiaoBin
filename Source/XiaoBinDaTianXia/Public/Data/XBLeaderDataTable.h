@@ -20,6 +20,7 @@
 class UGameplayAbility;
 class UAnimMontage;
 class UGameplayEffect;
+class UBehaviorTree;
 class USplineComponent;
 
 /**
@@ -44,6 +45,10 @@ struct XIAOBINDATIANXIA_API FXBLeaderAIConfig
     /** @brief 是否启用AI */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI", meta = (DisplayName = "启用AI"))
     bool bEnableAI = true;
+
+    /** @brief 行为树资源 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|行为", meta = (DisplayName = "行为树资源"))
+    TSoftObjectPtr<UBehaviorTree> BehaviorTree;
 
     /** @brief 移动方式 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "移动方式"))
@@ -76,6 +81,7 @@ struct XIAOBINDATIANXIA_API FXBLeaderAIConfig
     /** @brief 原地站立回位半径 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "站立回位半径", ClampMin = "10.0"))
     float StandReturnRadius = 150.0f;
+    // 🔧 修改 - 黑板键使用默认固定名称，避免在数据表中配置
 };
 
 /**

@@ -53,6 +53,22 @@ public:
 	bool ExecuteDamageResponseAttack();
 
 	/**
+	 * @brief  获取最近造成伤害的主将
+	 * @return 主将指针（可能为空）
+	 * @note   详细流程分析: 返回缓存的伤害来源主将
+	 *         性能/架构注意事项: 仅用于AI反击目标判断
+	 */
+	AXBCharacterBase* GetLastDamageLeader() const;
+
+	/**
+	 * @brief  清理最近伤害来源主将记录
+	 * @return 无
+	 * @note   详细流程分析: 反击成功锁定后清理，避免重复锁定
+	 *         性能/架构注意事项: 仅在AI服务中调用
+	 */
+	void ClearLastDamageLeader();
+
+	/**
 	 * @brief  获取巡逻路线样条组件
 	 * @return 样条组件指针（可能为空）
 	 * @note   详细流程分析: 读取路线Actor -> 查找第一个Spline组件
@@ -83,6 +99,13 @@ private:
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI", meta = (DisplayName = "受击响应延迟最大值", ClampMin = "0.0", AllowPrivateAccess = "true"))
 	float DamageResponseDelayMax = 0.6f;
+
+	// ✨ 新增 - 最近伤害来源主将缓存
+	/**
+	 * @brief 最近伤害来源主将
+	 * @note  用于中立/无敌人时的反击目标
+	 */
+	TWeakObjectPtr<AXBCharacterBase> LastDamageLeader;
 
 	// ✨ 新增 - 受击响应定时器
 	FTimerHandle DamageResponseTimerHandle;
