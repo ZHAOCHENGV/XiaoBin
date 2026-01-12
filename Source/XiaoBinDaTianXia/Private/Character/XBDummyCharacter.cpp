@@ -106,6 +106,17 @@ void AXBDummyCharacter::InitializeLeaderData()
 {
 	// 🔧 修改 - 假人仅使用父类通用初始化
 	Super::InitializeLeaderData();
+
+	// 🔧 修改 - 初始化假人AI配置缓存，确保行为树读取到数据表AI配置
+	if (AXBDummyAIController* DummyAI = Cast<AXBDummyAIController>(GetController()))
+	{
+		// 🔧 修改 - 复用控制器初始化接口，统一AI配置缓存逻辑
+		DummyAI->InitializeLeaderAIConfig(this);
+	}
+	else
+	{
+		UE_LOG(LogXBAI, Warning, TEXT("假人 %s 无法获取AI控制器，AI配置缓存初始化失败"), *GetName());
+	}
 }
 
 /**
