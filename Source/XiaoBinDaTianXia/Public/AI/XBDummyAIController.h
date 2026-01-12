@@ -32,6 +32,15 @@ public:
 	AXBDummyAIController();
 
 	/**
+	 * @brief  初始化假人AI配置缓存
+	 * @param  Dummy 假人主将
+	 * @return 无
+	 * @note   详细流程分析: 读取主将AI配置 -> 缓存到控制器
+	 *         性能/架构注意事项: 仅在初始化阶段调用，避免运行期频繁写入
+	 */
+	void InitializeLeaderAIConfig(const AXBDummyCharacter* Dummy);
+
+	/**
 	 * @brief  获取受击响应黑板键
 	 * @return 黑板键名
 	 * @note   详细流程分析: 统一返回默认键名
