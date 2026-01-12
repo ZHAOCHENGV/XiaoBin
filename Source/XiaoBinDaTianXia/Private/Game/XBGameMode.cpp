@@ -2,10 +2,12 @@
 
 
 #include "Public/Game/XBGameMode.h"
+#include "AI/XBDummyAIController.h"
 #include "Player/XBPlayerController.h"
 #include "Character/XBPlayerCharacter.h"
 #include "Character/XBConfigCameraPawn.h"
 #include "Components/CapsuleComponent.h"
+#include "EngineUtils.h"
 #include "Kismet/GameplayStatics.h"
 #include "Soldier/XBSoldierCharacter.h"
 #include "Soldier/Component/XBSoldierPoolSubsystem.h"
@@ -169,6 +171,8 @@ bool AXBGameMode::SpawnPlayerLeader(APlayerController* PlayerController)
 	}
 
 	EnterPlayPhase();
+	// 🔧 修改 - 玩家主将生成后，启动假人主将行为树
+	StartDummyLeaderAI();
 	return true;
 }
 
@@ -184,4 +188,32 @@ void AXBGameMode::ResumeGame()
 
 void AXBGameMode::InitializeSoldierPool()
 {
+}
+
+/**
+ * @brief  玩家主将生成后启动假人主将AI
+ * @return 无
+ * @note   详细流程分析: 遍历假人AI控制器 -> 启动行为树
+ *         性能/架构注意事项: 仅在主将生成后调用一次
+ */
+void AXBGameMode::StartDummyLeaderAI()
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	int32 StartedCount = 0;
+	for (TActorIterator<AXBDummyAIController> It(World); It; ++It)
+	{
+		if (AXBDummyAIController* DummyAI = *It)
+		{
+			// 🔧 修改 - 由玩家主将生成后统一启动假人AI
+			DummyAI->StartBehaviorTreeAfterPlayerSpawn();
+			++StartedCount;
+		}
+	}
+
+	UE_LOG(LogXBAI, Log, TEXT("已通知假人AI启动行为树，数量: %d"), StartedCount);
 }

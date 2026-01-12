@@ -4,6 +4,8 @@
 #include "Public/Character/XBDummyCharacter.h"
 #include "AI/XBDummyAIController.h"
 #include "Character/Components/XBCombatComponent.h"
+#include "Soldier/XBSoldierCharacter.h"
+#include "Utils/XBBlueprintFunctionLibrary.h"
 #include "Utils/XBLogCategories.h"
 #include "TimerManager.h"
 #include "Components/SplineComponent.h"
@@ -67,6 +69,19 @@ void AXBDummyCharacter::HandleDamageReceived(AActor* DamageSource, float DamageA
 	const float MinDelay = FMath::Max(0.0f, DamageResponseDelayMin);
 	const float MaxDelay = FMath::Max(MinDelay, DamageResponseDelayMax);
 	const float RandomDelay = FMath::FRandRange(MinDelay, MaxDelay);
+
+	// 🔧 修改 - 记录伤害来源主将，用于中立/无敌人时反击
+	if (DamageSource)
+	{
+		if (AXBCharacterBase* DamageLeader = Cast<AXBCharacterBase>(DamageSource))
+		{
+			LastDamageLeader = DamageLeader;
+		}
+		else if (AXBSoldierCharacter* DamageSoldier = Cast<AXBSoldierCharacter>(DamageSource))
+		{
+			LastDamageLeader = DamageSoldier->GetLeaderCharacter();
+		}
+	}
 
 	// 🔧 修改 - 受击时刷新定时器，确保只响应最新一次受击
 	World->GetTimerManager().ClearTimer(DamageResponseTimerHandle);
@@ -132,6 +147,28 @@ bool AXBDummyCharacter::ExecuteDamageResponseAttack()
 	// 🔧 修改 - 两者都在冷却则不释放
 	UE_LOG(LogXBCombat, Log, TEXT("假人 %s 技能与普攻均在冷却中"), *GetName());
 	return false;
+}
+
+/**
+ * @brief  获取最近造成伤害的主将
+ * @return 主将指针（可能为空）
+ * @note   详细流程分析: 返回缓存的伤害来源主将
+ *         性能/架构注意事项: 仅用于AI反击目标判断
+ */
+AXBCharacterBase* AXBDummyCharacter::GetLastDamageLeader() const
+{
+	return LastDamageLeader.Get();
+}
+
+/**
+ * @brief  清理最近伤害来源主将记录
+ * @return 无
+ * @note   详细流程分析: 反击成功锁定后清理，避免重复锁定
+ *         性能/架构注意事项: 仅在AI服务中调用
+ */
+void AXBDummyCharacter::ClearLastDamageLeader()
+{
+	LastDamageLeader = nullptr;
 }
 
 /**

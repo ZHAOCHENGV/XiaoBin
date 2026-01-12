@@ -105,7 +105,9 @@ void UXBCombatComponent::InitializeFromDataTable(UDataTable* DataTable, FName Ro
     
     if (!BasicAttackConfig.AbilityMontage.IsNull())
     {
-        UE_LOG(LogTemp, Log, TEXT("普攻蒙太奇路径: %s"), *BasicAttackConfig.AbilityMontage.ToString());
+        // 🔧 修改 - 使用软引用路径字符串，避免直接调用不存在的 ToString()
+        const FString BasicAttackMontagePath = BasicAttackConfig.AbilityMontage.ToSoftObjectPath().ToString();
+        UE_LOG(LogTemp, Log, TEXT("普攻蒙太奇路径: %s"), *BasicAttackMontagePath);
         LoadedBasicAttackMontage = BasicAttackConfig.AbilityMontage.LoadSynchronous();
         
         if (LoadedBasicAttackMontage)
@@ -127,7 +129,9 @@ void UXBCombatComponent::InitializeFromDataTable(UDataTable* DataTable, FName Ro
 
     if (!SpecialSkillConfig.AbilityMontage.IsNull())
     {
-        UE_LOG(LogTemp, Log, TEXT("技能蒙太奇路径: %s"), *SpecialSkillConfig.AbilityMontage.ToString());
+        // 🔧 修改 - 使用软引用路径字符串，避免直接调用不存在的 ToString()
+        const FString SkillMontagePath = SpecialSkillConfig.AbilityMontage.ToSoftObjectPath().ToString();
+        UE_LOG(LogTemp, Log, TEXT("技能蒙太奇路径: %s"), *SkillMontagePath);
         LoadedSkillMontage = SpecialSkillConfig.AbilityMontage.LoadSynchronous();
         
         if (LoadedSkillMontage)

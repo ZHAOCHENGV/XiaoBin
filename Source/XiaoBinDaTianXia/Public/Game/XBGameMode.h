@@ -81,6 +81,14 @@ protected:
 	 * @brief 初始化对象池（当前为空实现）
 	 */
 	void InitializeSoldierPool();
+
+	/**
+	 * @brief  玩家主将生成后启动假人主将AI
+	 * @return 无
+	 * @note   详细流程分析: 遍历假人AI控制器 -> 启动行为树
+	 *         性能/架构注意事项: 仅在主将生成后调用一次
+	 */
+	void StartDummyLeaderAI();
 	
 	/** 是否处于配置阶段 */
 	UPROPERTY(BlueprintReadOnly, Category = "XB|GameMode")
