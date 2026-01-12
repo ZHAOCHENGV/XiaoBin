@@ -47,9 +47,10 @@ EBTNodeResult::Type UBTTask_XBDummyAttackTarget::ExecuteTask(UBehaviorTreeCompon
 		return EBTNodeResult::Failed;
 	}
 
-	const FXBLeaderAIConfig& AIConfig = Dummy->GetLeaderAIConfig();
+	// 🔧 修改 - 黑板键使用默认固定名称，避免依赖数据表配置
+	static const FName DefaultTargetLeaderKey(TEXT("TargetLeader"));
 	const FName TargetLeaderKey = TargetKey.SelectedKeyName.IsNone()
-		? (AIConfig.TargetLeaderKey.IsNone() ? TEXT("TargetLeader") : AIConfig.TargetLeaderKey)
+		? DefaultTargetLeaderKey
 		: TargetKey.SelectedKeyName;
 
 	AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(Blackboard->GetValueAsObject(TargetLeaderKey));

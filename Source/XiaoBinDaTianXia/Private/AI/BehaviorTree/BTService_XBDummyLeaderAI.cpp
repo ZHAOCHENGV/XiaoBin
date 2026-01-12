@@ -20,6 +20,18 @@
 #include "Utils/XBBlueprintFunctionLibrary.h"
 #include "Utils/XBLogCategories.h"
 
+// ✨ 新增 - 黑板键默认名称集中管理，避免数据表配置
+namespace XBDummyLeaderBlackboardKeys
+{
+	static const FName TargetLeader(TEXT("TargetLeader"));
+	static const FName InCombat(TEXT("IsInCombat"));
+	static const FName HomeLocation(TEXT("HomeLocation"));
+	static const FName BehaviorCenter(TEXT("BehaviorCenter"));
+	static const FName BehaviorDestination(TEXT("BehaviorDestination"));
+	static const FName MoveMode(TEXT("MoveMode"));
+	static const FName RouteIndex(TEXT("RoutePointIndex"));
+}
+
 UBTService_XBDummyLeaderAI::UBTService_XBDummyLeaderAI()
 {
 	// 🔧 修改 - 启用实例化，避免服务状态相互干扰
@@ -92,8 +104,8 @@ void UBTService_XBDummyLeaderAI::TickNode(UBehaviorTreeComponent& OwnerComp, uin
 		return;
 	}
 
-	const FName TargetLeaderKey = AIConfig.TargetLeaderKey.IsNone() ? TEXT("TargetLeader") : AIConfig.TargetLeaderKey;
-	const FName InCombatKey = AIConfig.InCombatKey.IsNone() ? TEXT("IsInCombat") : AIConfig.InCombatKey;
+	const FName TargetLeaderKey = XBDummyLeaderBlackboardKeys::TargetLeader;
+	const FName InCombatKey = XBDummyLeaderBlackboardKeys::InCombat;
 
 	// 🔧 修改 - 先读取当前目标，判断是否需要回归
 	AXBCharacterBase* CurrentTarget = Cast<AXBCharacterBase>(Blackboard->GetValueAsObject(TargetLeaderKey));
@@ -197,12 +209,12 @@ void UBTService_XBDummyLeaderAI::InitializeBlackboard(AXBDummyCharacter* Dummy, 
 	const FXBLeaderAIConfig& AIConfig = Dummy->GetLeaderAIConfig();
 	const FVector HomeLocation = Dummy->GetActorLocation();
 
-	const FName HomeLocationKey = AIConfig.HomeLocationKey.IsNone() ? TEXT("HomeLocation") : AIConfig.HomeLocationKey;
-	const FName BehaviorCenterKey = AIConfig.BehaviorCenterKey.IsNone() ? TEXT("BehaviorCenter") : AIConfig.BehaviorCenterKey;
-	const FName BehaviorDestinationKey = AIConfig.BehaviorDestinationKey.IsNone() ? TEXT("BehaviorDestination") : AIConfig.BehaviorDestinationKey;
-	const FName MoveModeKey = AIConfig.MoveModeKey.IsNone() ? TEXT("MoveMode") : AIConfig.MoveModeKey;
-	const FName RouteIndexKey = AIConfig.RouteIndexKey.IsNone() ? TEXT("RoutePointIndex") : AIConfig.RouteIndexKey;
-	const FName InCombatKey = AIConfig.InCombatKey.IsNone() ? TEXT("IsInCombat") : AIConfig.InCombatKey;
+	const FName HomeLocationKey = XBDummyLeaderBlackboardKeys::HomeLocation;
+	const FName BehaviorCenterKey = XBDummyLeaderBlackboardKeys::BehaviorCenter;
+	const FName BehaviorDestinationKey = XBDummyLeaderBlackboardKeys::BehaviorDestination;
+	const FName MoveModeKey = XBDummyLeaderBlackboardKeys::MoveMode;
+	const FName RouteIndexKey = XBDummyLeaderBlackboardKeys::RouteIndex;
+	const FName InCombatKey = XBDummyLeaderBlackboardKeys::InCombat;
 
 	// 🔧 修改 - 写入初始位置和行为中心，保证站立/随机移动有基准
 	Blackboard->SetValueAsVector(HomeLocationKey, HomeLocation);
@@ -310,7 +322,7 @@ bool UBTService_XBDummyLeaderAI::IsLeaderArmyEliminated(AXBCharacterBase* Leader
 void UBTService_XBDummyLeaderAI::HandleTargetLost(AXBDummyCharacter* Dummy, UBlackboardComponent* Blackboard)
 {
 	const FXBLeaderAIConfig& AIConfig = Dummy->GetLeaderAIConfig();
-	const FName BehaviorCenterKey = AIConfig.BehaviorCenterKey.IsNone() ? TEXT("BehaviorCenter") : AIConfig.BehaviorCenterKey;
+	const FName BehaviorCenterKey = XBDummyLeaderBlackboardKeys::BehaviorCenter;
 
 	// 🔧 修改 - 回归时以当前位置作为行为中心，保证随机移动自然过渡
 	Blackboard->SetValueAsVector(BehaviorCenterKey, Dummy->GetActorLocation());
@@ -335,10 +347,10 @@ void UBTService_XBDummyLeaderAI::HandleTargetLost(AXBDummyCharacter* Dummy, UBla
 void UBTService_XBDummyLeaderAI::UpdateBehaviorDestination(AXBDummyCharacter* Dummy, UBlackboardComponent* Blackboard)
 {
 	const FXBLeaderAIConfig& AIConfig = Dummy->GetLeaderAIConfig();
-	const FName BehaviorDestinationKey = AIConfig.BehaviorDestinationKey.IsNone() ? TEXT("BehaviorDestination") : AIConfig.BehaviorDestinationKey;
-	const FName BehaviorCenterKey = AIConfig.BehaviorCenterKey.IsNone() ? TEXT("BehaviorCenter") : AIConfig.BehaviorCenterKey;
-	const FName HomeLocationKey = AIConfig.HomeLocationKey.IsNone() ? TEXT("HomeLocation") : AIConfig.HomeLocationKey;
-	const FName RouteIndexKey = AIConfig.RouteIndexKey.IsNone() ? TEXT("RoutePointIndex") : AIConfig.RouteIndexKey;
+	const FName BehaviorDestinationKey = XBDummyLeaderBlackboardKeys::BehaviorDestination;
+	const FName BehaviorCenterKey = XBDummyLeaderBlackboardKeys::BehaviorCenter;
+	const FName HomeLocationKey = XBDummyLeaderBlackboardKeys::HomeLocation;
+	const FName RouteIndexKey = XBDummyLeaderBlackboardKeys::RouteIndex;
 
 	switch (AIConfig.MoveMode)
 	{
@@ -424,8 +436,7 @@ void UBTService_XBDummyLeaderAI::ResetRouteIndexToNearest(AXBDummyCharacter* Dum
 		return;
 	}
 
-	const FXBLeaderAIConfig& AIConfig = Dummy->GetLeaderAIConfig();
-	const FName RouteIndexKey = AIConfig.RouteIndexKey.IsNone() ? TEXT("RoutePointIndex") : AIConfig.RouteIndexKey;
+	const FName RouteIndexKey = XBDummyLeaderBlackboardKeys::RouteIndex;
 
 	const float InputKey = SplineComp->FindInputKeyClosestToWorldLocation(Dummy->GetActorLocation());
 	const int32 ClampedIndex = FMath::Clamp(FMath::RoundToInt(InputKey), 0, SplineComp->GetNumberOfSplinePoints() - 1);
