@@ -17,6 +17,7 @@
 #include "NavigationSystem.h"
 #include "Soldier/XBSoldierCharacter.h"
 #include "Components/SplineComponent.h"
+#include "Utils/XBBlueprintFunctionLibrary.h"
 #include "Utils/XBLogCategories.h"
 
 UBTService_XBDummyLeaderAI::UBTService_XBDummyLeaderAI()
@@ -103,12 +104,16 @@ void UBTService_XBDummyLeaderAI::TickNode(UBehaviorTreeComponent& OwnerComp, uin
 		{
 			Blackboard->SetValueAsObject(TargetLeaderKey, nullptr);
 			Blackboard->SetValueAsBool(InCombatKey, false);
+			// 🔧 修改 - 退出战斗时同步主将与士兵状态
+			Dummy->ExitCombat();
 			HandleTargetLost(Dummy, Blackboard);
 			bHadCombatTarget = false;
 		}
 		else
 		{
 			Blackboard->SetValueAsBool(InCombatKey, true);
+			// 🔧 修改 - 确保目标存在时进入战斗，带动士兵参战
+			Dummy->EnterCombat();
 			bHadCombatTarget = true;
 		}
 	}
@@ -129,6 +134,8 @@ void UBTService_XBDummyLeaderAI::TickNode(UBehaviorTreeComponent& OwnerComp, uin
 			{
 				Blackboard->SetValueAsObject(TargetLeaderKey, FoundLeader);
 				Blackboard->SetValueAsBool(InCombatKey, true);
+				// 🔧 修改 - 进入战斗，确保士兵同步攻击逻辑
+				Dummy->EnterCombat();
 				bHadCombatTarget = true;
 
 				UE_LOG(LogXBAI, Log, TEXT("假人主将 %s 发现敌方主将并进入战斗: %s"),
@@ -136,10 +143,33 @@ void UBTService_XBDummyLeaderAI::TickNode(UBehaviorTreeComponent& OwnerComp, uin
 			}
 			else
 			{
+				// 🔧 修改 - 无视野敌人时尝试根据受击来源反击
+				AXBCharacterBase* DamageLeader = Dummy->GetLastDamageLeader();
+				const bool bShouldCounterAttack =
+					DamageLeader &&
+					!DamageLeader->IsDead() &&
+					!DamageLeader->IsHiddenInBush() &&
+					(Dummy->GetFaction() == EXBFaction::Neutral ||
+						UXBBlueprintFunctionLibrary::AreActorsHostile(Dummy, DamageLeader));
+
+				if (bShouldCounterAttack)
+				{
+					Blackboard->SetValueAsObject(TargetLeaderKey, DamageLeader);
+					Blackboard->SetValueAsBool(InCombatKey, true);
+					Dummy->EnterCombat();
+					Dummy->ClearLastDamageLeader();
+					bHadCombatTarget = true;
+
+					UE_LOG(LogXBAI, Log, TEXT("假人主将 %s 受到伤害后反击主将: %s"),
+						*Dummy->GetName(), *DamageLeader->GetName());
+					return;
+				}
+
 				Blackboard->SetValueAsBool(InCombatKey, false);
 				if (bHadCombatTarget)
 				{
 					// 🔧 修改 - 从战斗回归后重置行为中心
+					Dummy->ExitCombat();
 					HandleTargetLost(Dummy, Blackboard);
 					bHadCombatTarget = false;
 				}
