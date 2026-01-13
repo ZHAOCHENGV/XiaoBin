@@ -2263,6 +2263,41 @@ void AXBSoldierCharacter::SetHiddenInBush(bool bEnableHidden)
         *GetName(), bEnableHidden ? TEXT("开启") : TEXT("关闭"));
 }
 
+/**
+ * @brief  刷新跟随状态（供主将初始化后调用）
+ * @param  Leader 主将
+ * @param  SlotIndex 槽位索引
+ * @return 无
+ * @note   详细流程分析: 统一走内部跟随配置入口，保证跟随/编队/AI状态一致
+ *         性能/架构注意事项: 仅在主将初始化后调用一次，避免重复触发
+ */
+void AXBSoldierCharacter::RefreshFollowingAfterLeaderInit(AXBCharacterBase* Leader, int32 SlotIndex)
+{
+    if (!Leader)
+    {
+        UE_LOG(LogXBSoldier, Warning, TEXT("士兵 %s: 刷新跟随失败，Leader为空"), *GetName());
+        return;
+    }
+
+    // 🔧 修改 - 主将必须是当前跟随目标，避免误刷新到其它队伍
+    if (GetLeaderCharacter() != Leader)
+    {
+        UE_LOG(LogXBSoldier, Warning, TEXT("士兵 %s: 刷新跟随失败，Leader不匹配: %s"),
+            *GetName(), *Leader->GetName());
+        return;
+    }
+
+    // 🔧 修改 - 仅处理已招募士兵，避免休眠/掉落态误触发
+    if (!bIsRecruited)
+    {
+        UE_LOG(LogXBSoldier, Verbose, TEXT("士兵 %s: 未招募，跳过跟随刷新"), *GetName());
+        return;
+    }
+
+    // 🔧 修改 - 统一调用内部跟随入口，保证组件与AI配置一致
+    SetupFollowingAndStartMoving(Leader, SlotIndex);
+}
+
 // ==================== 死亡系统 ====================
 
 void AXBSoldierCharacter::HandleDeath()

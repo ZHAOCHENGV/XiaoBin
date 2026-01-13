@@ -231,8 +231,8 @@ void AXBCharacterBase::RefreshRecruitedSoldiersAfterLeaderInit()
             Soldier->SetFormationSlotIndex(Index);
         }
 
-        // ✨ 新增 - 强制刷新跟随与移动状态，修复初始化顺序导致的“静止士兵”
-        Soldier->SetupFollowingAndStartMoving(this, Soldier->GetFormationSlotIndex());
+        // 🔧 修改 - 使用公开入口刷新跟随状态，避免访问受保护成员
+        Soldier->RefreshFollowingAfterLeaderInit(this, Soldier->GetFormationSlotIndex());
     }
 }
 
