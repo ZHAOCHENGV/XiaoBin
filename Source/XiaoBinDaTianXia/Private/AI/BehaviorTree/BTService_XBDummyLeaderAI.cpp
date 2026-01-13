@@ -475,7 +475,7 @@ void UBTService_XBDummyLeaderAI::UpdateBehaviorDestination(AXBDummyCharacter* Du
 		UE_LOG(LogXBAI, Verbose, TEXT("假人AI站立模式更新目的地: %s"), *Dummy->GetName());
 		break;
 	}
-	// 🔧 修改 - 修正移动模式分支关键字，避免拼写错误导致编译失败
+	// 🔧 修改 - 明确使用 case 关键字，避免拼写错误导致编译失败
 	case EXBLeaderAIMoveMode::Wander:
 	{
 		// 🔧 修改 - 若当前目的地无效，忽略间隔直接重新计算
