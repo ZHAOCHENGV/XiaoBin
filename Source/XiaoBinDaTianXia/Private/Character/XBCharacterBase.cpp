@@ -170,6 +170,9 @@ void AXBCharacterBase::InitializeLeaderData()
     {
         InitializeFromDataTable(ConfigDataTable, ConfigRowName);
     }
+
+    // 🔧 修改 - 主将数据完成初始化后，刷新已招募士兵的跟随/编队状态
+    RefreshRecruitedSoldiersAfterLeaderInit();
 }
 
 /**
@@ -181,6 +184,56 @@ void AXBCharacterBase::InitializeLeaderData()
 bool AXBCharacterBase::GetExternalInitConfig(FXBGameConfigData& OutConfig) const
 {
     return false;
+}
+
+/**
+ * @brief  刷新已招募士兵的跟随状态
+ * @return 无
+ * @note   详细流程分析: 
+ *         1) 保证编队槽位数量覆盖当前已招募士兵
+ *         2) 校正士兵槽位索引
+ *         3) 重新触发士兵跟随逻辑，避免初始化顺序导致的“已招募但不跟随”
+ *         性能/架构注意事项: 仅在主将数据初始化完成时触发，避免重复刷新
+ */
+void AXBCharacterBase::RefreshRecruitedSoldiersAfterLeaderInit()
+{
+    if (Soldiers.Num() == 0)
+    {
+        return;
+    }
+
+    UE_LOG(LogXBCharacter, Log, TEXT("主将 %s 数据初始化完成，刷新已招募士兵跟随状态，数量: %d"),
+        *GetName(), Soldiers.Num());
+
+    // 🔧 修改 - 先确保编队槽位覆盖当前士兵数量，避免槽位缺失导致目标位置无效
+    if (FormationComponent && FormationComponent->GetFormationSlots().Num() < Soldiers.Num())
+    {
+        FormationComponent->RegenerateFormation(Soldiers.Num());
+    }
+
+    for (int32 Index = 0; Index < Soldiers.Num(); ++Index)
+    {
+        AXBSoldierCharacter* Soldier = Soldiers[Index];
+        if (!Soldier || !IsValid(Soldier))
+        {
+            continue;
+        }
+
+        // 🔧 修改 - 只处理已招募且归属于当前主将的士兵
+        if (!Soldier->IsRecruited() || Soldier->GetLeaderCharacter() != this)
+        {
+            continue;
+        }
+
+        // 🔧 修改 - 校正槽位索引，保证编队位置计算一致
+        if (Soldier->GetFormationSlotIndex() != Index)
+        {
+            Soldier->SetFormationSlotIndex(Index);
+        }
+
+        // ✨ 新增 - 强制刷新跟随与移动状态，修复初始化顺序导致的“静止士兵”
+        Soldier->SetupFollowingAndStartMoving(this, Soldier->GetFormationSlotIndex());
+    }
 }
 
 void AXBCharacterBase::SetupMovementComponent()

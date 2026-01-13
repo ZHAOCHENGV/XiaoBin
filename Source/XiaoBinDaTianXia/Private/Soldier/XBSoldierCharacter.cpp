@@ -1545,9 +1545,15 @@ void AXBSoldierCharacter::OnRecruited(AActor* NewLeader, int32 SlotIndex)
     }
     
     // 设置阵营
-    if (AXBCharacterBase* LeaderChar = Cast<AXBCharacterBase>(NewLeader))
+    AXBCharacterBase* LeaderChar = Cast<AXBCharacterBase>(NewLeader);
+    if (LeaderChar)
     {
         Faction = LeaderChar->GetFaction();
+    }
+    else
+    {
+        UE_LOG(LogXBSoldier, Warning, TEXT("士兵 %s: 招募目标 %s 不是 AXBCharacterBase，无法同步阵营"), 
+            *GetName(), *NewLeader->GetName());
     }
     
     // 🔧 修改 - 面向将领
@@ -1557,49 +1563,22 @@ void AXBSoldierCharacter::OnRecruited(AActor* NewLeader, int32 SlotIndex)
         SetActorRotation(DirectionToLeader.Rotation());
     }
     
-    // ✨ 核心修改 - 立即配置跟随组件并开始移动（不等待AI）
-    if (FollowComponent)
+    // ✨ 核心修改 - 统一调用跟随配置入口，确保事件绑定/移动组件一致
+    if (LeaderChar)
     {
-        // 确保跟随组件启用
-        FollowComponent->SetComponentTickEnabled(true);
-        
-        // 设置跟随目标和槽位
-        FollowComponent->SetFollowTarget(NewLeader);
-        FollowComponent->SetFormationSlotIndex(SlotIndex);
-        
-        // 同步将领冲刺状态
-        if (AXBCharacterBase* LeaderChar = Cast<AXBCharacterBase>(NewLeader))
+        SetupFollowingAndStartMoving(LeaderChar, SlotIndex);
+    }
+    else
+    {
+        // 🔧 修改 - 兜底：无主将类型时保持原始跟随逻辑，避免空指针
+        if (FollowComponent)
         {
-            bool bLeaderSprinting = LeaderChar->IsSprinting();
-            float LeaderSpeed = LeaderChar->GetCurrentMoveSpeed();
-            FollowComponent->SyncLeaderSprintState(bLeaderSprinting, LeaderSpeed);
+            FollowComponent->SetComponentTickEnabled(true);
+            FollowComponent->SetFollowTarget(NewLeader);
+            FollowComponent->SetFormationSlotIndex(SlotIndex);
+            FollowComponent->StartRecruitTransition();
         }
-        
-        // ✨ 核心 - 立即开始招募过渡移动
-        FollowComponent->StartRecruitTransition();
     }
-    
-    // 🔧 修改 - 确保移动组件立即可用
-    if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
-    {
-        MoveComp->SetComponentTickEnabled(true);
-        MoveComp->SetMovementMode(MOVE_Walking);
-        MoveComp->GravityScale = 1.0f;
-        MoveComp->MaxWalkSpeed = GetMoveSpeed();
-    }
-    
-    // 设置状态
-    SetSoldierState(EXBSoldierState::Following);
-    
-    // 🔧 修改 - AI控制器延迟初始化（不阻塞移动）
-    // 移动由 FollowComponent 通过 AddMovementInput 驱动，不依赖AI
-    GetWorldTimerManager().SetTimer(
-        DelayedAIStartTimerHandle,
-        this,
-        &AXBSoldierCharacter::SpawnAndPossessAIController,
-        0.1f,
-        false
-    );
     
     // 广播事件
     OnSoldierRecruited.Broadcast(this, NewLeader);
