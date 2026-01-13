@@ -324,9 +324,15 @@ void UBTService_XBDummyLeaderAI::HandleTargetLost(AXBDummyCharacter* Dummy, UBla
 {
 	const FXBLeaderAIConfig& AIConfig = Dummy->GetLeaderAIConfig();
 	const FName BehaviorCenterKey = XBDummyLeaderBlackboardKeys::BehaviorCenter;
+	const FName BehaviorDestinationKey = XBDummyLeaderBlackboardKeys::BehaviorDestination;
 
 	// 🔧 修改 - 回归时以当前位置作为行为中心，保证随机移动自然过渡
 	Blackboard->SetValueAsVector(BehaviorCenterKey, Dummy->GetActorLocation());
+
+	// ✨ 新增 - 目标丢失后继续沿正前方移动，避免停滞
+	const float ForwardDistance = FMath::Max(AIConfig.WanderRadius, 300.0f);
+	const FVector ForwardDestination = Dummy->GetActorLocation() + Dummy->GetActorForwardVector() * ForwardDistance;
+	Blackboard->SetValueAsVector(BehaviorDestinationKey, ForwardDestination);
 
 	if (AIConfig.MoveMode == EXBLeaderAIMoveMode::Route)
 	{
@@ -372,6 +378,12 @@ void UBTService_XBDummyLeaderAI::UpdateBehaviorDestination(AXBDummyCharacter* Du
 		UNavigationSystemV1* NavSystem = FNavigationSystem::GetCurrent<UNavigationSystemV1>(Dummy->GetWorld());
 		if (!NavSystem)
 		{
+			// 🔧 修改 - 无导航系统时回退为正前方移动，避免目的地无效
+			const float ForwardDistance = FMath::Max(AIConfig.WanderRadius, 300.0f);
+			const FVector ForwardDestination = Dummy->GetActorLocation() + Dummy->GetActorForwardVector() * ForwardDistance;
+			Blackboard->SetValueAsVector(BehaviorDestinationKey, ForwardDestination);
+			UE_LOG(LogXBAI, Warning, TEXT("假人AI随机移动失败：无导航系统，改为正前方移动: %s"), *Dummy->GetName());
+			NextWanderTime = CurrentTime + AIConfig.WanderInterval;
 			return;
 		}
 
@@ -380,6 +392,15 @@ void UBTService_XBDummyLeaderAI::UpdateBehaviorDestination(AXBDummyCharacter* Du
 		if (NavSystem->GetRandomPointInNavigableRadius(BehaviorCenter, AIConfig.WanderRadius, RandomLocation))
 		{
 			Blackboard->SetValueAsVector(BehaviorDestinationKey, RandomLocation.Location);
+			NextWanderTime = CurrentTime + AIConfig.WanderInterval;
+		}
+		else
+		{
+			// 🔧 修改 - 随机点失败时回退为正前方移动，确保目的地有效
+			const float ForwardDistance = FMath::Max(AIConfig.WanderRadius, 300.0f);
+			const FVector ForwardDestination = Dummy->GetActorLocation() + Dummy->GetActorForwardVector() * ForwardDistance;
+			Blackboard->SetValueAsVector(BehaviorDestinationKey, ForwardDestination);
+			UE_LOG(LogXBAI, Warning, TEXT("假人AI随机移动失败：无法找到可行走点，改为正前方移动: %s"), *Dummy->GetName());
 			NextWanderTime = CurrentTime + AIConfig.WanderInterval;
 		}
 		break;
