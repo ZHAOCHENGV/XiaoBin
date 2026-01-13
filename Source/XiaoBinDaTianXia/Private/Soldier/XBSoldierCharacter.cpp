@@ -1545,9 +1545,15 @@ void AXBSoldierCharacter::OnRecruited(AActor* NewLeader, int32 SlotIndex)
     }
     
     // 设置阵营
-    if (AXBCharacterBase* LeaderChar = Cast<AXBCharacterBase>(NewLeader))
+    AXBCharacterBase* LeaderChar = Cast<AXBCharacterBase>(NewLeader);
+    if (LeaderChar)
     {
         Faction = LeaderChar->GetFaction();
+    }
+    else
+    {
+        UE_LOG(LogXBSoldier, Warning, TEXT("士兵 %s: 招募目标 %s 不是 AXBCharacterBase，无法同步阵营"), 
+            *GetName(), *NewLeader->GetName());
     }
     
     // 🔧 修改 - 面向将领
@@ -1557,49 +1563,22 @@ void AXBSoldierCharacter::OnRecruited(AActor* NewLeader, int32 SlotIndex)
         SetActorRotation(DirectionToLeader.Rotation());
     }
     
-    // ✨ 核心修改 - 立即配置跟随组件并开始移动（不等待AI）
-    if (FollowComponent)
+    // ✨ 核心修改 - 统一调用跟随配置入口，确保事件绑定/移动组件一致
+    if (LeaderChar)
     {
-        // 确保跟随组件启用
-        FollowComponent->SetComponentTickEnabled(true);
-        
-        // 设置跟随目标和槽位
-        FollowComponent->SetFollowTarget(NewLeader);
-        FollowComponent->SetFormationSlotIndex(SlotIndex);
-        
-        // 同步将领冲刺状态
-        if (AXBCharacterBase* LeaderChar = Cast<AXBCharacterBase>(NewLeader))
+        SetupFollowingAndStartMoving(LeaderChar, SlotIndex);
+    }
+    else
+    {
+        // 🔧 修改 - 兜底：无主将类型时保持原始跟随逻辑，避免空指针
+        if (FollowComponent)
         {
-            bool bLeaderSprinting = LeaderChar->IsSprinting();
-            float LeaderSpeed = LeaderChar->GetCurrentMoveSpeed();
-            FollowComponent->SyncLeaderSprintState(bLeaderSprinting, LeaderSpeed);
+            FollowComponent->SetComponentTickEnabled(true);
+            FollowComponent->SetFollowTarget(NewLeader);
+            FollowComponent->SetFormationSlotIndex(SlotIndex);
+            FollowComponent->StartRecruitTransition();
         }
-        
-        // ✨ 核心 - 立即开始招募过渡移动
-        FollowComponent->StartRecruitTransition();
     }
-    
-    // 🔧 修改 - 确保移动组件立即可用
-    if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
-    {
-        MoveComp->SetComponentTickEnabled(true);
-        MoveComp->SetMovementMode(MOVE_Walking);
-        MoveComp->GravityScale = 1.0f;
-        MoveComp->MaxWalkSpeed = GetMoveSpeed();
-    }
-    
-    // 设置状态
-    SetSoldierState(EXBSoldierState::Following);
-    
-    // 🔧 修改 - AI控制器延迟初始化（不阻塞移动）
-    // 移动由 FollowComponent 通过 AddMovementInput 驱动，不依赖AI
-    GetWorldTimerManager().SetTimer(
-        DelayedAIStartTimerHandle,
-        this,
-        &AXBSoldierCharacter::SpawnAndPossessAIController,
-        0.1f,
-        false
-    );
     
     // 广播事件
     OnSoldierRecruited.Broadcast(this, NewLeader);
@@ -2282,6 +2261,41 @@ void AXBSoldierCharacter::SetHiddenInBush(bool bEnableHidden)
 
     UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 草丛隐身状态=%s"),
         *GetName(), bEnableHidden ? TEXT("开启") : TEXT("关闭"));
+}
+
+/**
+ * @brief  刷新跟随状态（供主将初始化后调用）
+ * @param  Leader 主将
+ * @param  SlotIndex 槽位索引
+ * @return 无
+ * @note   详细流程分析: 统一走内部跟随配置入口，保证跟随/编队/AI状态一致
+ *         性能/架构注意事项: 仅在主将初始化后调用一次，避免重复触发
+ */
+void AXBSoldierCharacter::RefreshFollowingAfterLeaderInit(AXBCharacterBase* Leader, int32 SlotIndex)
+{
+    if (!Leader)
+    {
+        UE_LOG(LogXBSoldier, Warning, TEXT("士兵 %s: 刷新跟随失败，Leader为空"), *GetName());
+        return;
+    }
+
+    // 🔧 修改 - 主将必须是当前跟随目标，避免误刷新到其它队伍
+    if (GetLeaderCharacter() != Leader)
+    {
+        UE_LOG(LogXBSoldier, Warning, TEXT("士兵 %s: 刷新跟随失败，Leader不匹配: %s"),
+            *GetName(), *Leader->GetName());
+        return;
+    }
+
+    // 🔧 修改 - 仅处理已招募士兵，避免休眠/掉落态误触发
+    if (!bIsRecruited)
+    {
+        UE_LOG(LogXBSoldier, Verbose, TEXT("士兵 %s: 未招募，跳过跟随刷新"), *GetName());
+        return;
+    }
+
+    // 🔧 修改 - 统一调用内部跟随入口，保证组件与AI配置一致
+    SetupFollowingAndStartMoving(Leader, SlotIndex);
 }
 
 // ==================== 死亡系统 ====================
