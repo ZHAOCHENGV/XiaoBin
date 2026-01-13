@@ -87,11 +87,12 @@ private:
 	 * @brief  处理目标丢失后的回归逻辑
 	 * @param  Dummy 假人主将
 	 * @param  Blackboard 黑板组件
+	 * @param  bForwardMoveAfterLost 是否进入“丢失目标后正前方行走”流程
 	 * @return 无
-	 * @note   详细流程分析: 重置行为中心 -> 校正路线索引
+	 * @note   详细流程分析: 重置行为中心 -> 可选正前方行走 -> 校正路线索引
 	 *         性能/架构注意事项: 仅在目标切换时执行
 	 */
-	void HandleTargetLost(AXBDummyCharacter* Dummy, UBlackboardComponent* Blackboard);
+	void HandleTargetLost(AXBDummyCharacter* Dummy, UBlackboardComponent* Blackboard, bool bForwardMoveAfterLost);
 
 	/**
 	 * @brief  更新非战斗状态下的行为目的地
@@ -125,4 +126,10 @@ private:
 
 	/** @brief 是否已提示缺失样条 */
 	bool bLoggedMissingSpline = false;
+
+	/** @brief 是否处于“丢失目标后正前方移动”阶段 */
+	bool bForwardMoveAfterLost = false;
+
+	/** @brief 丢失目标后的前进结束时间 */
+	float ForwardMoveEndTime = 0.0f;
 };
