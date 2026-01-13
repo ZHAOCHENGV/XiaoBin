@@ -381,9 +381,10 @@ void UBTService_XBDummyLeaderAI::HandleTargetLost(AXBDummyCharacter* Dummy, UBla
 		// 🔧 修改 - 进入前进行为时先清零随机移动计时，确保阶段结束后可立刻刷新目的地
 		NextWanderTime = 0.0f;
 	}
-	else
+
+	// 🔧 修改 - 非丢失目标场景下清理前进阶段标记，避免影响随机移动
+	if (!bForwardMoveAfterLostParam)
 	{
-		// 🔧 修改 - 非丢失目标场景下清理前进阶段标记，避免影响随机移动
 		bForwardMoveAfterLost = false;
 		ForwardMoveEndTime = 0.0f;
 	}
@@ -451,13 +452,6 @@ void UBTService_XBDummyLeaderAI::UpdateBehaviorDestination(AXBDummyCharacter* Du
 			Blackboard->SetValueAsVector(BehaviorDestinationKey, RandomLocation.Location);
 			NextWanderTime = CurrentTime + AIConfig.WanderInterval;
 			UE_LOG(LogXBAI, Verbose, TEXT("假人AI随机移动更新目的地: %s"), *Dummy->GetName());
-		}
-		else
-		{
-			// 🔧 修改 - 随机点失败时回退为行为中心，保证目的地有效
-			Blackboard->SetValueAsVector(BehaviorDestinationKey, BehaviorCenter);
-			UE_LOG(LogXBAI, Warning, TEXT("假人AI随机移动失败：无法找到可行走点，回退到行为中心: %s"), *Dummy->GetName());
-			NextWanderTime = CurrentTime + AIConfig.WanderInterval;
 		}
 		else
 		{
