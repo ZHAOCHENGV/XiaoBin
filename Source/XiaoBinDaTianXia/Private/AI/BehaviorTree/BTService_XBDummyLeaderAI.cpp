@@ -459,6 +459,13 @@ void UBTService_XBDummyLeaderAI::UpdateBehaviorDestination(AXBDummyCharacter* Du
 			UE_LOG(LogXBAI, Warning, TEXT("假人AI随机移动失败：无法找到可行走点，回退到行为中心: %s"), *Dummy->GetName());
 			NextWanderTime = CurrentTime + AIConfig.WanderInterval;
 		}
+		else
+		{
+			// 🔧 修改 - 随机点失败时回退为行为中心，保证目的地有效
+			Blackboard->SetValueAsVector(BehaviorDestinationKey, BehaviorCenter);
+			UE_LOG(LogXBAI, Warning, TEXT("假人AI随机移动失败：无法找到可行走点，回退到行为中心: %s"), *Dummy->GetName());
+			NextWanderTime = CurrentTime + AIConfig.WanderInterval;
+		}
 		break;
 	}
 	case EXBLeaderAIMoveMode::Route:
