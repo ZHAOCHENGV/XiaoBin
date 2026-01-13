@@ -120,6 +120,10 @@ void UBTService_XBDummyLeaderAI::TickNode(UBehaviorTreeComponent& OwnerComp, uin
 	AXBCharacterBase* CurrentTarget = Cast<AXBCharacterBase>(Blackboard->GetValueAsObject(TargetLeaderKey));
 	if (CurrentTarget)
 	{
+		// 🔧 修改 - 重新锁定目标时取消丢失目标的前进行为，避免阻塞战斗更新
+		bForwardMoveAfterLost = false;
+		ForwardMoveEndTime = 0.0f;
+
 		// 🔧 修改 - 目标进入草丛或全灭时立刻清理目标
 		if (CurrentTarget->IsHiddenInBush() || IsLeaderArmyEliminated(CurrentTarget))
 		{
@@ -204,8 +208,9 @@ void UBTService_XBDummyLeaderAI::TickNode(UBehaviorTreeComponent& OwnerComp, uin
 	if (bForwardMoveAfterLost)
 	{
 		const float CurrentTime = Dummy->GetWorld()->GetTimeSeconds();
-		if (CurrentTime < ForwardMoveEndTime)
+		if (CurrentTime < ForwardMoveEndTime && !CurrentTarget)
 		{
+			// 🔧 修改 - 前进阶段保持目的地不变，但允许继续感知目标
 			return;
 		}
 
@@ -370,6 +375,12 @@ void UBTService_XBDummyLeaderAI::HandleTargetLost(AXBDummyCharacter* Dummy, UBla
 		}
 
 		UE_LOG(LogXBAI, Log, TEXT("假人AI目标丢失，进入正前方行走阶段: %s"), *Dummy->GetName());
+	}
+	else
+	{
+		// 🔧 修改 - 非丢失目标场景下清理前进阶段标记，避免影响随机移动
+		bForwardMoveAfterLost = false;
+		ForwardMoveEndTime = 0.0f;
 	}
 
 	if (AIConfig.MoveMode == EXBLeaderAIMoveMode::Route)
