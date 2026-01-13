@@ -109,6 +109,7 @@ void UBTService_XBDummyLeaderAI::TickNode(UBehaviorTreeComponent& OwnerComp, uin
 	const FName TargetLeaderKey = XBDummyLeaderBlackboardKeys::TargetLeader;
 	const FName InCombatKey = XBDummyLeaderBlackboardKeys::InCombat;
 	const FName MoveModeKey = XBDummyLeaderBlackboardKeys::MoveMode;
+	const FName BehaviorDestinationKey = XBDummyLeaderBlackboardKeys::BehaviorDestination;
 
 	// 🔧 修改 - 同步数据表移动模式到黑板，保证行为树与配置一致
 	// 为什么要每帧比对：配置可能在运行时由外部覆盖（例如关卡/玩法热更新）
@@ -151,6 +152,12 @@ void UBTService_XBDummyLeaderAI::TickNode(UBehaviorTreeComponent& OwnerComp, uin
 			// 为什么要强制进入战斗：避免黑板与角色状态不一致
 			Dummy->EnterCombat();
 			bHadCombatTarget = true;
+
+			// 🔧 修改 - 战斗时将行为目的地锁定为目标位置，确保主动靠近
+			// 为什么要写入：MoveTo/行为树需要明确目的地，避免仍使用漫游目标
+			Blackboard->SetValueAsVector(BehaviorDestinationKey, CurrentTarget->GetActorLocation());
+			UE_LOG(LogXBAI, Verbose, TEXT("假人AI战斗靠近目标，更新目的地: %s -> %s"),
+				*Dummy->GetName(), *CurrentTarget->GetName());
 		}
 	}
 
