@@ -444,7 +444,9 @@ void UBTService_XBDummyLeaderAI::UpdateBehaviorDestination(AXBDummyCharacter* Du
 	// 为什么要校验：黑板初始值可能为未写入状态，直接使用会导致随机点计算失败
 	const FVector RawBehaviorCenter = Blackboard->GetValueAsVector(BehaviorCenterKey);
 	const bool bBehaviorCenterInvalid = RawBehaviorCenter.ContainsNaN() ||
-		!RawBehaviorCenter.IsFinite() ||
+		!FMath::IsFinite(RawBehaviorCenter.X) ||
+		!FMath::IsFinite(RawBehaviorCenter.Y) ||
+		!FMath::IsFinite(RawBehaviorCenter.Z) ||
 		RawBehaviorCenter.GetAbsMax() > HALF_WORLD_MAX;
 
 	if (bBehaviorCenterInvalid)
