@@ -321,6 +321,13 @@ public:
     TObjectPtr<UXBFormationComponent> FormationComponent;
 
 protected:
+    /**
+     * @brief  刷新已招募士兵的跟随状态
+     * @return 无
+     * @note   详细流程分析: 主将数据完成初始化后，补齐编队槽位并驱动已招募士兵重新进入跟随逻辑
+     *         性能/架构注意事项: 仅在需要时触发，避免在 Tick 中频繁调用
+     */
+    void RefreshRecruitedSoldiersAfterLeaderInit();
     virtual void BeginPlay() override;
     // 🔧 修改 - 退出时注销感知子系统注册
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;

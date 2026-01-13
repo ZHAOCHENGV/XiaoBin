@@ -433,6 +433,16 @@ public:
     UFUNCTION(BlueprintPure, Category = "草丛", meta = (DisplayName = "是否草丛隐身"))
     bool IsHiddenInBush() const { return bIsHiddenInBush; }
 
+    /**
+     * @brief  刷新跟随状态（供主将初始化后调用）
+     * @param  Leader 主将
+     * @param  SlotIndex 槽位索引
+     * @return 无
+     * @note   详细流程分析: 统一走内部跟随配置入口，确保移动组件/编队事件/AI延迟启动一致
+     *         性能/架构注意事项: 仅在主将数据初始化完成时触发，避免频繁调用
+     */
+    void RefreshFollowingAfterLeaderInit(AXBCharacterBase* Leader, int32 SlotIndex);
+
 protected:
     /**
      * @brief  刷新近战命中GA配置
