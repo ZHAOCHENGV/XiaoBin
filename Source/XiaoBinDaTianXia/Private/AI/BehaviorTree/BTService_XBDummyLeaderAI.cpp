@@ -440,6 +440,22 @@ void UBTService_XBDummyLeaderAI::UpdateBehaviorDestination(AXBDummyCharacter* Du
 	const FName HomeLocationKey = XBDummyLeaderBlackboardKeys::HomeLocation;
 	const FName RouteIndexKey = XBDummyLeaderBlackboardKeys::RouteIndex;
 
+	// 🔧 修改 - 读取行为中心前先做合法性校验，避免未初始化导致出现 FLT_MAX
+	// 为什么要校验：黑板初始值可能为未写入状态，直接使用会导致随机点计算失败
+	const FVector RawBehaviorCenter = Blackboard->GetValueAsVector(BehaviorCenterKey);
+	const bool bBehaviorCenterInvalid = RawBehaviorCenter.ContainsNaN() ||
+		!RawBehaviorCenter.IsFinite() ||
+		RawBehaviorCenter.GetAbsMax() > HALF_WORLD_MAX;
+
+	if (bBehaviorCenterInvalid)
+	{
+		// 🔧 修改 - 行为中心无效时回退为当前主将位置，并写回黑板以修复后续逻辑
+		// 为什么要写回：避免每帧都走异常分支，保证随机移动可恢复
+		const FVector SafeCenter = Dummy->GetActorLocation();
+		Blackboard->SetValueAsVector(BehaviorCenterKey, SafeCenter);
+		UE_LOG(LogXBAI, Warning, TEXT("假人AI行为中心无效，已回退为主将当前位置: %s"), *Dummy->GetName());
+	}
+
 	switch (AIConfig.MoveMode)
 	{
 	case EXBLeaderAIMoveMode::Stand:
@@ -475,6 +491,7 @@ void UBTService_XBDummyLeaderAI::UpdateBehaviorDestination(AXBDummyCharacter* Du
 			return;
 		}
 
+		// 🔧 修改 - 使用已修正的行为中心，避免 FLT_MAX 参与随机采样
 		const FVector BehaviorCenter = Blackboard->GetValueAsVector(BehaviorCenterKey);
 		FNavLocation RandomLocation;
 		if (NavSystem->GetRandomPointInNavigableRadius(BehaviorCenter, AIConfig.WanderRadius, RandomLocation))
