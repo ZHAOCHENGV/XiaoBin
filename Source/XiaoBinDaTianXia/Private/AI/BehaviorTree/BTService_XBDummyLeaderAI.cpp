@@ -216,6 +216,8 @@ void UBTService_XBDummyLeaderAI::TickNode(UBehaviorTreeComponent& OwnerComp, uin
 
 		// 🔧 修改 - 结束正前方移动后恢复常规行为更新
 		bForwardMoveAfterLost = false;
+		// 🔧 修改 - 前进阶段结束后强制刷新随机移动时间，避免目的地长期不更新
+		NextWanderTime = 0.0f;
 	}
 
 	// 🔧 修改 - 非战斗状态下更新行为目的地
@@ -375,6 +377,9 @@ void UBTService_XBDummyLeaderAI::HandleTargetLost(AXBDummyCharacter* Dummy, UBla
 		}
 
 		UE_LOG(LogXBAI, Log, TEXT("假人AI目标丢失，进入正前方行走阶段: %s"), *Dummy->GetName());
+
+		// 🔧 修改 - 进入前进行为时先清零随机移动计时，确保阶段结束后可立刻刷新目的地
+		NextWanderTime = 0.0f;
 	}
 	else
 	{
@@ -418,8 +423,13 @@ void UBTService_XBDummyLeaderAI::UpdateBehaviorDestination(AXBDummyCharacter* Du
 	}
 	case EXBLeaderAIMoveMode::Wander:
 	{
+		// 🔧 修改 - 若当前目的地无效，忽略间隔直接重新计算
+		const FVector CurrentDestination = Blackboard->GetValueAsVector(BehaviorDestinationKey);
+		const bool bDestinationInvalid = CurrentDestination.ContainsNaN() ||
+			(CurrentDestination.IsNearlyZero() && !Dummy->GetActorLocation().IsNearlyZero());
+
 		const float CurrentTime = Dummy->GetWorld()->GetTimeSeconds();
-		if (CurrentTime < NextWanderTime)
+		if (CurrentTime < NextWanderTime && !bDestinationInvalid)
 		{
 			return;
 		}
@@ -439,6 +449,14 @@ void UBTService_XBDummyLeaderAI::UpdateBehaviorDestination(AXBDummyCharacter* Du
 		if (NavSystem->GetRandomPointInNavigableRadius(BehaviorCenter, AIConfig.WanderRadius, RandomLocation))
 		{
 			Blackboard->SetValueAsVector(BehaviorDestinationKey, RandomLocation.Location);
+			NextWanderTime = CurrentTime + AIConfig.WanderInterval;
+			UE_LOG(LogXBAI, Verbose, TEXT("假人AI随机移动更新目的地: %s"), *Dummy->GetName());
+		}
+		else
+		{
+			// 🔧 修改 - 随机点失败时回退为行为中心，保证目的地有效
+			Blackboard->SetValueAsVector(BehaviorDestinationKey, BehaviorCenter);
+			UE_LOG(LogXBAI, Warning, TEXT("假人AI随机移动失败：无法找到可行走点，回退到行为中心: %s"), *Dummy->GetName());
 			NextWanderTime = CurrentTime + AIConfig.WanderInterval;
 		}
 		else
