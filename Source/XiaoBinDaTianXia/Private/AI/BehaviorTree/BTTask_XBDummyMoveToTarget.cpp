@@ -7,6 +7,7 @@
  */
 
 #include "AI/BehaviorTree/BTTask_XBDummyMoveToTarget.h"
+#include "AI/XBDummyAIType.h"
 #include "AIController.h"
 #include "BehaviorTree/BlackboardComponent.h"
 #include "Character/XBDummyCharacter.h"
@@ -30,6 +31,10 @@ UBTTask_XBDummyMoveToTarget::UBTTask_XBDummyMoveToTarget()
 	// 配置默认目标键
 	TargetKey.SelectedKeyName = TEXT("TargetLeader");
 	TargetKey.AddObjectFilter(this, GET_MEMBER_NAME_CHECKED(UBTTask_XBDummyMoveToTarget, TargetKey), AActor::StaticClass());
+
+	// ✨ 新增 - 配置能力类型键，用于决定移动到哪个攻击范围
+	AbilityTypeKey.SelectedKeyName = TEXT("SelectedAbilityType");
+	AbilityTypeKey.AddIntFilter(this, GET_MEMBER_NAME_CHECKED(UBTTask_XBDummyMoveToTarget, AbilityTypeKey));
 }
 
 /**
@@ -68,6 +73,14 @@ EBTNodeResult::Type UBTTask_XBDummyMoveToTarget::ExecuteTask(UBehaviorTreeCompon
 		return EBTNodeResult::Failed;
 	}
 
+	// 🔧 修改 - 获取当前选择的能力类型，确保移动范围与能力一致
+	static const FName DefaultAbilityTypeKey(TEXT("SelectedAbilityType"));
+	const FName AbilityTypeKeyName = AbilityTypeKey.SelectedKeyName.IsNone()
+		? DefaultAbilityTypeKey
+		: AbilityTypeKey.SelectedKeyName;
+	const EXBDummyLeaderAbilityType SelectedAbilityType =
+		static_cast<EXBDummyLeaderAbilityType>(Blackboard->GetValueAsInt(AbilityTypeKeyName));
+
 	// 检查目标有效性
 	if (AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(Target))
 	{
@@ -90,7 +103,7 @@ EBTNodeResult::Type UBTTask_XBDummyMoveToTarget::ExecuteTask(UBehaviorTreeCompon
 	AIController->SetFocus(Target);
 
 	// 计算最优停止距离
-	const float OptimalStopDistance = CalculateOptimalStopDistance(CombatComp, Dummy, Target);
+	const float OptimalStopDistance = CalculateOptimalStopDistance(CombatComp, Dummy, Target, SelectedAbilityType);
 	
 	// 计算当前距离
 	const float CurrentDistance = FVector::Dist(Dummy->GetActorLocation(), Target->GetActorLocation());
@@ -200,7 +213,13 @@ void UBTTask_XBDummyMoveToTarget::TickTask(UBehaviorTreeComponent& OwnerComp, ui
 	}
 
 	// 计算最优停止距离
-	const float OptimalStopDistance = CalculateOptimalStopDistance(CombatComp, Dummy, Target);
+	static const FName DefaultAbilityTypeKey(TEXT("SelectedAbilityType"));
+	const FName AbilityTypeKeyName = AbilityTypeKey.SelectedKeyName.IsNone()
+		? DefaultAbilityTypeKey
+		: AbilityTypeKey.SelectedKeyName;
+	const EXBDummyLeaderAbilityType SelectedAbilityType =
+		static_cast<EXBDummyLeaderAbilityType>(Blackboard->GetValueAsInt(AbilityTypeKeyName));
+	const float OptimalStopDistance = CalculateOptimalStopDistance(CombatComp, Dummy, Target, SelectedAbilityType);
 	
 	// 计算当前距离
 	const float CurrentDistance = FVector::Dist(Dummy->GetActorLocation(), Target->GetActorLocation());
@@ -252,9 +271,13 @@ FString UBTTask_XBDummyMoveToTarget::GetStaticDescription() const
 
 /**
  * @brief 计算最优停止距离
- * @note 优先级：技能就绪（用技能范围）> 普攻就绪（用普攻范围）> 都冷却（用最大范围等待）
+ * @note 优先级：已选择能力 > 技能就绪（用技能范围）> 普攻就绪（用普攻范围）> 都冷却（用最大范围等待）
  */
-float UBTTask_XBDummyMoveToTarget::CalculateOptimalStopDistance(UXBCombatComponent* CombatComp, AActor* Dummy, AActor* Target) const
+float UBTTask_XBDummyMoveToTarget::CalculateOptimalStopDistance(
+	UXBCombatComponent* CombatComp,
+	AActor* Dummy,
+	AActor* Target,
+	EXBDummyLeaderAbilityType SelectedAbilityType) const
 {
 	if (!CombatComp || !Dummy || !Target)
 	{
@@ -271,6 +294,21 @@ float UBTTask_XBDummyMoveToTarget::CalculateOptimalStopDistance(UXBCombatCompone
 	const float BasicRange = CombatComp->GetBasicAttackRange();
 	const bool bSkillOnCooldown = CombatComp->IsSkillOnCooldown();
 	const bool bBasicOnCooldown = CombatComp->IsBasicAttackOnCooldown();
+
+	// 🔧 修改 - 优先使用已选择能力的范围，保证移动目标与能力一致
+	if (SelectedAbilityType == EXBDummyLeaderAbilityType::SpecialSkill && !bSkillOnCooldown)
+	{
+		const float StopDistance = SkillRange + CollisionRadii;
+		UE_LOG(LogXBAI, Verbose, TEXT("假人移动：已选择技能，使用技能范围=%.1f"), StopDistance);
+		return StopDistance;
+	}
+
+	if (SelectedAbilityType == EXBDummyLeaderAbilityType::BasicAttack && !bBasicOnCooldown)
+	{
+		const float StopDistance = BasicRange + CollisionRadii;
+		UE_LOG(LogXBAI, Verbose, TEXT("假人移动：已选择普攻，使用普攻范围=%.1f"), StopDistance);
+		return StopDistance;
+	}
 
 	// 优先级1：技能就绪，使用技能范围（更远）
 	if (!bSkillOnCooldown)

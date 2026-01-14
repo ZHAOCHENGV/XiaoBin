@@ -9,6 +9,7 @@
  */
 
 #include "AI/BehaviorTree/BTTask_XBDummyAttackTarget.h"
+#include "AI/XBDummyAIType.h"
 #include "AIController.h"
 #include "BehaviorTree/BlackboardComponent.h"
 #include "Character/Components/XBCombatComponent.h"
@@ -20,6 +21,9 @@ UBTTask_XBDummyAttackTarget::UBTTask_XBDummyAttackTarget()
 {
 	NodeName = TEXT("假人主将攻击目标");
 	TargetKey.SelectedKeyName = TEXT("TargetLeader");
+	// ✨ 新增 - 绑定能力类型黑板键，保证攻击与选择一致
+	AbilityTypeKey.SelectedKeyName = TEXT("SelectedAbilityType");
+	AbilityTypeKey.AddIntFilter(this, GET_MEMBER_NAME_CHECKED(UBTTask_XBDummyAttackTarget, AbilityTypeKey));
 	
 	// 启用Tick更新，以便等待转向完成
 	bNotifyTick = true;
@@ -64,6 +68,20 @@ EBTNodeResult::Type UBTTask_XBDummyAttackTarget::ExecuteTask(UBehaviorTreeCompon
 		return EBTNodeResult::Failed;
 	}
 
+	// 🔧 修改 - 读取当前选择的能力类型，确保攻击与移动使用同一能力
+	static const FName DefaultAbilityTypeKey(TEXT("SelectedAbilityType"));
+	const FName AbilityTypeKeyName = AbilityTypeKey.SelectedKeyName.IsNone()
+		? DefaultAbilityTypeKey
+		: AbilityTypeKey.SelectedKeyName;
+	const EXBDummyLeaderAbilityType SelectedAbilityType =
+		static_cast<EXBDummyLeaderAbilityType>(Blackboard->GetValueAsInt(AbilityTypeKeyName));
+
+	if (SelectedAbilityType == EXBDummyLeaderAbilityType::None)
+	{
+		UE_LOG(LogXBAI, Verbose, TEXT("假人攻击任务失败：未选择可用能力，等待重新选择"));
+		return EBTNodeResult::Failed;
+	}
+
 	UXBCombatComponent* CombatComp = Dummy->GetCombatComponent();
 	if (!CombatComp)
 	{
@@ -77,8 +95,10 @@ EBTNodeResult::Type UBTTask_XBDummyAttackTarget::ExecuteTask(UBehaviorTreeCompon
 	const bool bInSkillRange = CombatComp->IsTargetInSkillRange(TargetLeader);
 	const bool bInBasicRange = CombatComp->IsTargetInBasicAttackRange(TargetLeader);
 
-	// 如果不在任何攻击范围内，直接失败
-	if (!bInSkillRange && !bInBasicRange)
+	// 🔧 修改 - 按已选择能力判断范围与冷却，避免未到对应范围就停下
+	const bool bSelectedSkillReady = SelectedAbilityType == EXBDummyLeaderAbilityType::SpecialSkill && !bSkillOnCooldown && bInSkillRange;
+	const bool bSelectedBasicReady = SelectedAbilityType == EXBDummyLeaderAbilityType::BasicAttack && !bBasicOnCooldown && bInBasicRange;
+	if (!bSelectedSkillReady && !bSelectedBasicReady)
 	{
 		return EBTNodeResult::Failed;
 	}
@@ -128,6 +148,19 @@ void UBTTask_XBDummyAttackTarget::TickTask(UBehaviorTreeComponent& OwnerComp, ui
 		return;
 	}
 
+	static const FName DefaultAbilityTypeKey(TEXT("SelectedAbilityType"));
+	const FName AbilityTypeKeyName = AbilityTypeKey.SelectedKeyName.IsNone()
+		? DefaultAbilityTypeKey
+		: AbilityTypeKey.SelectedKeyName;
+	const EXBDummyLeaderAbilityType SelectedAbilityType =
+		static_cast<EXBDummyLeaderAbilityType>(Blackboard->GetValueAsInt(AbilityTypeKeyName));
+	if (SelectedAbilityType == EXBDummyLeaderAbilityType::None)
+	{
+		AIController->ClearFocus(EAIFocusPriority::Gameplay);
+		FinishLatentTask(OwnerComp, EBTNodeResult::Failed);
+		return;
+	}
+
 	// 检查是否已朝向目标
 	const FVector ToTarget = TargetLeader->GetActorLocation() - Dummy->GetActorLocation();
 	const FVector Forward = Dummy->GetActorForwardVector();
@@ -160,26 +193,28 @@ void UBTTask_XBDummyAttackTarget::TickTask(UBehaviorTreeComponent& OwnerComp, ui
 		// 清除焦点
 		AIController->ClearFocus(EAIFocusPriority::Gameplay);
 
-		// 优先技能
-		if (bInSkillRange && !bSkillOnCooldown)
+		// 🔧 修改 - 仅释放已选择的能力，确保与移动范围一致
+		if (SelectedAbilityType == EXBDummyLeaderAbilityType::SpecialSkill && bInSkillRange && !bSkillOnCooldown)
 		{
 			CombatComp->PerformSpecialSkill();
 			UE_LOG(LogXBAI, Log, TEXT("假人 %s 转向完成(%.1f度)，释放技能"), *Dummy->GetName(), AngleDegrees);
+			Blackboard->SetValueAsInt(AbilityTypeKeyName, static_cast<int32>(EXBDummyLeaderAbilityType::None));
 			FinishLatentTask(OwnerComp, EBTNodeResult::Succeeded);
 			return;
 		}
 
-		// 普攻
-		if (bInBasicRange && !bBasicOnCooldown)
+		if (SelectedAbilityType == EXBDummyLeaderAbilityType::BasicAttack && bInBasicRange && !bBasicOnCooldown)
 		{
 			CombatComp->PerformBasicAttack();
 			UE_LOG(LogXBAI, Log, TEXT("假人 %s 转向完成(%.1f度)，释放普攻"), *Dummy->GetName(), AngleDegrees);
+			Blackboard->SetValueAsInt(AbilityTypeKeyName, static_cast<int32>(EXBDummyLeaderAbilityType::None));
 			FinishLatentTask(OwnerComp, EBTNodeResult::Succeeded);
 			return;
 		}
 
 		// 无法攻击
 		UE_LOG(LogXBAI, Verbose, TEXT("假人 %s 转向完成但无法攻击"), *Dummy->GetName());
+		Blackboard->SetValueAsInt(AbilityTypeKeyName, static_cast<int32>(EXBDummyLeaderAbilityType::None));
 		FinishLatentTask(OwnerComp, EBTNodeResult::Failed);
 	}
 	// 否则继续等待转向
@@ -197,4 +232,3 @@ EBTNodeResult::Type UBTTask_XBDummyAttackTarget::AbortTask(UBehaviorTreeComponen
 	
 	return EBTNodeResult::Aborted;
 }
-

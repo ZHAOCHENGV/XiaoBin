@@ -57,6 +57,10 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "黑板", meta = (DisplayName = "目标键"))
 	FBlackboardKeySelector TargetKey;
 
+	/** @brief 选择的能力类型黑板键 */
+	UPROPERTY(EditAnywhere, Category = "黑板", meta = (DisplayName = "能力类型键"))
+	FBlackboardKeySelector AbilityTypeKey;
+
 	/** @brief 转向角度阈值（度），小于此角度视为已朝向目标 */
 	UPROPERTY(EditAnywhere, Category = "配置", meta = (DisplayName = "转向角度阈值", ClampMin = "1.0", ClampMax = "45.0"))
 	float FacingAngleThreshold = 15.0f;
