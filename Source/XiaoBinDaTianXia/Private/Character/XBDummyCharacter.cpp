@@ -10,9 +10,7 @@
 #include "Utils/XBLogCategories.h"
 #include "TimerManager.h"
 #include "Components/SplineComponent.h"
-
-
-
+#include "GameFramework/CharacterMovementComponent.h"
 
 
 AXBDummyCharacter::AXBDummyCharacter()
@@ -22,6 +20,20 @@ AXBDummyCharacter::AXBDummyCharacter()
 	// 🔧 修改 - 绑定假人专用AI控制器，确保行为树可运行
 	AIControllerClass = AXBDummyAIController::StaticClass();
 	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
+
+	// ✨ 新增 - 启用控制器旋转，以支持AI的SetFocus转向
+	// 这样AI控制器调用SetFocus时，角色会平滑转向目标
+	bUseControllerRotationYaw = true;
+	bUseControllerRotationPitch = false;
+	bUseControllerRotationRoll = false;
+
+	// 禁用移动方向旋转，避免与控制器旋转冲突
+	if (GetCharacterMovement())
+	{
+		GetCharacterMovement()->bOrientRotationToMovement = false;
+		GetCharacterMovement()->bUseControllerDesiredRotation = true; // 使用控制器期望的旋转
+		GetCharacterMovement()->RotationRate = FRotator(0.0f, 360.0f, 0.0f); // 设置旋转速度
+	}
 
 	// ✨ 新增 - 创建AI调试组件
 	AIDebugComponent = CreateDefaultSubobject<UXBDummyAIDebugComponent>(TEXT("AIDebugComponent"));

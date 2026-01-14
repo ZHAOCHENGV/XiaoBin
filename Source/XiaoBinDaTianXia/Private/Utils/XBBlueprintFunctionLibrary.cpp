@@ -28,11 +28,9 @@ bool UXBBlueprintFunctionLibrary::AreFactionsHostile(EXBFaction FactionA, EXBFac
         return false;
     }
 
-    // 中立阵营不与任何阵营敌对
-    if (FactionA == EXBFaction::Neutral || FactionB == EXBFaction::Neutral)
-    {
-        return false;
-    }
+    // 🔧 修改 - 移除中立阵营保护，允许所有阵营攻击中立
+    // 中立阵营可被所有阵营攻击（单向敌对）
+    // 中立阵营本身不主动搜索，只通过受击反击
 
     // 玩家和友军互不敌对
     if ((FactionA == EXBFaction::Player && FactionB == EXBFaction::Ally) ||
@@ -41,7 +39,8 @@ bool UXBBlueprintFunctionLibrary::AreFactionsHostile(EXBFaction FactionA, EXBFac
         return false;
     }
 
-    // 其他情况（玩家/友军 vs 敌人）为敌对
+    // 其他所有情况都是敌对
+    // 包括：玩家 vs 敌人、玩家 vs 中立、友军 vs 敌人、友军 vs 中立、中立 vs 任何阵营
     return true;
 }
 

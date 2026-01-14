@@ -190,53 +190,73 @@ void UBTService_XBDummyLeaderAI::TickNode(UBehaviorTreeComponent& OwnerComp, uin
 		{
 			NextSearchTime = CurrentTime + AIConfig.TargetSearchInterval;
 
-			AXBCharacterBase* FoundLeader = nullptr;
-			if (FindEnemyLeader(Dummy, FoundLeader))
+			// 🔧 新增 - 中立阵营不主动搜索敌人，只保留受击反击逻辑
+			const bool bIsNeutral = (Dummy->GetFaction() == EXBFaction::Neutral);
+			
+			if (!bIsNeutral)
 			{
-				Blackboard->SetValueAsObject(TargetLeaderKey, FoundLeader);
-				Blackboard->SetValueAsBool(InCombatKey, true);
-				// 🔧 修改 - 仅进入追击态，士兵战斗状态等待主将攻击触发
-				// 为什么要拆分：主将靠近时先行判断攻击条件，避免士兵提前冲锋
-				bHadCombatTarget = true;
-
-				UE_LOG(LogXBAI, Log, TEXT("假人主将 %s 发现敌方主将并进入战斗: %s"),
-					*Dummy->GetName(), *FoundLeader->GetName());
-			}
-			else
-			{
-				// 🔧 修改 - 无视野敌人时尝试根据受击来源反击
-				// 为什么要反击：让假人对最近的攻击来源做出响应
-				AXBCharacterBase* DamageLeader = Dummy->GetLastDamageLeader();
-				const bool bShouldCounterAttack =
-					DamageLeader &&
-					!DamageLeader->IsDead() &&
-					!DamageLeader->IsHiddenInBush() &&
-					(Dummy->GetFaction() == EXBFaction::Neutral ||
-						UXBBlueprintFunctionLibrary::AreActorsHostile(Dummy, DamageLeader));
-
-				if (bShouldCounterAttack)
+				// 非中立阵营执行主动搜索
+				AXBCharacterBase* FoundLeader = nullptr;
+				if (FindEnemyLeader(Dummy, FoundLeader))
 				{
-					Blackboard->SetValueAsObject(TargetLeaderKey, DamageLeader);
+					Blackboard->SetValueAsObject(TargetLeaderKey, FoundLeader);
 					Blackboard->SetValueAsBool(InCombatKey, true);
-					// 🔧 修改 - 反击时保持追击态，士兵参战仍由主将攻击事件触发
-					// 为什么要控制节奏：受到伤害后先由主将决定是否出手，再带动士兵
-					Dummy->ClearLastDamageLeader();
+					// 🔧 修改 - 仅进入追击态，士兵战斗状态等待主将攻击触发
+					// 为什么要拆分：主将靠近时先行判断攻击条件，避免士兵提前冲锋
 					bHadCombatTarget = true;
 
-					UE_LOG(LogXBAI, Log, TEXT("假人主将 %s 受到伤害后反击主将: %s"),
-						*Dummy->GetName(), *DamageLeader->GetName());
-					return;
+					UE_LOG(LogXBAI, Log, TEXT("假人主将 %s 发现敌方主将并进入战斗: %s"),
+						*Dummy->GetName(), *FoundLeader->GetName());
+					return; // 找到目标后直接返回
+				}
+			}
+
+			// 🔧 修改 - 受击反击逻辑（所有阵营通用，包括中立）
+			// 为什么要反击：让假人对最近的攻击来源做出响应
+			AXBCharacterBase* DamageLeader = Dummy->GetLastDamageLeader();
+			const bool bShouldCounterAttack =
+				DamageLeader &&
+				!DamageLeader->IsDead() &&
+				!DamageLeader->IsHiddenInBush() &&
+				(Dummy->GetFaction() == EXBFaction::Neutral ||
+					UXBBlueprintFunctionLibrary::AreActorsHostile(Dummy, DamageLeader));
+
+			if (bShouldCounterAttack)
+			{
+				// 中立阵营的反击范围检查（避免追击过远）
+				if (bIsNeutral)
+				{
+					const float DistToAttacker = FVector::Dist(Dummy->GetActorLocation(), DamageLeader->GetActorLocation());
+					if (DistToAttacker > AIConfig.VisionRange * 1.5f)
+					{
+						// 超出反击范围，清除受击记录
+						Dummy->ClearLastDamageLeader();
+						UE_LOG(LogXBAI, Verbose, TEXT("中立假人 %s 受击者太远(%.1f)，不反击"), 
+							*Dummy->GetName(), DistToAttacker);
+						return;
+					}
 				}
 
-				Blackboard->SetValueAsBool(InCombatKey, false);
-				if (bHadCombatTarget)
-				{
-					// 🔧 修改 - 从战斗回归后重置行为中心
-					// 为什么要重置：避免回到旧目标位置导致跑偏
-					Dummy->ExitCombat();
-					HandleTargetLost(Dummy, Blackboard, false);
-					bHadCombatTarget = false;
-				}
+				Blackboard->SetValueAsObject(TargetLeaderKey, DamageLeader);
+				Blackboard->SetValueAsBool(InCombatKey, true);
+				// 🔧 修改 - 反击时保持追击态，士兵参战仍由主将攻击事件触发
+				// 为什么要控制节奏：受到伤害后先由主将决定是否出手，再带动士兵
+				Dummy->ClearLastDamageLeader();
+				bHadCombatTarget = true;
+
+				UE_LOG(LogXBAI, Log, TEXT("假人主将 %s 受到伤害后反击主将: %s"),
+					*Dummy->GetName(), *DamageLeader->GetName());
+				return;
+			}
+
+			Blackboard->SetValueAsBool(InCombatKey, false);
+			if (bHadCombatTarget)
+			{
+				// 🔧 修改 - 从战斗回归后重置行为中心
+				// 为什么要重置：避免回到旧目标位置导致跑偏
+				Dummy->ExitCombat();
+				HandleTargetLost(Dummy, Blackboard, false);
+				bHadCombatTarget = false;
 			}
 		}
 	}
