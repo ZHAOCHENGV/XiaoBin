@@ -15,6 +15,7 @@
 #include "InputActionValue.h"
 #include "InputMappingContext.h"
 #include "Input/XBInputConfig.h"
+#include "Camera/CameraComponent.h"
 #include "Character/XBPlayerCharacter.h"
 #include "Character/XBConfigCameraPawn.h"
 #include "Game/XBGameMode.h"

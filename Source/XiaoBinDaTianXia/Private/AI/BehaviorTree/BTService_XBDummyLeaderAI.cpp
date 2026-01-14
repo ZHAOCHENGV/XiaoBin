@@ -505,7 +505,7 @@ void UBTService_XBDummyLeaderAI::UpdateBehaviorDestination(AXBDummyCharacter* Du
 		const FVector BehaviorCenter = Blackboard->GetValueAsVector(BehaviorCenterKey);
 		FNavLocation RandomLocation;
 		if (NavSystem->GetRandomPointInNavigableRadius(BehaviorCenter, AIConfig.WanderRadius, RandomLocation))
-		{
+		{	
 			Blackboard->SetValueAsVector(BehaviorDestinationKey, RandomLocation.Location);
 			NextWanderTime = CurrentTime + AIConfig.WanderInterval;
 			UE_LOG(LogXBAI, Verbose, TEXT("假人AI随机移动更新目的地: %s"), *Dummy->GetName());

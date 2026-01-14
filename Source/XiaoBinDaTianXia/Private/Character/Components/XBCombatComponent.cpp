@@ -16,6 +16,7 @@
  */
 
 #include "Character/Components/XBCombatComponent.h"
+#include "Character/XBCharacterBase.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
 #include "GAS/XBAttributeSet.h"
@@ -307,6 +308,11 @@ bool UXBCombatComponent::PerformBasicAttack()
 
     SetCurrentAttackType(EXBAttackType::BasicAttack);
     SetAttackingState(true);
+
+    if (AXBCharacterBase* OwnerLeader = Cast<AXBCharacterBase>(GetOwner()))
+    {
+        OwnerLeader->NotifyAttackStarted();
+    }
     
     BasicAttackCooldownTimer = BasicAttackConfig.Cooldown;
 
@@ -373,6 +379,11 @@ bool UXBCombatComponent::PerformSpecialSkill()
 
     SetCurrentAttackType(EXBAttackType::SpecialSkill);
     SetAttackingState(true);
+
+    if (AXBCharacterBase* OwnerLeader = Cast<AXBCharacterBase>(GetOwner()))
+    {
+        OwnerLeader->NotifyAttackStarted();
+    }
     
     SkillCooldownTimer = SpecialSkillConfig.Cooldown;
 

@@ -246,6 +246,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "战斗")
     virtual void ExitCombat();
 
+    /** @brief 主将开始攻击时通知士兵进入战斗 */
+    void NotifyAttackStarted();
+
     UFUNCTION(BlueprintPure, Category = "战斗")
     bool IsInCombat() const { return bIsInCombat; }
 
