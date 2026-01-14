@@ -18,6 +18,8 @@
 #include "NavigationSystem.h"
 #include "Soldier/XBSoldierCharacter.h"
 #include "Components/SplineComponent.h"
+#include "CollisionQueryParams.h"
+#include "Engine/OverlapResult.h"
 #include "Utils/XBBlueprintFunctionLibrary.h"
 #include "Utils/XBLogCategories.h"
 
@@ -130,9 +132,15 @@ void UBTService_XBDummyLeaderAI::TickNode(UBehaviorTreeComponent& OwnerComp, uin
 		bForwardMoveAfterLost = false;
 		ForwardMoveEndTime = 0.0f;
 
-		// 🔧 修改 - 目标进入草丛或全灭时立刻清理目标
+		// 🔧 修改 - 目标进入草丛、全灭或超出视野范围时立刻清理目标
 		// 为什么要清理：目标不可见或已全灭时继续追击会造成无效移动/卡死
-		if (CurrentTarget->IsHiddenInBush() || IsLeaderArmyEliminated(CurrentTarget))
+		const float DistToTarget = FVector::Dist(Dummy->GetActorLocation(), CurrentTarget->GetActorLocation());
+		// 给 20% 的追击缓冲距离，避免在边缘反复切换
+		const float LoseTargetRange = AIConfig.VisionRange * 1.2f;
+
+		if (CurrentTarget->IsHiddenInBush() || 
+			IsLeaderArmyEliminated(CurrentTarget) ||
+			DistToTarget > LoseTargetRange)
 		{
 			// 🔧 修改 - 丢失目标时需要触发正前方行走逻辑
 			const bool bShouldForwardMove = true;
@@ -143,7 +151,16 @@ void UBTService_XBDummyLeaderAI::TickNode(UBehaviorTreeComponent& OwnerComp, uin
 			Dummy->ExitCombat();
 			HandleTargetLost(Dummy, Blackboard, bShouldForwardMove);
 			bHadCombatTarget = false;
-			UE_LOG(LogXBAI, Log, TEXT("假人AI目标丢失，已清理目标并进入回归流程: %s"), *Dummy->GetName());
+			
+			if (DistToTarget > LoseTargetRange)
+			{
+				UE_LOG(LogXBAI, Log, TEXT("假人AI目标超出视野范围(%.1f > %.1f)，已丢失目标: %s"), 
+					DistToTarget, LoseTargetRange, *Dummy->GetName());
+			}
+			else
+			{
+				UE_LOG(LogXBAI, Log, TEXT("假人AI目标丢失(草丛/全灭)，已清理目标并进入回归流程: %s"), *Dummy->GetName());
+			}
 		}
 		else
 		{
@@ -155,8 +172,8 @@ void UBTService_XBDummyLeaderAI::TickNode(UBehaviorTreeComponent& OwnerComp, uin
 			// 🔧 修改 - 战斗时将行为目的地锁定为目标位置，确保主动靠近
 			// 为什么要写入：MoveTo/行为树需要明确目的地，避免仍使用漫游目标
 			Blackboard->SetValueAsVector(BehaviorDestinationKey, CurrentTarget->GetActorLocation());
-			UE_LOG(LogXBAI, Verbose, TEXT("假人AI战斗靠近目标，更新目的地: %s -> %s"),
-				*Dummy->GetName(), *CurrentTarget->GetName());
+			// 降低日志频率
+			// UE_LOG(LogXBAI, Verbose, TEXT("假人AI战斗靠近目标，更新目的地: %s -> %s"), *Dummy->GetName(), *CurrentTarget->GetName());
 		}
 	}
 
@@ -289,8 +306,8 @@ void UBTService_XBDummyLeaderAI::InitializeBlackboard(AXBDummyCharacter* Dummy, 
  * @param  Dummy 假人主将
  * @param  OutLeader 输出主将
  * @return 是否找到
- * @note   详细流程分析: 感知查询 -> 过滤无效目标 -> 选择最近主将
- *         性能/架构注意事项: 只遍历感知结果
+ * @note   详细流程分析: 球形检测 -> 阵营过滤 -> 草丛过滤 -> 选择最近
+ *         性能/架构注意事项: 直接使用球形检测确保实时位置准确
  */
 bool UBTService_XBDummyLeaderAI::FindEnemyLeader(AXBDummyCharacter* Dummy, AXBCharacterBase*& OutLeader) const
 {
@@ -306,37 +323,66 @@ bool UBTService_XBDummyLeaderAI::FindEnemyLeader(AXBDummyCharacter* Dummy, AXBCh
 		return false;
 	}
 
-	UXBSoldierPerceptionSubsystem* Perception = World->GetSubsystem<UXBSoldierPerceptionSubsystem>();
-	if (!Perception)
-	{
-		return false;
-	}
-
 	const FXBLeaderAIConfig& AIConfig = Dummy->GetLeaderAIConfig();
-	FXBPerceptionResult Result;
-	// 🔧 修改 - 感知查询失败直接返回，避免空结果被误判
-	if (!Perception->QueryEnemiesInRadius(Dummy, Dummy->GetActorLocation(), AIConfig.VisionRange, Dummy->GetFaction(), Result))
+	const FVector Origin = Dummy->GetActorLocation();
+	const float VisionRange = AIConfig.VisionRange;
+	const EXBFaction MyFaction = Dummy->GetFaction();
+
+	// ✨ 使用球形重叠检测
+	TArray<FOverlapResult> OverlapResults;
+	FCollisionQueryParams QueryParams;
+	QueryParams.bTraceComplex = false;
+	QueryParams.AddIgnoredActor(Dummy);
+
+	FCollisionObjectQueryParams ObjectParams;
+	ObjectParams.AddObjectTypesToQuery(ECC_Pawn);
+
+	if (!World->OverlapMultiByObjectType(
+		OverlapResults,
+		Origin,
+		FQuat::Identity,
+		ObjectParams,
+		FCollisionShape::MakeSphere(VisionRange),
+		QueryParams))
 	{
 		return false;
 	}
 
 	float BestDistance = MAX_FLT;
-	for (AActor* Actor : Result.DetectedEnemies)
+	for (const FOverlapResult& Result : OverlapResults)
 	{
-		// 🔧 修改 - 只认主将，过滤非主将对象
+		AActor* Actor = Result.GetActor();
+		if (!Actor || !IsValid(Actor))
+		{
+			continue;
+		}
+
+		// 🔧 只认主将，过滤非主将对象
 		AXBCharacterBase* CandidateLeader = Cast<AXBCharacterBase>(Actor);
 		if (!CandidateLeader || CandidateLeader == Dummy)
 		{
 			continue;
 		}
 
-		// 🔧 修改 - 草丛隐身或死亡目标不可锁定
-		if (CandidateLeader->IsDead() || CandidateLeader->IsHiddenInBush())
+		// 🔧 阵营判断 - 只攻击敌对阵营
+		if (!UXBBlueprintFunctionLibrary::AreFactionsHostile(MyFaction, CandidateLeader->GetFaction()))
 		{
 			continue;
 		}
 
-		const float Distance = FVector::Dist(Dummy->GetActorLocation(), CandidateLeader->GetActorLocation());
+		// 🔧 过滤死亡目标
+		if (CandidateLeader->IsDead())
+		{
+			continue;
+		}
+
+		// 🔧 草丛隐身目标不可锁定
+		if (CandidateLeader->IsHiddenInBush())
+		{
+			continue;
+		}
+
+		const float Distance = FVector::Dist(Origin, CandidateLeader->GetActorLocation());
 		if (Distance < BestDistance)
 		{
 			BestDistance = Distance;

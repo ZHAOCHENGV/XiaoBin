@@ -114,6 +114,14 @@ struct XIAOBINDATIANXIA_API FXBAbilityConfig
     /** @brief 冷却时间（秒），0表示无冷却 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "技能", meta = (DisplayName = "冷却时间", ClampMin = "0.0"))
     float Cooldown = 0.0f;
+
+    // ✨ 新增 - 攻击/释放范围（用于假人AI判断是否可释放）
+    /**
+     * @brief 攻击/释放范围
+     * @note 假人AI在目标进入此范围时才会释放该能力
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "技能", meta = (DisplayName = "攻击范围", ClampMin = "0.0"))
+    float AttackRange = 150.0f;
 };
 
 /**

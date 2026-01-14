@@ -27,7 +27,7 @@ UBTTask_XBDummyAttackTarget::UBTTask_XBDummyAttackTarget()
  * @param OwnerComp 行为树组件
  * @param NodeMemory 节点内存
  * @return 任务执行结果
- * @note   详细流程分析: 获取目标 -> 检查距离 -> 优先技能后普攻
+ * @note   详细流程分析: 获取目标 -> 检查技能范围/冷却 -> 检查普攻范围/冷却 -> 释放能力
  *         性能/架构注意事项: 任务仅执行一次，不循环
  */
 EBTNodeResult::Type UBTTask_XBDummyAttackTarget::ExecuteTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory)
@@ -67,24 +67,36 @@ EBTNodeResult::Type UBTTask_XBDummyAttackTarget::ExecuteTask(UBehaviorTreeCompon
 		return EBTNodeResult::Failed;
 	}
 
-	// 🔧 修改 - 仅在攻击范围内触发技能/普攻
-	if (!CombatComp->IsTargetInRange(TargetLeader))
-	{
-		return EBTNodeResult::Failed;
-	}
+	// ✨ 新增 - 获取攻击范围和冷却状态
+	const bool bSkillOnCooldown = CombatComp->IsSkillOnCooldown();
+	const bool bBasicOnCooldown = CombatComp->IsBasicAttackOnCooldown();
+	const bool bInSkillRange = CombatComp->IsTargetInSkillRange(TargetLeader);
+	const bool bInBasicRange = CombatComp->IsTargetInBasicAttackRange(TargetLeader);
 
-	// 🔧 修改 - 优先技能，冷却后释放普攻
-	if (!CombatComp->IsSkillOnCooldown())
+	// ✨ 新增 - 优先检查技能：在范围内且不冷却
+	if (bInSkillRange && !bSkillOnCooldown)
 	{
 		CombatComp->PerformSpecialSkill();
+		UE_LOG(LogXBAI, Log, TEXT("假人 %s 释放技能"), *Dummy->GetName());
 		return EBTNodeResult::Succeeded;
 	}
 
-	if (!CombatComp->IsBasicAttackOnCooldown())
+	// ✨ 新增 - 检查普攻：在范围内且不冷却
+	if (bInBasicRange && !bBasicOnCooldown)
 	{
 		CombatComp->PerformBasicAttack();
+		UE_LOG(LogXBAI, Log, TEXT("假人 %s 释放普攻"), *Dummy->GetName());
 		return EBTNodeResult::Succeeded;
 	}
+
+	// ✨ 新增 - 两者都在冷却或不在范围内，返回失败让行为树继续靠近
+	UE_LOG(LogXBAI, Verbose, TEXT("假人 %s 无法攻击: 技能冷却=%s 普攻冷却=%s 技能范围=%s 普攻范围=%s"),
+		*Dummy->GetName(),
+		bSkillOnCooldown ? TEXT("是") : TEXT("否"),
+		bBasicOnCooldown ? TEXT("是") : TEXT("否"),
+		bInSkillRange ? TEXT("是") : TEXT("否"),
+		bInBasicRange ? TEXT("是") : TEXT("否"));
 
 	return EBTNodeResult::Failed;
 }
+

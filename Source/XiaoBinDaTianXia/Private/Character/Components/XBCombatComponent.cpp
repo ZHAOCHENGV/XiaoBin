@@ -556,3 +556,71 @@ bool UXBCombatComponent::IsTargetInRange(AActor* Target) const
     float Distance = FVector::Dist(Owner->GetActorLocation(), Target->GetActorLocation());
     return Distance <= GetScaledAttackRange();
 }
+
+// ✨ 新增 - 获取普攻攻击范围
+/**
+ * @brief 获取普攻攻击范围
+ * @return 普攻攻击范围（应用缩放后）
+ * @note 从 BasicAttackConfig.AttackRange 读取并应用缩放倍率
+ */
+float UXBCombatComponent::GetBasicAttackRange() const
+{
+    return BasicAttackConfig.AttackRange * AttackRangeScaleMultiplier;
+}
+
+// ✨ 新增 - 获取技能攻击范围
+/**
+ * @brief 获取技能攻击范围
+ * @return 技能攻击范围（应用缩放后）
+ * @note 从 SpecialSkillConfig.AttackRange 读取并应用缩放倍率
+ */
+float UXBCombatComponent::GetSkillAttackRange() const
+{
+    return SpecialSkillConfig.AttackRange * AttackRangeScaleMultiplier;
+}
+
+// ✨ 新增 - 检查目标是否在普攻范围内
+/**
+ * @brief 检查目标是否在普攻范围内
+ * @param Target 目标Actor
+ * @return 是否在范围内
+ */
+bool UXBCombatComponent::IsTargetInBasicAttackRange(AActor* Target) const
+{
+    if (!Target)
+    {
+        return false;
+    }
+
+    AActor* Owner = GetOwner();
+    if (!Owner)
+    {
+        return false;
+    }
+
+    float Distance = FVector::Dist(Owner->GetActorLocation(), Target->GetActorLocation());
+    return Distance <= GetBasicAttackRange();
+}
+
+// ✨ 新增 - 检查目标是否在技能范围内
+/**
+ * @brief 检查目标是否在技能范围内
+ * @param Target 目标Actor
+ * @return 是否在范围内
+ */
+bool UXBCombatComponent::IsTargetInSkillRange(AActor* Target) const
+{
+    if (!Target)
+    {
+        return false;
+    }
+
+    AActor* Owner = GetOwner();
+    if (!Owner)
+    {
+        return false;
+    }
+
+    float Distance = FVector::Dist(Owner->GetActorLocation(), Target->GetActorLocation());
+    return Distance <= GetSkillAttackRange();
+}

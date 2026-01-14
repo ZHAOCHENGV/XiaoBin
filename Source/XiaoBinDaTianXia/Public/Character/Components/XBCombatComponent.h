@@ -171,6 +171,22 @@ public:
     UFUNCTION(BlueprintCallable, Category = "战斗", meta = (DisplayName = "目标在攻击范围内"))
     bool IsTargetInRange(AActor* Target) const;
 
+    // ✨ 新增 - 获取普攻攻击范围
+    UFUNCTION(BlueprintPure, Category = "战斗", meta = (DisplayName = "获取普攻攻击范围"))
+    float GetBasicAttackRange() const;
+
+    // ✨ 新增 - 获取技能攻击范围
+    UFUNCTION(BlueprintPure, Category = "战斗", meta = (DisplayName = "获取技能攻击范围"))
+    float GetSkillAttackRange() const;
+
+    // ✨ 新增 - 检查目标是否在普攻范围内
+    UFUNCTION(BlueprintCallable, Category = "战斗", meta = (DisplayName = "目标在普攻范围内"))
+    bool IsTargetInBasicAttackRange(AActor* Target) const;
+
+    // ✨ 新增 - 检查目标是否在技能范围内
+    UFUNCTION(BlueprintCallable, Category = "战斗", meta = (DisplayName = "目标在技能范围内"))
+    bool IsTargetInSkillRange(AActor* Target) const;
+
 protected:
     UPROPERTY(BlueprintReadOnly, Category = "战斗")
     float AttackRangeScaleMultiplier = 1.0f;

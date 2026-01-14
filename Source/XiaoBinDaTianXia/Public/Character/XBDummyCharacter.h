@@ -9,6 +9,7 @@
 class AXBDummyAIController;
 class USplineComponent;
 class AActor;
+class UXBDummyAIDebugComponent;
 
 UCLASS()
 class XIAOBINDATIANXIA_API AXBDummyCharacter : public AXBCharacterBase
@@ -109,6 +110,10 @@ private:
 
 	// ✨ 新增 - 受击响应定时器
 	FTimerHandle DamageResponseTimerHandle;
+
+	// ✨ 新增 - AI调试组件
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "调试", meta = (DisplayName = "AI调试组件", AllowPrivateAccess = "true"))
+	TObjectPtr<UXBDummyAIDebugComponent> AIDebugComponent;
 
 	// ✨ 新增 - 延迟后触发攻击请求
 	/**

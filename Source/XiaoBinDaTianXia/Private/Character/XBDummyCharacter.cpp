@@ -4,6 +4,7 @@
 #include "Public/Character/XBDummyCharacter.h"
 #include "AI/XBDummyAIController.h"
 #include "Character/Components/XBCombatComponent.h"
+#include "Character/Components/XBDummyAIDebugComponent.h"
 #include "Soldier/XBSoldierCharacter.h"
 #include "Utils/XBBlueprintFunctionLibrary.h"
 #include "Utils/XBLogCategories.h"
@@ -21,6 +22,9 @@ AXBDummyCharacter::AXBDummyCharacter()
 	// 🔧 修改 - 绑定假人专用AI控制器，确保行为树可运行
 	AIControllerClass = AXBDummyAIController::StaticClass();
 	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
+
+	// ✨ 新增 - 创建AI调试组件
+	AIDebugComponent = CreateDefaultSubobject<UXBDummyAIDebugComponent>(TEXT("AIDebugComponent"));
 }
 
 
