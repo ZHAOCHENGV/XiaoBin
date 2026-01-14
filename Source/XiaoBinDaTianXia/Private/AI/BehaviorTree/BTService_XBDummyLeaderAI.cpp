@@ -336,6 +336,9 @@ bool UBTService_XBDummyLeaderAI::FindEnemyLeader(AXBDummyCharacter* Dummy, AXBCh
 
 	FCollisionObjectQueryParams ObjectParams;
 	ObjectParams.AddObjectTypesToQuery(ECC_Pawn);
+	// ✨ 添加自定义碰撞通道：ECC_GameTraceChannel4 = Leader, ECC_GameTraceChannel3 = Soldier
+	ObjectParams.AddObjectTypesToQuery(ECC_GameTraceChannel4); 
+	ObjectParams.AddObjectTypesToQuery(ECC_GameTraceChannel3);
 
 	if (!World->OverlapMultiByObjectType(
 		OverlapResults,

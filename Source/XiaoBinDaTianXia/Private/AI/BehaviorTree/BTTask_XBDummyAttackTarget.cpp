@@ -73,6 +73,20 @@ EBTNodeResult::Type UBTTask_XBDummyAttackTarget::ExecuteTask(UBehaviorTreeCompon
 	const bool bInSkillRange = CombatComp->IsTargetInSkillRange(TargetLeader);
 	const bool bInBasicRange = CombatComp->IsTargetInBasicAttackRange(TargetLeader);
 
+	// 🔧 修改 - 直接设置旋转朝向目标，而非使用异步的SetFocus
+	// SetFocus是渐变转向，无法保证攻击前完成转向
+	const FVector ToTarget = TargetLeader->GetActorLocation() - Dummy->GetActorLocation();
+	if (!ToTarget.IsNearlyZero())
+	{
+		// 只旋转Yaw轴（水平方向），保持Pitch和Roll为0
+		const FRotator TargetRotation = FRotationMatrix::MakeFromX(ToTarget).Rotator();
+		const FRotator NewRotation(0.0f, TargetRotation.Yaw, 0.0f);
+		Dummy->SetActorRotation(NewRotation);
+		
+		UE_LOG(LogXBAI, Verbose, TEXT("假人 %s 转向目标，Yaw=%.1f"), 
+			*Dummy->GetName(), NewRotation.Yaw);
+	}
+
 	// ✨ 新增 - 优先检查技能：在范围内且不冷却
 	if (bInSkillRange && !bSkillOnCooldown)
 	{
