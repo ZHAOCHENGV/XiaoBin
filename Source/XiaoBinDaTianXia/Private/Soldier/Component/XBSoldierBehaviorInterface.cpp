@@ -513,17 +513,23 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
             continue;
         }
 
+
         if (bHasPreferredLeader && Candidate->GetLeaderCharacter() != PreferredEnemyLeader)
         {
             continue;
         }
 
-        // 🔧 修改 - 优先读取所属主将阵营，避免跨主将误伤
-        EXBFaction CandidateFaction = Candidate->GetFaction();
-        if (AXBCharacterBase* CandidateLeader = Candidate->GetLeaderCharacter())
+        // 🔧 新增 - 严重错误修复：士兵不能攻击未被招募的士兵（没有主将的士兵）
+        // 士兵只能对有主将且不同阵营的士兵发动攻击
+        AXBCharacterBase* CandidateLeader = Candidate->GetLeaderCharacter();
+        if (!CandidateLeader)
         {
-            CandidateFaction = CandidateLeader->GetFaction();
+            // 未招募的士兵（没有主将）不能被攻击
+            continue;
         }
+
+        // 🔧 修改 - 优先读取所属主将阵营，避免跨主将误伤
+        EXBFaction CandidateFaction = CandidateLeader->GetFaction();
         if (!UXBBlueprintFunctionLibrary::AreFactionsHostile(MyFaction, CandidateFaction))
         {
             continue;

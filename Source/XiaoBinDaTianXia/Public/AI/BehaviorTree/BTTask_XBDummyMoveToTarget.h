@@ -73,13 +73,13 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "黑板", meta = (DisplayName = "目标键"))
 	FBlackboardKeySelector TargetKey;
 
-	/** @brief 停止距离缩放（留出误差缓冲，避免边界抖动）*/
-	UPROPERTY(EditAnywhere, Category = "配置", meta = (DisplayName = "停止距离缩放", ClampMin = "0.5", ClampMax = "0.95"))
-	float StopDistanceScale = 0.85f;
-
 	/** @brief 目标位置更新间隔 */
 	UPROPERTY(EditAnywhere, Category = "配置", meta = (DisplayName = "位置更新间隔", ClampMin = "0.1"))
 	float TargetUpdateInterval = 0.3f;
+
+	/** @brief 碰撞缓冲距离，避免寻路精度问题 */
+	UPROPERTY(EditAnywhere, Category = "配置", meta = (DisplayName = "碰撞缓冲距离", ClampMin = "0.0", ClampMax = "20.0"))
+	float CollisionBuffer = 10.0f;
 
 private:
 	/**

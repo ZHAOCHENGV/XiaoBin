@@ -105,8 +105,9 @@ EBTNodeResult::Type UBTTask_XBDummyMoveToTarget::ExecuteTask(UBehaviorTreeCompon
 	}
 
 	// 发起移动请求
-	// 停止距离减去5.0f确保寻路不会停在边界外
-	const float NavStopDistance = FMath::Max(0.0f, OptimalStopDistance * StopDistanceScale - 5.0f);
+	// 🔧 修复 - 直接使用攻击范围作为停止距离，不再缩放
+	// 之前使用 StopDistanceScale 导致提前停止，假人无法到达攻击范围
+	const float NavStopDistance = FMath::Max(0.0f, OptimalStopDistance - CollisionBuffer);
 	
 	EPathFollowingRequestResult::Type MoveResult = AIController->MoveToActor(
 		Target,
@@ -122,7 +123,7 @@ EBTNodeResult::Type UBTTask_XBDummyMoveToTarget::ExecuteTask(UBehaviorTreeCompon
 	{
 		TargetUpdateTimer = 0.0f;
 		UE_LOG(LogXBAI, Log, TEXT("假人 %s 开始移动到目标，停止距离=%.1f"), 
-			*Dummy->GetName(), OptimalStopDistance);
+			*Dummy->GetName(), NavStopDistance);
 		return EBTNodeResult::InProgress;
 	}
 	else if (MoveResult == EPathFollowingRequestResult::AlreadyAtGoal)
@@ -220,7 +221,8 @@ void UBTTask_XBDummyMoveToTarget::TickTask(UBehaviorTreeComponent& OwnerComp, ui
 	{
 		TargetUpdateTimer = 0.0f;
 		
-		const float NavStopDistance = FMath::Max(0.0f, OptimalStopDistance * StopDistanceScale - 5.0f);
+		// 🔧 修复 - 直接使用攻击范围，不缩放
+		const float NavStopDistance = FMath::Max(0.0f, OptimalStopDistance - CollisionBuffer);
 		AIController->MoveToActor(Target, NavStopDistance, true, true, true, nullptr, true);
 	}
 }
@@ -244,9 +246,8 @@ EBTNodeResult::Type UBTTask_XBDummyMoveToTarget::AbortTask(UBehaviorTreeComponen
  */
 FString UBTTask_XBDummyMoveToTarget::GetStaticDescription() const
 {
-	return FString::Printf(TEXT("智能移动到目标\n目标键: %s\n停止距离缩放: %.2f"),
-		*TargetKey.SelectedKeyName.ToString(),
-		StopDistanceScale);
+	return FString::Printf(TEXT("智能移动到目标\n目标键: %s"),
+		*TargetKey.SelectedKeyName.ToString());
 }
 
 /**
