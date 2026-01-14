@@ -1113,6 +1113,30 @@ void AXBCharacterBase::UpdateAttackRangeScaling()
 
 // ==================== 战斗状态系统实现 ====================
 
+/**
+ * @brief  主将开始攻击时通知士兵进入战斗
+ * @param  无
+ * @return 无
+ * @note   详细流程分析: 校验死亡状态 -> 触发进入战斗 -> 取消无敌人脱战计时
+ *         性能/架构注意事项: 复用 EnterCombat 统一管理战斗计时与士兵状态，避免重复逻辑
+ */
+void AXBCharacterBase::NotifyAttackStarted()
+{
+    // 🔧 修改 - 死亡状态下不触发战斗逻辑，避免无效状态切换
+    if (bIsDead)
+    {
+        return;
+    }
+
+    // 🔧 修改 - 进入战斗由统一入口处理，确保士兵同步与计时器复用
+    EnterCombat();
+
+    // 🔧 修改 - 主将主动攻击时取消无敌人脱战计时，避免刚出手就退出战斗
+    CancelNoEnemyDisengage();
+
+    UE_LOG(LogXBCombat, Verbose, TEXT("主将 %s 开始攻击，已触发战斗状态"), *GetName());
+}
+
 void AXBCharacterBase::EnterCombat()
 {
     if (bIsDead)
