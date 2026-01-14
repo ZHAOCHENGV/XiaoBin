@@ -148,9 +148,8 @@ void UBTService_XBDummyLeaderAI::TickNode(UBehaviorTreeComponent& OwnerComp, uin
 		else
 		{
 			Blackboard->SetValueAsBool(InCombatKey, true);
-			// 🔧 修改 - 确保目标存在时进入战斗，带动士兵参战
-			// 为什么要强制进入战斗：避免黑板与角色状态不一致
-			Dummy->EnterCombat();
+			// 🔧 修改 - 仅标记行为树进入战斗靠近阶段，士兵参战延迟到主将真实攻击触发
+			// 为什么要延迟：避免仅因视野锁定就提前驱动士兵攻击，符合“主将先出手”的战斗节奏
 			bHadCombatTarget = true;
 
 			// 🔧 修改 - 战斗时将行为目的地锁定为目标位置，确保主动靠近
@@ -179,8 +178,8 @@ void UBTService_XBDummyLeaderAI::TickNode(UBehaviorTreeComponent& OwnerComp, uin
 			{
 				Blackboard->SetValueAsObject(TargetLeaderKey, FoundLeader);
 				Blackboard->SetValueAsBool(InCombatKey, true);
-				// 🔧 修改 - 进入战斗，确保士兵同步攻击逻辑
-				Dummy->EnterCombat();
+				// 🔧 修改 - 仅进入追击态，士兵战斗状态等待主将攻击触发
+				// 为什么要拆分：主将靠近时先行判断攻击条件，避免士兵提前冲锋
 				bHadCombatTarget = true;
 
 				UE_LOG(LogXBAI, Log, TEXT("假人主将 %s 发现敌方主将并进入战斗: %s"),
@@ -202,7 +201,8 @@ void UBTService_XBDummyLeaderAI::TickNode(UBehaviorTreeComponent& OwnerComp, uin
 				{
 					Blackboard->SetValueAsObject(TargetLeaderKey, DamageLeader);
 					Blackboard->SetValueAsBool(InCombatKey, true);
-					Dummy->EnterCombat();
+					// 🔧 修改 - 反击时保持追击态，士兵参战仍由主将攻击事件触发
+					// 为什么要控制节奏：受到伤害后先由主将决定是否出手，再带动士兵
 					Dummy->ClearLastDamageLeader();
 					bHadCombatTarget = true;
 
