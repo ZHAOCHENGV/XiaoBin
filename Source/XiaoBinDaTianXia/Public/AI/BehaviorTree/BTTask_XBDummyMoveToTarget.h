@@ -15,6 +15,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "AI/XBDummyAIType.h"
 #include "BehaviorTree/BTTaskNode.h"
 #include "BTTask_XBDummyMoveToTarget.generated.h"
 
@@ -73,6 +74,10 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "黑板", meta = (DisplayName = "目标键"))
 	FBlackboardKeySelector TargetKey;
 
+	/** @brief 选择的能力类型黑板键 */
+	UPROPERTY(EditAnywhere, Category = "黑板", meta = (DisplayName = "能力类型键"))
+	FBlackboardKeySelector AbilityTypeKey;
+
 	/** @brief 目标位置更新间隔 */
 	UPROPERTY(EditAnywhere, Category = "配置", meta = (DisplayName = "位置更新间隔", ClampMin = "0.1"))
 	float TargetUpdateInterval = 0.3f;
@@ -87,10 +92,15 @@ private:
 	 * @param CombatComp 战斗组件
 	 * @param Dummy 假人主将
 	 * @param Target 目标Actor
+	 * @param SelectedAbilityType 当前选择的能力类型
 	 * @return 最优停止距离（考虑技能/普攻范围和冷却状态）
-	 * @note 优先级：技能就绪 > 普攻就绪 > 最大范围等待
+	 * @note 优先级：已选择能力 > 技能就绪 > 普攻就绪 > 最大范围等待
 	 */
-	float CalculateOptimalStopDistance(UXBCombatComponent* CombatComp, AActor* Dummy, AActor* Target) const;
+	float CalculateOptimalStopDistance(
+		UXBCombatComponent* CombatComp,
+		AActor* Dummy,
+		AActor* Target,
+		EXBDummyLeaderAbilityType SelectedAbilityType) const;
 
 	/** @brief 目标位置更新计时器 */
 	float TargetUpdateTimer = 0.0f;

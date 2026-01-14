@@ -13,6 +13,7 @@
 #include "AI/XBSoldierPerceptionSubsystem.h"
 #include "AIController.h"
 #include "BehaviorTree/BlackboardComponent.h"
+#include "Character/Components/XBCombatComponent.h"
 #include "Character/XBDummyCharacter.h"
 #include "Character/XBCharacterBase.h"
 #include "NavigationSystem.h"
@@ -33,6 +34,7 @@ namespace XBDummyLeaderBlackboardKeys
 	static const FName BehaviorDestination(TEXT("BehaviorDestination"));
 	static const FName MoveMode(TEXT("MoveMode"));
 	static const FName RouteIndex(TEXT("RoutePointIndex"));
+	static const FName SelectedAbilityType(TEXT("SelectedAbilityType"));
 }
 
 UBTService_XBDummyLeaderAI::UBTService_XBDummyLeaderAI()
@@ -112,6 +114,7 @@ void UBTService_XBDummyLeaderAI::TickNode(UBehaviorTreeComponent& OwnerComp, uin
 	const FName InCombatKey = XBDummyLeaderBlackboardKeys::InCombat;
 	const FName MoveModeKey = XBDummyLeaderBlackboardKeys::MoveMode;
 	const FName BehaviorDestinationKey = XBDummyLeaderBlackboardKeys::BehaviorDestination;
+	const FName SelectedAbilityTypeKey = XBDummyLeaderBlackboardKeys::SelectedAbilityType;
 
 	// 🔧 修改 - 同步数据表移动模式到黑板，保证行为树与配置一致
 	// 为什么要每帧比对：配置可能在运行时由外部覆盖（例如关卡/玩法热更新）
@@ -146,6 +149,8 @@ void UBTService_XBDummyLeaderAI::TickNode(UBehaviorTreeComponent& OwnerComp, uin
 			const bool bShouldForwardMove = true;
 			Blackboard->SetValueAsObject(TargetLeaderKey, nullptr);
 			Blackboard->SetValueAsBool(InCombatKey, false);
+			// 🔧 修改 - 目标丢失时清理能力选择，避免残留导致错误攻击范围
+			Blackboard->SetValueAsInt(SelectedAbilityTypeKey, static_cast<int32>(EXBDummyLeaderAbilityType::None));
 			// 🔧 修改 - 退出战斗时同步主将与士兵状态
 			// 为什么要退出战斗：让士兵回归跟随/编队而非继续战斗逻辑
 			Dummy->ExitCombat();
@@ -172,6 +177,9 @@ void UBTService_XBDummyLeaderAI::TickNode(UBehaviorTreeComponent& OwnerComp, uin
 			// 🔧 修改 - 战斗时将行为目的地锁定为目标位置，确保主动靠近
 			// 为什么要写入：MoveTo/行为树需要明确目的地，避免仍使用漫游目标
 			Blackboard->SetValueAsVector(BehaviorDestinationKey, CurrentTarget->GetActorLocation());
+			// ✨ 新增 - 在战斗阶段选择一个可用能力并写入黑板
+			// 为什么要在服务中选择：确保移动任务与攻击任务统一使用同一能力范围
+			SelectCombatAbility(Dummy, Blackboard, CurrentTarget);
 			// 降低日志频率
 			// UE_LOG(LogXBAI, Verbose, TEXT("假人AI战斗靠近目标，更新目的地: %s -> %s"), *Dummy->GetName(), *CurrentTarget->GetName());
 		}
@@ -250,6 +258,8 @@ void UBTService_XBDummyLeaderAI::TickNode(UBehaviorTreeComponent& OwnerComp, uin
 			}
 
 			Blackboard->SetValueAsBool(InCombatKey, false);
+			// 🔧 修改 - 清理能力选择，保证下次进入战斗重新选择
+			Blackboard->SetValueAsInt(SelectedAbilityTypeKey, static_cast<int32>(EXBDummyLeaderAbilityType::None));
 			if (bHadCombatTarget)
 			{
 				// 🔧 修改 - 从战斗回归后重置行为中心
@@ -306,6 +316,7 @@ void UBTService_XBDummyLeaderAI::InitializeBlackboard(AXBDummyCharacter* Dummy, 
 	const FName MoveModeKey = XBDummyLeaderBlackboardKeys::MoveMode;
 	const FName RouteIndexKey = XBDummyLeaderBlackboardKeys::RouteIndex;
 	const FName InCombatKey = XBDummyLeaderBlackboardKeys::InCombat;
+	const FName SelectedAbilityTypeKey = XBDummyLeaderBlackboardKeys::SelectedAbilityType;
 
 	// 🔧 修改 - 写入初始位置和行为中心，保证站立/随机移动有基准
 	// 为什么要写入：避免黑板初始值为零导致行为目标无效
@@ -316,9 +327,74 @@ void UBTService_XBDummyLeaderAI::InitializeBlackboard(AXBDummyCharacter* Dummy, 
 	Blackboard->SetValueAsInt(RouteIndexKey, 0);
 	Blackboard->SetValueAsBool(InCombatKey, false);
 	Blackboard->SetValueAsVector(BehaviorDestinationKey, HomeLocation);
+	Blackboard->SetValueAsInt(SelectedAbilityTypeKey, static_cast<int32>(EXBDummyLeaderAbilityType::None));
 
 	UE_LOG(LogXBAI, Log, TEXT("假人AI黑板初始化完成: Dummy=%s, MoveMode=%d"),
 		*Dummy->GetName(), static_cast<int32>(AIConfig.MoveMode));
+}
+
+/**
+ * @brief  选择当前战斗阶段的能力
+ * @param  Dummy 假人主将
+ * @param  Blackboard 黑板组件
+ * @param  Target 当前目标
+ * @return 选择的能力类型
+ * @note   详细流程分析: 校验当前选择 -> 冷却判断 -> 选择可用能力写入黑板
+ *         性能/架构注意事项: 仅在有目标时调用，避免频繁无效写入
+ */
+EXBDummyLeaderAbilityType UBTService_XBDummyLeaderAI::SelectCombatAbility(
+	AXBDummyCharacter* Dummy,
+	UBlackboardComponent* Blackboard,
+	AXBCharacterBase* Target)
+{
+	if (!Dummy || !Blackboard || !Target)
+	{
+		return EXBDummyLeaderAbilityType::None;
+	}
+
+	UXBCombatComponent* CombatComp = Dummy->GetCombatComponent();
+	if (!CombatComp)
+	{
+		UE_LOG(LogXBAI, Warning, TEXT("假人AI选择能力失败：战斗组件无效，Dummy=%s"), *Dummy->GetName());
+		return EXBDummyLeaderAbilityType::None;
+	}
+
+	const FName SelectedAbilityTypeKey = XBDummyLeaderBlackboardKeys::SelectedAbilityType;
+	const EXBDummyLeaderAbilityType CurrentType =
+		static_cast<EXBDummyLeaderAbilityType>(Blackboard->GetValueAsInt(SelectedAbilityTypeKey));
+
+	// 🔧 修改 - 若当前选择仍可用，保持不变，避免频繁切换能力导致移动抖动
+	const bool bCurrentSkillUsable = (CurrentType == EXBDummyLeaderAbilityType::SpecialSkill) && !CombatComp->IsSkillOnCooldown();
+	const bool bCurrentBasicUsable = (CurrentType == EXBDummyLeaderAbilityType::BasicAttack) && !CombatComp->IsBasicAttackOnCooldown();
+	if (bCurrentSkillUsable || bCurrentBasicUsable)
+	{
+		return CurrentType;
+	}
+
+	// ✨ 新增 - 按优先级选择可用能力：技能优先，其次普攻
+	// 为什么要优先技能：高价值能力先释放，符合主将战斗策略
+	EXBDummyLeaderAbilityType NewType = EXBDummyLeaderAbilityType::None;
+	if (!CombatComp->IsSkillOnCooldown())
+	{
+		NewType = EXBDummyLeaderAbilityType::SpecialSkill;
+	}
+	else if (!CombatComp->IsBasicAttackOnCooldown())
+	{
+		NewType = EXBDummyLeaderAbilityType::BasicAttack;
+	}
+
+	Blackboard->SetValueAsInt(SelectedAbilityTypeKey, static_cast<int32>(NewType));
+
+	if (NewType != EXBDummyLeaderAbilityType::None)
+	{
+		UE_LOG(LogXBAI, Log, TEXT("假人AI选择能力: Dummy=%s, AbilityType=%d"), *Dummy->GetName(), static_cast<int32>(NewType));
+	}
+	else
+	{
+		UE_LOG(LogXBAI, Verbose, TEXT("假人AI无可用能力，等待冷却: Dummy=%s"), *Dummy->GetName());
+	}
+
+	return NewType;
 }
 
 /**

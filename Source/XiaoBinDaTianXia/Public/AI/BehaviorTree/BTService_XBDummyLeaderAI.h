@@ -11,6 +11,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "AI/XBDummyAIType.h"
 #include "BehaviorTree/BTService.h"
 #include "BTService_XBDummyLeaderAI.generated.h"
 
@@ -114,6 +115,17 @@ private:
 	 *         性能/架构注意事项: 仅在回归时执行
 	 */
 	void ResetRouteIndexToNearest(AXBDummyCharacter* Dummy, UBlackboardComponent* Blackboard, USplineComponent* SplineComp);
+
+	/**
+	 * @brief  选择当前战斗阶段的能力
+	 * @param  Dummy 假人主将
+	 * @param  Blackboard 黑板组件
+	 * @param  Target 当前目标
+	 * @return 选择的能力类型
+	 * @note   详细流程分析: 校验当前选择 -> 冷却判断 -> 选择可用能力写入黑板
+	 *         性能/架构注意事项: 仅在有目标时调用，避免频繁无效写入
+	 */
+	EXBDummyLeaderAbilityType SelectCombatAbility(AXBDummyCharacter* Dummy, UBlackboardComponent* Blackboard, AXBCharacterBase* Target);
 
 	/** @brief 下一次搜索时间 */
 	float NextSearchTime = 0.0f;
