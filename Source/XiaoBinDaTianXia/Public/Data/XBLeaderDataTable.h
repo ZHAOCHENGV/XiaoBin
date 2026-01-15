@@ -58,6 +58,10 @@ struct XIAOBINDATIANXIA_API FXBLeaderAIConfig
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|感知", meta = (DisplayName = "视野范围", ClampMin = "100.0"))
     float VisionRange = 2000.0f;
 
+    /** @brief 移动范围 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "移动范围", ClampMin = "100.0"))
+    float MoveRange = 1200.0f;
+
     /** @brief 目标检索间隔 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|感知", meta = (DisplayName = "目标检索间隔", ClampMin = "0.1"))
     float TargetSearchInterval = 0.5f;

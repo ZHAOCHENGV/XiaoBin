@@ -680,6 +680,8 @@ FString UXBSoldierDebugComponent::GetFactionName(EXBFaction Faction) const
         return TEXT("敌人");
     case EXBFaction::Ally:
         return TEXT("友军");
+    case EXBFaction::FreeForAll:
+        return TEXT("各自为战");
     default:
         return TEXT("未知");
     }

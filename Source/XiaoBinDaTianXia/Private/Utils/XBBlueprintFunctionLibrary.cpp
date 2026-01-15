@@ -22,6 +22,12 @@
 
 bool UXBBlueprintFunctionLibrary::AreFactionsHostile(EXBFaction FactionA, EXBFaction FactionB)
 {
+    // ?? 修改 - 各自为战与任何阵营敌对（包括自身）
+    if (FactionA == EXBFaction::FreeForAll || FactionB == EXBFaction::FreeForAll)
+    {
+        return true;
+    }
+
     // 相同阵营不敌对
     if (FactionA == FactionB)
     {
@@ -46,6 +52,12 @@ bool UXBBlueprintFunctionLibrary::AreFactionsHostile(EXBFaction FactionA, EXBFac
 
 bool UXBBlueprintFunctionLibrary::AreFactionsFriendly(EXBFaction FactionA, EXBFaction FactionB)
 {
+    // ?? 修改 - 各自为战不与任何阵营友好（包括自身）
+    if (FactionA == EXBFaction::FreeForAll || FactionB == EXBFaction::FreeForAll)
+    {
+        return false;
+    }
+
     // 相同阵营为友好
     if (FactionA == FactionB)
     {

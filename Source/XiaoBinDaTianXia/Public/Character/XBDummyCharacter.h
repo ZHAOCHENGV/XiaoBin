@@ -86,6 +86,14 @@ private:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI", meta = (DisplayName = "巡逻路线Actor", ExposeOnSpawn = "true", AllowPrivateAccess = "true"))
 	TObjectPtr<AActor> PatrolSplineActor;
 
+	// ? 新增 - 假人默认移动方式
+	/**
+	 * @brief 假人默认移动方式
+	 * @note  覆盖数据表中的 MoveMode，避免依赖表配置
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "默认移动方式", AllowPrivateAccess = "true"))
+	EXBLeaderAIMoveMode DummyMoveMode = EXBLeaderAIMoveMode::Stand;
+
 	// ✨ 新增 - 假人受击响应延迟
 	/**
 	 * @brief 受击响应延迟最小值

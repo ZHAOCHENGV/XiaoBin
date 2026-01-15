@@ -67,10 +67,10 @@ public:
      * @param FactionB 阵营B
      * @return 是否敌对
      * @note 规则：
-     *       - 相同阵营不敌对
-     *       - 中立阵营不与任何阵营敌对
+     *       - 各自为战与任何阵营敌对（包括自身）
+     *       - 相同阵营不敌对（各自为战除外）
      *       - 玩家/友军互不敌对
-     *       - 玩家/友军与敌人敌对
+     *       - 其他情况视为敌对（包含中立与其他阵营）
      */
     UFUNCTION(BlueprintPure, Category = "XB|阵营", meta = (DisplayName = "阵营是否敌对"))
     static bool AreFactionsHostile(EXBFaction FactionA, EXBFaction FactionB);

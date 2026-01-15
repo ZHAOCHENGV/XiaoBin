@@ -539,7 +539,8 @@ void UBTService_XBDummyLeaderAI::HandleTargetLost(AXBDummyCharacter* Dummy, UBla
 	{
 		// 🔧 修改 - 设定短时正前方行走，模拟“继续追击的惯性”
 		// 为什么要前进：让行为更加自然，避免目标一丢失就原地掉头
-		const float ForwardDistance = FMath::Max(AIConfig.WanderRadius, 300.0f);
+		const float MoveRange = (AIConfig.MoveRange > 0.0f) ? AIConfig.MoveRange : AIConfig.WanderRadius;
+		const float ForwardDistance = FMath::Max(MoveRange, 300.0f);
 		const FVector ForwardDestination = Dummy->GetActorLocation() + Dummy->GetActorForwardVector() * ForwardDistance;
 		Blackboard->SetValueAsVector(BehaviorDestinationKey, ForwardDestination);
 

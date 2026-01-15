@@ -21,6 +21,9 @@ AXBDummyCharacter::AXBDummyCharacter()
 	AIControllerClass = AXBDummyAIController::StaticClass();
 	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
 
+	// ?? 修改 - 默认假人主将阵营为“各自为战”
+	Faction = EXBFaction::FreeForAll;
+
 	// ✨ 新增 - 启用控制器旋转，以支持AI的SetFocus转向
 	// 这样AI控制器调用SetFocus时，角色会平滑转向目标
 	bUseControllerRotationYaw = true;
@@ -122,6 +125,9 @@ void AXBDummyCharacter::InitializeLeaderData()
 {
 	// 🔧 修改 - 假人仅使用父类通用初始化
 	Super::InitializeLeaderData();
+
+	// ?? 修改 - 覆盖假人移动方式，避免依赖数据表配置
+	CachedLeaderData.AIConfig.MoveMode = DummyMoveMode;
 
 	// 🔧 修改 - 初始化假人AI配置缓存，确保行为树读取到数据表AI配置
 	if (AXBDummyAIController* DummyAI = Cast<AXBDummyAIController>(GetController()))

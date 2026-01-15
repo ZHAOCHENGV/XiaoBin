@@ -26,7 +26,8 @@ enum class EXBFaction : uint8
     Neutral     UMETA(DisplayName = "中立"),
     Player      UMETA(DisplayName = "玩家"),
     Enemy       UMETA(DisplayName = "敌人"),
-    Ally        UMETA(DisplayName = "友军")
+    Ally        UMETA(DisplayName = "友军"),
+    FreeForAll  UMETA(DisplayName = "各自为战")
 };
 
 UENUM(BlueprintType)
