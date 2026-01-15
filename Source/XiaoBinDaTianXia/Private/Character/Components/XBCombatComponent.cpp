@@ -1,4 +1,4 @@
-﻿/* --- 完整文件代码 --- */
+/* --- 完整文件代码 --- */
 // Source/XiaoBinDaTianXia/Private/Character/Components/XBCombatComponent.cpp
 
 /**
@@ -553,8 +553,12 @@ bool UXBCombatComponent::IsTargetInRange(AActor* Target) const
         return false;
     }
 
-    float Distance = FVector::Dist(Owner->GetActorLocation(), Target->GetActorLocation());
-    return Distance <= GetScaledAttackRange();
+    const float CenterDistance = FVector::Dist(Owner->GetActorLocation(), Target->GetActorLocation());
+    const float OwnerRadius = Owner->GetSimpleCollisionRadius();
+    const float TargetRadius = Target->GetSimpleCollisionRadius();
+    const float EdgeDistance = CenterDistance - OwnerRadius - TargetRadius;
+
+    return EdgeDistance <= GetScaledAttackRange();
 }
 
 // ✨ 新增 - 获取普攻攻击范围
@@ -598,8 +602,14 @@ bool UXBCombatComponent::IsTargetInBasicAttackRange(AActor* Target) const
         return false;
     }
 
-    float Distance = FVector::Dist(Owner->GetActorLocation(), Target->GetActorLocation());
-    return Distance <= GetBasicAttackRange();
+    // 🔧 关键修复 - 使用边缘距离（中心距离 - 双方碰撞半径）
+    // AttackRange 是从自己边缘到目标边缘的距离
+    const float CenterDistance = FVector::Dist(Owner->GetActorLocation(), Target->GetActorLocation());
+    const float OwnerRadius = Owner->GetSimpleCollisionRadius();
+    const float TargetRadius = Target->GetSimpleCollisionRadius();
+    const float EdgeDistance = CenterDistance - OwnerRadius - TargetRadius;
+    
+    return EdgeDistance <= GetBasicAttackRange();
 }
 
 // ✨ 新增 - 检查目标是否在技能范围内
@@ -621,6 +631,12 @@ bool UXBCombatComponent::IsTargetInSkillRange(AActor* Target) const
         return false;
     }
 
-    float Distance = FVector::Dist(Owner->GetActorLocation(), Target->GetActorLocation());
-    return Distance <= GetSkillAttackRange();
+    // 🔧 关键修复 - 使用边缘距离（中心距离 - 双方碰撞半径）
+    // AttackRange 是从自己边缘到目标边缘的距离
+    const float CenterDistance = FVector::Dist(Owner->GetActorLocation(), Target->GetActorLocation());
+    const float OwnerRadius = Owner->GetSimpleCollisionRadius();
+    const float TargetRadius = Target->GetSimpleCollisionRadius();
+    const float EdgeDistance = CenterDistance - OwnerRadius - TargetRadius;
+    
+    return EdgeDistance <= GetSkillAttackRange();
 }

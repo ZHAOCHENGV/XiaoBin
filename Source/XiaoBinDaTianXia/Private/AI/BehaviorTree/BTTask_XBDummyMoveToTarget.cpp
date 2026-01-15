@@ -102,29 +102,33 @@ EBTNodeResult::Type UBTTask_XBDummyMoveToTarget::ExecuteTask(UBehaviorTreeCompon
 	// 设置焦点
 	AIController->SetFocus(Target);
 
-	// 计算最优停止距离
+	// 计算最优停止距离（纯攻击范围，边缘到边缘）
 	const float OptimalStopDistance = CalculateOptimalStopDistance(CombatComp, Dummy, Target, SelectedAbilityType);
 	
-	// 计算当前距离
-	const float CurrentDistance = FVector::Dist(Dummy->GetActorLocation(), Target->GetActorLocation());
+	// 🔧 关键修复 - 计算边缘距离（中心距离 - 双方碰撞半径）
+	// AttackRange 是从自己边缘到目标边缘的距离，所以比较时也要用边缘距离
+	const float CenterDistance = FVector::Dist(Dummy->GetActorLocation(), Target->GetActorLocation());
+	const float DummyRadius = Dummy->GetSimpleCollisionRadius();
+	const float TargetRadius = Target->GetSimpleCollisionRadius();
+	const float EdgeDistance = CenterDistance - DummyRadius - TargetRadius;
 
-	// 如果已在范围内，直接成功
-	if (CurrentDistance <= OptimalStopDistance)
+	// 如果已在范围内（边缘距离 <= 攻击范围），直接成功
+	if (EdgeDistance <= OptimalStopDistance)
 	{
 		AIController->ClearFocus(EAIFocusPriority::Gameplay);
-		UE_LOG(LogXBAI, Verbose, TEXT("假人 %s 已在攻击范围内(%.1f <= %.1f)"), 
-			*Dummy->GetName(), CurrentDistance, OptimalStopDistance);
+		UE_LOG(LogXBAI, Verbose, TEXT("假人 %s 已在攻击范围内(边缘距离=%.1f <= 攻击范围=%.1f)"), 
+			*Dummy->GetName(), EdgeDistance, OptimalStopDistance);
 		return EBTNodeResult::Succeeded;
 	}
 
 	// 发起移动请求
-	// 🔧 修复 - 直接使用攻击范围作为停止距离，不再缩放
-	// 之前使用 StopDistanceScale 导致提前停止，假人无法到达攻击范围
-	const float NavStopDistance = FMath::Max(0.0f, OptimalStopDistance - CollisionBuffer);
+	// 说明：MoveToActor 用中心距离判定，StopOnOverlap 会自行考虑自身碰撞半径
+	// 说明：OptimalStopDistance 是边缘距离，不再额外叠加目标半径
+	const float AcceptanceRadius = OptimalStopDistance;
 	
 	EPathFollowingRequestResult::Type MoveResult = AIController->MoveToActor(
 		Target,
-		NavStopDistance,
+        AcceptanceRadius,  // 说明：使用边缘距离，StopOnOverlap 会自行考虑自身碰撞半径
 		true,  // StopOnOverlap
 		true,  // UsePathfinding
 		true,  // CanStrafe
@@ -135,8 +139,8 @@ EBTNodeResult::Type UBTTask_XBDummyMoveToTarget::ExecuteTask(UBehaviorTreeCompon
 	if (MoveResult == EPathFollowingRequestResult::RequestSuccessful)
 	{
 		TargetUpdateTimer = 0.0f;
-		UE_LOG(LogXBAI, Log, TEXT("假人 %s 开始移动到目标，停止距离=%.1f"), 
-			*Dummy->GetName(), NavStopDistance);
+		UE_LOG(LogXBAI, Log, TEXT("假人 %s 开始移动到目标，攻击范围=%.1f, 导航停止距离=%.1f"), 
+			*Dummy->GetName(), OptimalStopDistance, AcceptanceRadius);
 		return EBTNodeResult::InProgress;
 	}
 	else if (MoveResult == EPathFollowingRequestResult::AlreadyAtGoal)
@@ -221,15 +225,19 @@ void UBTTask_XBDummyMoveToTarget::TickTask(UBehaviorTreeComponent& OwnerComp, ui
 		static_cast<EXBDummyLeaderAbilityType>(Blackboard->GetValueAsInt(AbilityTypeKeyName));
 	const float OptimalStopDistance = CalculateOptimalStopDistance(CombatComp, Dummy, Target, SelectedAbilityType);
 	
-	// 计算当前距离
-	const float CurrentDistance = FVector::Dist(Dummy->GetActorLocation(), Target->GetActorLocation());
+	// 🔧 关键修复 - 计算边缘距离（中心距离 - 双方碰撞半径）
+	const float CenterDistance = FVector::Dist(Dummy->GetActorLocation(), Target->GetActorLocation());
+	const float DummyRadius = Dummy->GetSimpleCollisionRadius();
+	const float TargetRadius = Target->GetSimpleCollisionRadius();
+	const float EdgeDistance = CenterDistance - DummyRadius - TargetRadius;
 
-	// 如果已到达范围，停止移动并成功
-	if (CurrentDistance <= OptimalStopDistance)
+	// 如果已到达范围（边缘距离 <= 攻击范围），停止移动并成功
+	if (EdgeDistance <= OptimalStopDistance)
 	{
 		AIController->StopMovement();
 		AIController->ClearFocus(EAIFocusPriority::Gameplay);
-		UE_LOG(LogXBAI, Log, TEXT("假人 %s 到达攻击范围，停止移动"), *Dummy->GetName());
+		UE_LOG(LogXBAI, Log, TEXT("假人 %s 到达攻击范围(边缘距离=%.1f <= 攻击范围=%.1f)，停止移动"), 
+			*Dummy->GetName(), EdgeDistance, OptimalStopDistance);
 		FinishLatentTask(OwnerComp, EBTNodeResult::Succeeded);
 		return;
 	}
@@ -239,10 +247,9 @@ void UBTTask_XBDummyMoveToTarget::TickTask(UBehaviorTreeComponent& OwnerComp, ui
 	if (TargetUpdateTimer >= TargetUpdateInterval)
 	{
 		TargetUpdateTimer = 0.0f;
-		
-		// 🔧 修复 - 直接使用攻击范围，不缩放
-		const float NavStopDistance = FMath::Max(0.0f, OptimalStopDistance - CollisionBuffer);
-		AIController->MoveToActor(Target, NavStopDistance, true, true, true, nullptr, true);
+// 说明：MoveToActor 用中心距离判定，StopOnOverlap 会自行考虑自身碰撞半径
+		const float AcceptanceRadius = OptimalStopDistance;
+		AIController->MoveToActor(Target, AcceptanceRadius, true, true, true, nullptr, true);
 	}
 }
 
@@ -284,10 +291,8 @@ float UBTTask_XBDummyMoveToTarget::CalculateOptimalStopDistance(
 		return 100.0f; // 默认值
 	}
 
-	// 获取碰撞半径
-	const float DummyRadius = Dummy->GetSimpleCollisionRadius();
-	const float TargetRadius = Target->GetSimpleCollisionRadius();
-	const float CollisionRadii = DummyRadius + TargetRadius;
+	// 🔧 关键修复 - 不再加碰撞半径，只使用纯攻击范围
+// 说明：OptimalStopDistance 是边缘距离，不再叠加碰撞半径
 
 	// 获取技能和普攻的范围与冷却状态
 	const float SkillRange = CombatComp->GetSkillAttackRange();
@@ -295,40 +300,37 @@ float UBTTask_XBDummyMoveToTarget::CalculateOptimalStopDistance(
 	const bool bSkillOnCooldown = CombatComp->IsSkillOnCooldown();
 	const bool bBasicOnCooldown = CombatComp->IsBasicAttackOnCooldown();
 
-	// 🔧 修改 - 优先使用已选择能力的范围，保证移动目标与能力一致
+	UE_LOG(LogXBAI, Verbose, TEXT("假人AI技能范围=%.1f, 普攻范围=%.1f"), SkillRange, BasicRange);
+
+	// 🔧 修改 - 直接使用攻击范围作为停止距离，不加碰撞半径
 	if (SelectedAbilityType == EXBDummyLeaderAbilityType::SpecialSkill && !bSkillOnCooldown)
 	{
-		const float StopDistance = SkillRange + CollisionRadii;
-		UE_LOG(LogXBAI, Verbose, TEXT("假人移动：已选择技能，使用技能范围=%.1f"), StopDistance);
-		return StopDistance;
+		UE_LOG(LogXBAI, Verbose, TEXT("假人移动：已选择技能，停止距离=%.1f"), SkillRange);
+		return SkillRange;
 	}
 
 	if (SelectedAbilityType == EXBDummyLeaderAbilityType::BasicAttack && !bBasicOnCooldown)
 	{
-		const float StopDistance = BasicRange + CollisionRadii;
-		UE_LOG(LogXBAI, Verbose, TEXT("假人移动：已选择普攻，使用普攻范围=%.1f"), StopDistance);
-		return StopDistance;
+		UE_LOG(LogXBAI, Verbose, TEXT("假人移动：已选择普攻，停止距离=%.1f"), BasicRange);
+		return BasicRange;
 	}
 
-	// 优先级1：技能就绪，使用技能范围（更远）
+	// 优先级1：技能就绪，使用技能范围
 	if (!bSkillOnCooldown)
 	{
-		const float StopDistance = SkillRange + CollisionRadii;
-		UE_LOG(LogXBAI, Verbose, TEXT("假人移动：技能就绪，选择技能范围=%.1f"), StopDistance);
-		return StopDistance;
+		UE_LOG(LogXBAI, Verbose, TEXT("假人移动：技能就绪，停止距离=%.1f"), SkillRange);
+		return SkillRange;
 	}
 
 	// 优先级2：普攻就绪，使用普攻范围
 	if (!bBasicOnCooldown)
 	{
-		const float StopDistance = BasicRange + CollisionRadii;
-		UE_LOG(LogXBAI, Verbose, TEXT("假人移动：普攻就绪，选择普攻范围=%.1f"), StopDistance);
-		return StopDistance;
+		UE_LOG(LogXBAI, Verbose, TEXT("假人移动：普攻就绪，停止距离=%.1f"), BasicRange);
+		return BasicRange;
 	}
 
-	// 优先级3：都在冷却，使用最大范围等待（靠近到技能范围边缘）
+	// 优先级3：都在冷却，使用最大范围等待
 	const float MaxRange = FMath::Max(SkillRange, BasicRange);
-	const float StopDistance = MaxRange + CollisionRadii;
-	UE_LOG(LogXBAI, Verbose, TEXT("假人移动：都在冷却，选择最大范围=%.1f 等待"), StopDistance);
-	return StopDistance;
+	UE_LOG(LogXBAI, Verbose, TEXT("假人移动：都在冷却，停止距离=%.1f"), MaxRange);
+	return MaxRange;
 }

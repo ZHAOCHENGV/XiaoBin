@@ -97,7 +97,7 @@ struct FXBGameConfigData
 
     /** 获取士兵的缩放比例 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "获取士兵的缩放比例"))
-    float SoldierScalePerRecruit = 0.05f;
+    float SoldierScalePerRecruit = 0.1f;
 
     /** 获取士兵的回复效果 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "获取士兵的回复效果"))

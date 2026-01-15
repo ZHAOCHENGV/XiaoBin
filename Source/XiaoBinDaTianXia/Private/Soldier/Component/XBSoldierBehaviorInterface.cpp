@@ -1,4 +1,4 @@
-﻿/* --- 完整文件代码 --- */
+/* --- 完整文件代码 --- */
 // Source/XiaoBinDaTianXia/Private/Soldier/Component/XBSoldierBehaviorInterface.cpp
 
 /**
@@ -919,9 +919,10 @@ bool UXBSoldierBehaviorInterface::IsInAttackRange(AActor* Target) const
     const float AttackRange = Soldier->GetAttackRange();
     const float SelfRadius = Soldier->GetSimpleCollisionRadius();
     const float TargetRadius = Target->GetSimpleCollisionRadius();
-    const float Distance = FVector::Dist2D(Soldier->GetActorLocation(), Target->GetActorLocation());
+    const float CenterDistance = FVector::Dist2D(Soldier->GetActorLocation(), Target->GetActorLocation());
+    const float EdgeDistance = CenterDistance - SelfRadius - TargetRadius;
 
-    return Distance <= (AttackRange + SelfRadius + TargetRadius);
+    return EdgeDistance <= AttackRange;
 }
 
 bool UXBSoldierBehaviorInterface::PlayAttackMontage()

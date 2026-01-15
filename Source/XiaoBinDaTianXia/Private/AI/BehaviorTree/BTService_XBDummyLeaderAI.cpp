@@ -363,16 +363,8 @@ EXBDummyLeaderAbilityType UBTService_XBDummyLeaderAI::SelectCombatAbility(
 	const EXBDummyLeaderAbilityType CurrentType =
 		static_cast<EXBDummyLeaderAbilityType>(Blackboard->GetValueAsInt(SelectedAbilityTypeKey));
 
-	// 🔧 修改 - 若当前选择仍可用，保持不变，避免频繁切换能力导致移动抖动
-	const bool bCurrentSkillUsable = (CurrentType == EXBDummyLeaderAbilityType::SpecialSkill) && !CombatComp->IsSkillOnCooldown();
-	const bool bCurrentBasicUsable = (CurrentType == EXBDummyLeaderAbilityType::BasicAttack) && !CombatComp->IsBasicAttackOnCooldown();
-	if (bCurrentSkillUsable || bCurrentBasicUsable)
-	{
-		return CurrentType;
-	}
-
-	// ✨ 新增 - 按优先级选择可用能力：技能优先，其次普攻
-	// 为什么要优先技能：高价值能力先释放，符合主将战斗策略
+	// 🔧 修复 - 每次都重新评估能力选择，确保攻击完成后立即选择新能力
+	// 按优先级选择可用能力：技能优先，其次普攻
 	EXBDummyLeaderAbilityType NewType = EXBDummyLeaderAbilityType::None;
 	if (!CombatComp->IsSkillOnCooldown())
 	{
@@ -383,15 +375,20 @@ EXBDummyLeaderAbilityType UBTService_XBDummyLeaderAI::SelectCombatAbility(
 		NewType = EXBDummyLeaderAbilityType::BasicAttack;
 	}
 
-	Blackboard->SetValueAsInt(SelectedAbilityTypeKey, static_cast<int32>(NewType));
-
-	if (NewType != EXBDummyLeaderAbilityType::None)
+	// 🔧 优化 - 仅在能力类型改变时写入黑板和打印日志，减少性能开销
+	if (NewType != CurrentType)
 	{
-		UE_LOG(LogXBAI, Log, TEXT("假人AI选择能力: Dummy=%s, AbilityType=%d"), *Dummy->GetName(), static_cast<int32>(NewType));
-	}
-	else
-	{
-		UE_LOG(LogXBAI, Verbose, TEXT("假人AI无可用能力，等待冷却: Dummy=%s"), *Dummy->GetName());
+		Blackboard->SetValueAsInt(SelectedAbilityTypeKey, static_cast<int32>(NewType));
+		
+		if (NewType != EXBDummyLeaderAbilityType::None)
+		{
+			UE_LOG(LogXBAI, Log, TEXT("假人AI切换能力: Dummy=%s, %d -> %d"), 
+				*Dummy->GetName(), static_cast<int32>(CurrentType), static_cast<int32>(NewType));
+		}
+		else
+		{
+			UE_LOG(LogXBAI, Verbose, TEXT("假人AI无可用能力，等待冷却: Dummy=%s"), *Dummy->GetName());
+		}
 	}
 
 	return NewType;
