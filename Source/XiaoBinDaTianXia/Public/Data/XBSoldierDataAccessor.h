@@ -121,6 +121,9 @@ public:
     UFUNCTION(BlueprintPure, Category = "XB|Data|AI", meta = (DisplayName = "获取视野范围"))
     float GetVisionRange() const { return CachedTableRow.AIConfig.VisionRange; }
 
+    UFUNCTION(BlueprintPure, Category = "XB|Data|AI", meta = (DisplayName = "获取移动范围"))
+    float GetMoveRange() const { return CachedTableRow.AIConfig.MoveRange; }
+
     UFUNCTION(BlueprintPure, Category = "XB|Data|AI", meta = (DisplayName = "获取脱离距离"))
     float GetDisengageDistance() const { return CachedTableRow.AIConfig.DisengageDistance; }
 

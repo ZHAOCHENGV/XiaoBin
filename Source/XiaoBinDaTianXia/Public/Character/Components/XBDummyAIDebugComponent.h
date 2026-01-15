@@ -36,6 +36,18 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "调试|视野", meta = (DisplayName = "绘制视野范围"))
 	bool bDrawVisionRange = true;
 
+	// 启用移动范围绘制
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "调试|移动", meta = (DisplayName = "绘制移动范围"))
+	bool bDrawMoveRange = true;
+
+	// 启用随机移动半径绘制
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "调试|移动", meta = (DisplayName = "绘制随机移动半径"))
+	bool bDrawWanderRadius = false;
+
+	// 启用站立回位半径绘制
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "调试|移动", meta = (DisplayName = "绘制站立回位半径"))
+	bool bDrawStandReturnRadius = false;
+
 	// 启用普攻范围绘制
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "调试|攻击", meta = (DisplayName = "绘制普攻范围"))
 	bool bDrawBasicAttackRange = true;
@@ -49,6 +61,18 @@ public:
 	// 视野范围颜色
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "调试|颜色", meta = (DisplayName = "视野范围颜色"))
 	FColor VisionRangeColor = FColor::Green;
+
+	// 移动范围颜色
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "调试|颜色", meta = (DisplayName = "移动范围颜色"))
+	FColor MoveRangeColor = FColor(0, 200, 255);
+
+	// 随机移动半径颜色
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "调试|颜色", meta = (DisplayName = "随机移动半径颜色"))
+	FColor WanderRadiusColor = FColor(0, 120, 255);
+
+	// 站立回位半径颜色
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "调试|颜色", meta = (DisplayName = "站立回位半径颜色"))
+	FColor StandReturnRadiusColor = FColor(255, 200, 0);
 
 	// 普攻范围颜色
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "调试|颜色", meta = (DisplayName = "普攻范围颜色"))

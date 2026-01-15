@@ -216,6 +216,9 @@ public:
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|AI", meta = (DisplayName = "获取视野范围"))
     float GetVisionRange() const;
 
+    UFUNCTION(BlueprintPure, Category = "XB|Soldier|AI", meta = (DisplayName = "获取移动范围"))
+    float GetMoveRange() const;
+
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|AI", meta = (DisplayName = "获取脱离距离"))
     float GetDisengageDistance() const;
 

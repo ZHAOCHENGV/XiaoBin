@@ -48,6 +48,10 @@ struct XIAOBINDATIANXIA_API FXBSoldierAIConfig
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|检测", meta = (DisplayName = "视野范围", ClampMin = "100.0"))
     float VisionRange = 800.0f;
 
+    /** @brief 移动范围（假人AI范围内移动使用） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "移动范围", ClampMin = "100.0"))
+    float MoveRange = 1200.0f;
+
     // 🔧 修改 - 追击距离用于限制离队追击，避免士兵过远脱离主将
     /** @brief 追击距离（目标非战斗状态时，超过此距离退出战斗并回归跟随） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|战斗", meta = (DisplayName = "追击距离", ClampMin = "100.0"))
@@ -253,6 +257,15 @@ struct XIAOBINDATIANXIA_API FXBSoldierTableRow : public FTableRowBase
     FORCEINLINE float GetVisionRange() const
     {
         return AIConfig.VisionRange;
+    }
+
+    /**
+     * @brief 获取移动范围
+     * @return 移动范围值
+     */
+    FORCEINLINE float GetMoveRange() const
+    {
+        return AIConfig.MoveRange;
     }
 
     /**

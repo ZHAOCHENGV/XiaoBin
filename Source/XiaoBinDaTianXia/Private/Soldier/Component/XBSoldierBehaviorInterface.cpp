@@ -244,29 +244,35 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
                 if (EnemySoldier->GetSoldierState() == EXBSoldierState::Dead) continue;
                 // 🔧 修改 - 草丛隐身单位不可锁定
                 if (EnemySoldier->IsHiddenInBush()) continue;
-                // 🔧 修改 - 优先使用士兵所属主将阵营，避免跨主将误判
-                ResolveTargetFaction(EnemySoldier, CandidateFaction, CandidateLeaderOwner);
-                bIsSoldier = true;
-            }
-            else if (AXBCharacterBase* EnemyLeader = Cast<AXBCharacterBase>(Candidate))
+            // 🔧 修改 - 优先使用士兵所属主将阵营，避免跨主将误判
+            ResolveTargetFaction(EnemySoldier, CandidateFaction, CandidateLeaderOwner);
+            bIsSoldier = true;
+        }
+        else if (AXBCharacterBase* EnemyLeader = Cast<AXBCharacterBase>(Candidate))
             {
                 if (EnemyLeader->IsDead()) continue;
                 // 🔧 修改 - 草丛隐身主将不可锁定
                 if (EnemyLeader->IsHiddenInBush()) continue;
                 ResolveTargetFaction(EnemyLeader, CandidateFaction, CandidateLeaderOwner);
-                bIsLeader = true;
-            }
-            else
-            {
-                // 忽略非角色类型的 Actor（如可破坏物等，视项目需求而定）
-                continue;
-            }
+            bIsLeader = true;
+        }
+        else
+        {
+            // 忽略非角色类型的 Actor（如可破坏物等，视项目需求而定）
+            continue;
+        }
 
-            // 🔧 修改 - 若主将明确锁定敌方主将，则只选择该主将及其士兵
-            if (bHasPreferredLeader)
+        // 🔧 新增 - 同一主将的士兵禁止互相锁定（包括各自为战阵营）
+        if (CandidateLeaderOwner && CandidateLeaderOwner == MyLeader)
+        {
+            continue;
+        }
+
+        // 🔧 修改 - 若主将明确锁定敌方主将，则只选择该主将及其士兵
+        if (bHasPreferredLeader)
+        {
+            if (CandidateLeaderOwner != PreferredEnemyLeader)
             {
-                if (CandidateLeaderOwner != PreferredEnemyLeader)
-                {
                     continue;
                 }
             }
@@ -528,6 +534,12 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
             continue;
         }
 
+        // 🔧 新增 - 禁止攻击同一主将的士兵（即使阵营为各自为战）
+        if (CandidateLeader == MyLeader)
+        {
+            continue;
+        }
+
         // 🔧 修改 - 优先读取所属主将阵营，避免跨主将误伤
         EXBFaction CandidateFaction = CandidateLeader->GetFaction();
         if (!UXBBlueprintFunctionLibrary::AreFactionsHostile(MyFaction, CandidateFaction))
@@ -645,6 +657,10 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
             {
                 continue;
             }
+            if (CandidateLeaderOwner && CandidateLeaderOwner == MyLeader)
+            {
+                continue;
+            }
             if (!UXBBlueprintFunctionLibrary::AreFactionsHostile(MyFaction, CandidateFaction))
             {
                 continue;
@@ -684,6 +700,10 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
             EXBFaction CandidateFaction = EXBFaction::Neutral;
             AXBCharacterBase* CandidateLeaderOwner = nullptr;
             if (!ResolveTargetFaction(Candidate, CandidateFaction, CandidateLeaderOwner))
+            {
+                continue;
+            }
+            if (CandidateLeaderOwner && CandidateLeaderOwner == MyLeader)
             {
                 continue;
             }
@@ -780,6 +800,10 @@ bool UXBSoldierBehaviorInterface::IsTargetValid(AActor* Target) const
         {
             return false;
         }
+        if (TargetSoldier->GetLeaderCharacter() == Soldier->GetLeaderCharacter())
+        {
+            return false;
+        }
         // 🔧 修改 - 使用所属主将阵营作为有效阵营，避免跨主将误伤
         EXBFaction TargetFaction = TargetSoldier->GetFaction();
         if (AXBCharacterBase* TargetLeader = TargetSoldier->GetLeaderCharacter())
@@ -793,6 +817,10 @@ bool UXBSoldierBehaviorInterface::IsTargetValid(AActor* Target) const
     if (AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(Target))
     {
         if (TargetLeader->IsDead())
+        {
+            return false;
+        }
+        if (TargetLeader == Soldier->GetLeaderCharacter())
         {
             return false;
         }
@@ -976,6 +1004,10 @@ void UXBSoldierBehaviorInterface::ApplyDamageToTarget(AActor* Target, float Dama
     // 对士兵应用伤害
     if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(Target))
     {
+        if (TargetSoldier->GetLeaderCharacter() == Soldier->GetLeaderCharacter())
+        {
+            return;
+        }
         // 🔧 修改 - 使用所属主将阵营作为有效阵营，避免跨主将误伤
         EXBFaction TargetFaction = TargetSoldier->GetFaction();
         if (AXBCharacterBase* TargetLeader = TargetSoldier->GetLeaderCharacter())
@@ -991,6 +1023,10 @@ void UXBSoldierBehaviorInterface::ApplyDamageToTarget(AActor* Target, float Dama
     // 对将领应用伤害（通过 GAS）
     else if (AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(Target))
     {
+        if (TargetLeader == Soldier->GetLeaderCharacter())
+        {
+            return;
+        }
         if (!UXBBlueprintFunctionLibrary::AreFactionsHostile(Soldier->GetFaction(), TargetLeader->GetFaction()))
         {
             return;
@@ -1214,6 +1250,27 @@ bool UXBSoldierBehaviorInterface::ShouldDisengage() const
     if (!bIsTargetInCombat)
     {
         return false;
+    }
+
+    // 🔧 新增 - 主将仍锁定目标主将且敌军未清空时，不允许因“无敌人”脱战
+    if (AXBCharacterBase* LeaderCharacter = Soldier->GetLeaderCharacter())
+    {
+        if (AXBCharacterBase* PreferredLeader = LeaderCharacter->GetLastAttackedEnemyLeader())
+        {
+            if (!PreferredLeader->IsDead())
+            {
+                return false;
+            }
+
+            const TArray<AXBSoldierCharacter*>& EnemySoldiers = PreferredLeader->GetSoldiers();
+            for (AXBSoldierCharacter* EnemySoldier : EnemySoldiers)
+            {
+                if (EnemySoldier && EnemySoldier->GetSoldierState() != EXBSoldierState::Dead)
+                {
+                    return false;
+                }
+            }
+        }
     }
 
     // 条件2：长时间无敌人

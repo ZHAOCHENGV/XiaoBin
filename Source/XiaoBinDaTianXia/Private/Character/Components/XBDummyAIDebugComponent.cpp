@@ -59,6 +59,27 @@ void UXBDummyAIDebugComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 		DrawDebugRangeCircle(AIConfig.VisionRange, VisionRangeColor);
 	}
 
+	// 绘制移动范围
+	if (bDrawMoveRange)
+	{
+		const FXBLeaderAIConfig& AIConfig = Dummy->GetLeaderAIConfig();
+		DrawDebugRangeCircle(AIConfig.MoveRange, MoveRangeColor);
+	}
+
+	// 绘制随机移动半径
+	if (bDrawWanderRadius)
+	{
+		const FXBLeaderAIConfig& AIConfig = Dummy->GetLeaderAIConfig();
+		DrawDebugRangeCircle(AIConfig.WanderRadius, WanderRadiusColor);
+	}
+
+	// 绘制站立回位半径
+	if (bDrawStandReturnRadius)
+	{
+		const FXBLeaderAIConfig& AIConfig = Dummy->GetLeaderAIConfig();
+		DrawDebugRangeCircle(AIConfig.StandReturnRadius, StandReturnRadiusColor);
+	}
+
 	// 绘制攻击范围
 	UXBCombatComponent* CombatComp = Dummy->GetCombatComponent();
 	if (CombatComp)

@@ -646,10 +646,28 @@ void UBTService_XBDummyLeaderAI::UpdateBehaviorDestination(AXBDummyCharacter* Du
 
 		// 🔧 修改 - 使用已修正的行为中心，避免 FLT_MAX 参与随机采样
 		const FVector BehaviorCenter = Blackboard->GetValueAsVector(BehaviorCenterKey);
-		FNavLocation RandomLocation;
-		if (NavSystem->GetRandomPointInNavigableRadius(BehaviorCenter, AIConfig.WanderRadius, RandomLocation))
-		{	
-			Blackboard->SetValueAsVector(BehaviorDestinationKey, RandomLocation.Location);
+		const float MoveRange = (AIConfig.MoveRange > 0.0f) ? AIConfig.MoveRange : AIConfig.WanderRadius;
+		const int32 MaxSampleAttempts = 4;
+		FNavLocation BestLocation;
+		float BestDistanceSq = -1.0f;
+
+		for (int32 Attempt = 0; Attempt < MaxSampleAttempts; ++Attempt)
+		{
+			FNavLocation CandidateLocation;
+			if (NavSystem->GetRandomPointInNavigableRadius(BehaviorCenter, MoveRange, CandidateLocation))
+			{
+				const float DistSq = FVector::DistSquared2D(BehaviorCenter, CandidateLocation.Location);
+				if (DistSq > BestDistanceSq)
+				{
+					BestDistanceSq = DistSq;
+					BestLocation = CandidateLocation;
+				}
+			}
+		}
+
+		if (BestDistanceSq > 0.0f)
+		{
+			Blackboard->SetValueAsVector(BehaviorDestinationKey, BestLocation.Location);
 			NextWanderTime = CurrentTime + AIConfig.WanderInterval;
 			UE_LOG(LogXBAI, Verbose, TEXT("假人AI随机移动更新目的地: %s"), *Dummy->GetName());
 		}

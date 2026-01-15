@@ -1394,6 +1394,11 @@ float AXBSoldierCharacter::GetVisionRange() const
     return IsDataAccessorValid() ? DataAccessor->GetVisionRange() : 800.0f;
 }
 
+float AXBSoldierCharacter::GetMoveRange() const
+{
+    return IsDataAccessorValid() ? DataAccessor->GetMoveRange() : 1200.0f;
+}
+
 float AXBSoldierCharacter::GetDisengageDistance() const
 {
     return IsDataAccessorValid() ? DataAccessor->GetDisengageDistance() : 1000.0f;
