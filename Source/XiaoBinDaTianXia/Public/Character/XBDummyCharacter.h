@@ -83,7 +83,7 @@ private:
 	 * @brief 巡逻路线Actor
 	 * @note  用于固定路线行走模式
 	 */
-	UPROPERTY(EditInstanceOnly, BlueprintReadWrite, Category = "AI", meta = (DisplayName = "巡逻路线Actor", AllowPrivateAccess = "true"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI", meta = (DisplayName = "巡逻路线Actor", ExposeOnSpawn = "true", AllowPrivateAccess = "true"))
 	TObjectPtr<AActor> PatrolSplineActor;
 
 	// ✨ 新增 - 假人受击响应延迟
