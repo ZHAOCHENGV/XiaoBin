@@ -161,20 +161,39 @@ void UBTTask_XBDummyAttackTarget::TickTask(UBehaviorTreeComponent& OwnerComp, ui
 		return;
 	}
 
-	// 检查是否已朝向目标
-	const FVector ToTarget = TargetLeader->GetActorLocation() - Dummy->GetActorLocation();
-	const FVector Forward = Dummy->GetActorForwardVector();
-	const float DotProduct = FVector::DotProduct(Forward, ToTarget.GetSafeNormal());
-	const float AngleDegrees = FMath::RadiansToDegrees(FMath::Acos(DotProduct));
+	// ?? 修改 - 仅使用平面方向计算朝向，避免高度差导致角度无法收敛
+	FVector ToTarget = TargetLeader->GetActorLocation() - Dummy->GetActorLocation();
+	ToTarget.Z = 0.0f;
+	if (!ToTarget.IsNearlyZero())
+	{
+		// ?? 修改 - 使用匀速插值转向，保证未移动时也能持续转头
+		// 公式思路: 以固定角速度逼近目标Yaw，避免移动组件不更新导致转向停滞
+		const FRotator DesiredRotation = ToTarget.Rotation();
+		const FRotator CurrentRotation = Dummy->GetActorRotation();
+		const FRotator TargetRotation(0.0f, DesiredRotation.Yaw, 0.0f);
+		const FRotator NewRotation = FMath::RInterpConstantTo(CurrentRotation, TargetRotation, DeltaSeconds, FacingRotationSpeed);
+		Dummy->SetActorRotation(NewRotation);
+		AIController->SetControlRotation(NewRotation);
+	}
+
+	FVector Forward = Dummy->GetActorForwardVector();
+	Forward.Z = 0.0f;
+	Forward = Forward.GetSafeNormal();
+	const FVector ToTargetDir = ToTarget.IsNearlyZero() ? Forward : ToTarget.GetSafeNormal();
+	// 点积公式: cosθ = (A·B)/(|A||B|)，用于计算朝向夹角
+	const float DotProduct = FVector::DotProduct(Forward, ToTargetDir);
+	// 避免数值误差导致Acos无效
+	const float ClampedDotProduct = FMath::Clamp(DotProduct, -1.0f, 1.0f);
+	const float AngleDegrees = FMath::RadiansToDegrees(FMath::Acos(ClampedDotProduct));
 
 	// 更新计时器
 	RotationTimer += DeltaSeconds;
 
-	// 判断是否已转向目标（角度足够小）或超时
+	// 判断是否已转向目标（角度足够小）
 	const bool bIsFacingTarget = AngleDegrees <= FacingAngleThreshold;
 	const bool bTimeout = RotationTimer >= MaxRotationWaitTime;
 
-	if (bIsFacingTarget || bTimeout)
+	if (bIsFacingTarget)
 	{
 		// 转向完成，执行攻击
 		UXBCombatComponent* CombatComp = Dummy->GetCombatComponent();
@@ -216,6 +235,17 @@ void UBTTask_XBDummyAttackTarget::TickTask(UBehaviorTreeComponent& OwnerComp, ui
 		UE_LOG(LogXBAI, Verbose, TEXT("假人 %s 转向完成但无法攻击"), *Dummy->GetName());
 		Blackboard->SetValueAsInt(AbilityTypeKeyName, static_cast<int32>(EXBDummyLeaderAbilityType::None));
 		FinishLatentTask(OwnerComp, EBTNodeResult::Failed);
+		return;
+	}
+
+	if (bTimeout)
+	{
+		// 超时仍未转向则放弃本次攻击，避免背对出手
+		AIController->ClearFocus(EAIFocusPriority::Gameplay);
+		UE_LOG(LogXBAI, Verbose, TEXT("假人 %s 转向超时，取消本次攻击"), *Dummy->GetName());
+		Blackboard->SetValueAsInt(AbilityTypeKeyName, static_cast<int32>(EXBDummyLeaderAbilityType::None));
+		FinishLatentTask(OwnerComp, EBTNodeResult::Failed);
+		return;
 	}
 	// 否则继续等待转向
 }

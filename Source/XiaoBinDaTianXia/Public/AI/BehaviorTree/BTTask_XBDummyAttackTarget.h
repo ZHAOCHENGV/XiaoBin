@@ -65,7 +65,11 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "配置", meta = (DisplayName = "转向角度阈值", ClampMin = "1.0", ClampMax = "45.0"))
 	float FacingAngleThreshold = 15.0f;
 
-	/** @brief 最大等待转向时间（秒），超时后强制执行攻击 */
+	/** @brief 转向速度（度/秒），用于匀速插值到目标朝向 */
+	UPROPERTY(EditAnywhere, Category = "配置", meta = (DisplayName = "转向速度", ClampMin = "90.0", ClampMax = "1080.0"))
+	float FacingRotationSpeed = 720.0f;
+
+	/** @brief 最大等待转向时间（秒），超时后放弃本次攻击 */
 	UPROPERTY(EditAnywhere, Category = "配置", meta = (DisplayName = "最大转向等待时间", ClampMin = "0.1", ClampMax = "2.0"))
 	float MaxRotationWaitTime = 0.5f;
 

@@ -1,0 +1,15 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Code Cli 启用实验沙盒",
+            "type": "shell",
+            "command": "codexcli",
+            "args": [
+                "--enable",
+                "experimental_windows_sandbox"
+            ],
+            "problemMatcher": []
+        }
+    ]
+}
