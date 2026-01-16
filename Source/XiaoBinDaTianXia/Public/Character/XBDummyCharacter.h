@@ -119,6 +119,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "AI|移动", meta = (DisplayName = "获取出生点"))
 	FVector GetSpawnLocation() const { return SpawnLocation; }
 
+	/** @brief 获取出生朝向 */
+	UFUNCTION(BlueprintPure, Category = "AI|移动", meta = (DisplayName = "获取出生朝向"))
+	FRotator GetSpawnRotation() const { return SpawnRotation; }
+
 private:
 
 	// ✨ 新增 - 假人受击响应延迟

@@ -662,6 +662,16 @@ void UBTService_XBDummyLeaderAI::UpdateBehaviorDestination(AXBDummyCharacter* Du
 		// 确保 Center 是唯一的“归宿”数据源
 		const FVector Center = Blackboard->GetValueAsVector(BehaviorCenterKey);
 		Blackboard->SetValueAsVector(BehaviorDestinationKey, Center);
+		const float DistSq = FVector::DistSquared(Dummy->GetActorLocation(), Center);
+		if (DistSq > FMath::Square(50.0f))
+		{
+			RequestContinuousMove(Dummy, Center);
+		}
+		else if (AAIController* AIController = Cast<AAIController>(Dummy->GetController()))
+		{
+			AIController->StopMovement();
+			AIController->ClearFocus(EAIFocusPriority::Gameplay);
+		}
 		UE_LOG(LogXBAI, Verbose, TEXT("假人AI站立模式更新目的地: %s"), *Dummy->GetName());
 		break;
 	}
@@ -779,11 +789,44 @@ void UBTService_XBDummyLeaderAI::UpdateBehaviorDestination(AXBDummyCharacter* Du
 		{
 			Blackboard->SetValueAsVector(BehaviorDestinationKey, TargetLocation);
 		}
+		RequestContinuousMove(Dummy, Blackboard->GetValueAsVector(BehaviorDestinationKey));
 		break;
 	}
 	default:
 		break;
 	}
+}
+
+void UBTService_XBDummyLeaderAI::RequestContinuousMove(AXBDummyCharacter* Dummy, const FVector& Destination) const
+{
+	if (!Dummy)
+	{
+		return;
+	}
+
+	AAIController* AIController = Cast<AAIController>(Dummy->GetController());
+	if (!AIController)
+	{
+		return;
+	}
+
+	const float DistSq = FVector::DistSquared(Dummy->GetActorLocation(), Destination);
+	if (DistSq <= FMath::Square(50.0f))
+	{
+		return;
+	}
+
+	constexpr float AcceptanceRadius = 50.0f;
+	AIController->MoveToLocation(
+		Destination,
+		AcceptanceRadius,
+		true,
+		true,
+		true,
+		false,
+		nullptr,
+		true
+	);
 }
 
 /**
