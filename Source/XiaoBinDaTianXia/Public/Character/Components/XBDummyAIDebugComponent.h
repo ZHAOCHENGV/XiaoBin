@@ -58,6 +58,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "调试|颜色", meta = (DisplayName = "技能范围颜色"))
 	FColor SkillRangeColor = FColor::Blue;
 
+	// ✨ 新增 - 启用巡逻范围绘制
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "调试|移动", meta = (DisplayName = "绘制巡逻范围"))
+	bool bDrawPatrolRange = true;
+
+	// ✨ 新增 - 巡逻范围颜色
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "调试|颜色", meta = (DisplayName = "巡逻范围颜色"))
+	FColor PatrolRangeColor = FColor::Yellow;
+
 	// ============ 绘制配置 ============
 
 	// 调试圆圈分段数

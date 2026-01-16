@@ -87,10 +87,54 @@ bool UXBBlueprintFunctionLibrary::AreActorsHostile(const AActor* ActorA, const A
         return false;
     }
 
+    // ✨ 核心修复：同一军队内部不敌对（防止内讧）
+    if (AreSameArmy(ActorA, ActorB))
+    {
+        return false;
+    }
+
     EXBFaction FactionA = GetActorFaction(ActorA);
     EXBFaction FactionB = GetActorFaction(ActorB);
 
     return AreFactionsHostile(FactionA, FactionB);
+}
+
+/**
+ * @brief  判断两个单位是否属于同一军队（同一主将麾下）
+ */
+bool UXBBlueprintFunctionLibrary::AreSameArmy(const AActor* ActorA, const AActor* ActorB)
+{
+    // 空指针或自身视为同一军队
+    if (!ActorA || !ActorB || ActorA == ActorB)
+    {
+        return true;
+    }
+
+    AXBCharacterBase* LeaderA = nullptr;
+    AXBCharacterBase* LeaderB = nullptr;
+
+    // 获取 A 的主将
+    if (const AXBSoldierCharacter* SoldierA = Cast<AXBSoldierCharacter>(ActorA))
+    {
+        LeaderA = SoldierA->GetLeaderCharacter();
+    }
+    else if (const AXBCharacterBase* CharA = Cast<AXBCharacterBase>(ActorA))
+    {
+        LeaderA = const_cast<AXBCharacterBase*>(CharA);
+    }
+
+    // 获取 B 的主将
+    if (const AXBSoldierCharacter* SoldierB = Cast<AXBSoldierCharacter>(ActorB))
+    {
+        LeaderB = SoldierB->GetLeaderCharacter();
+    }
+    else if (const AXBCharacterBase* CharB = Cast<AXBCharacterBase>(ActorB))
+    {
+        LeaderB = const_cast<AXBCharacterBase*>(CharB);
+    }
+
+    // 同一主将视为同一军队
+    return LeaderA && LeaderB && LeaderA == LeaderB;
 }
 
 EXBFaction UXBBlueprintFunctionLibrary::GetActorFaction(const AActor* Actor)

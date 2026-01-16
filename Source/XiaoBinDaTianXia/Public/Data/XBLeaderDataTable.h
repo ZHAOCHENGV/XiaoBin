@@ -50,23 +50,20 @@ struct XIAOBINDATIANXIA_API FXBLeaderAIConfig
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|行为", meta = (DisplayName = "行为树资源"))
     TSoftObjectPtr<UBehaviorTree> BehaviorTree;
 
-    /** @brief 移动方式 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "移动方式"))
-    EXBLeaderAIMoveMode MoveMode = EXBLeaderAIMoveMode::Stand;
+    // ❌ 删除 MoveMode - 移动模式现在由 Actor 初始化决定
 
     /** @brief 视野范围 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|感知", meta = (DisplayName = "视野范围", ClampMin = "100.0"))
     float VisionRange = 2000.0f;
 
-    /** @brief 移动范围 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "移动范围", ClampMin = "100.0"))
-    float MoveRange = 1200.0f;
-
     /** @brief 目标检索间隔 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|感知", meta = (DisplayName = "目标检索间隔", ClampMin = "0.1"))
     float TargetSearchInterval = 0.5f;
 
-    /** @brief 随机移动半径 */
+    /** 
+     * @brief 随机移动半径（Wander模式生效）
+     * @note 统一的移动范围变量，原 MoveRange/PatrolRadius 已合并至此
+     */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "随机移动半径", ClampMin = "100.0"))
     float WanderRadius = 800.0f;
 
@@ -85,7 +82,10 @@ struct XIAOBINDATIANXIA_API FXBLeaderAIConfig
     /** @brief 原地站立回位半径 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "站立回位半径", ClampMin = "10.0"))
     float StandReturnRadius = 150.0f;
-    // 🔧 修改 - 黑板键使用默认固定名称，避免在数据表中配置
+
+    /** @brief 最小移动距离（避免小碎步原地踏步） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "最小移动距离", ClampMin = "50.0"))
+    float MinMoveDistance = 200.0f;
 };
 
 /**

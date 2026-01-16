@@ -77,6 +77,13 @@ public:
 	 */
 	USplineComponent* GetPatrolSplineComponent() const;
 
+	/**
+	 * @brief  获取假人当前移动模式
+	 * @return 移动模式枚举
+	 */
+	UFUNCTION(BlueprintPure, Category = "AI|移动", meta = (DisplayName = "获取移动模式"))
+	EXBLeaderAIMoveMode GetDummyMoveMode() const { return DummyMoveMode; }
+
 private:
 	// ✨ 新增 - 巡逻路线Actor（需包含Spline组件）
 	/**

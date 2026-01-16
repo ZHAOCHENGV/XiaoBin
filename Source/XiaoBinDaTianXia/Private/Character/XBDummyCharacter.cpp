@@ -126,8 +126,7 @@ void AXBDummyCharacter::InitializeLeaderData()
 	// 🔧 修改 - 假人仅使用父类通用初始化
 	Super::InitializeLeaderData();
 
-	// ?? 修改 - 覆盖假人移动方式，避免依赖数据表配置
-	CachedLeaderData.AIConfig.MoveMode = DummyMoveMode;
+
 
 	// 🔧 修改 - 初始化假人AI配置缓存，确保行为树读取到数据表AI配置
 	if (AXBDummyAIController* DummyAI = Cast<AXBDummyAIController>(GetController()))

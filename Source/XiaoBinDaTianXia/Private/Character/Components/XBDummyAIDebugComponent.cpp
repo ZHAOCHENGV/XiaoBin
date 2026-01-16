@@ -75,6 +75,14 @@ void UXBDummyAIDebugComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 			DrawDebugRangeCircle(CombatComp->GetSkillAttackRange(), SkillRangeColor);
 		}
 	}
+
+	// ✨ 新增 - 绘制巡逻/随机移动范围
+	if (bDrawPatrolRange)
+	{
+		const FXBLeaderAIConfig& AIConfig = Dummy->GetLeaderAIConfig();
+		// 🔧 修改 - 统一使用 WanderRadius（原 PatrolRadius 已删除）
+		DrawDebugRangeCircle(AIConfig.WanderRadius, PatrolRangeColor);
+	}
 #endif
 }
 

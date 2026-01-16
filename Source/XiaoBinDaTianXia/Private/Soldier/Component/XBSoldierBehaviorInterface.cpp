@@ -173,13 +173,12 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
     AXBCharacterBase* PreferredEnemyLeader = nullptr;
     bool bHasPreferredLeader = false;
     
-    // 实现"集火"逻辑：若跟随主将，则尝试同步主将的攻击目标
+    // ✨ 核心修改 - 严格继承主将目标（取消士兵独立阵营判断）
+    // 规则：士兵的攻击目标必须严格跟随主将的当前目标
+    // 如果主将锁定了目标A（敌方主将），则我方士兵只能攻击"目标A麾下的士兵"
     if (MyLeader)
     {
-        // 尝试获取主将最近攻击的敌方主将/阵营，实现小队协同攻击
-        EXBFaction LeaderEnemyFaction = EXBFaction::Neutral;
-        
-        // 优先策略 A：若主将攻击了具体敌方主将，则只锁定该主将及其士兵
+        // 严格策略：若主将攻击了敌方主将，则士兵必须攻击该主将麾下的单位
         if (AXBCharacterBase* EnemyLeader = MyLeader->GetLastAttackedEnemyLeader())
         {
             if (!EnemyLeader->IsDead())
@@ -189,12 +188,9 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
             }
         }
 
-        // 优先策略 B：若无主将目标，则回退到阵营锁定
-        if (!bHasPreferredLeader && MyLeader->GetLastAttackedEnemyFaction(LeaderEnemyFaction))
-        {
-            PreferredFaction = LeaderEnemyFaction;
-            bHasPreferredFaction = true;
-        }
+        // ❌ 删除阵营回退逻辑 - 不允许士兵自主选择其他阵营目标
+        // 原逻辑：if (!bHasPreferredLeader && MyLeader->GetLastAttackedEnemyFaction(...))
+        // 新逻辑：如果主将没有明确目标，士兵也不能自主攻击
     }
 
     // 定义目标筛选逻辑 (Lambda)，封装为独立函数以便在缓存检查和新查询中复用
@@ -528,6 +524,12 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
             continue;
         }
 
+        // ✨ 新增 - 严格禁止攻击同一主将鹾下的单位（修复友军伤害）
+        if (CandidateLeader == MyLeader)
+        {
+            continue;
+        }
+
         // 🔧 修改 - 优先读取所属主将阵营，避免跨主将误伤
         EXBFaction CandidateFaction = CandidateLeader->GetFaction();
         if (!UXBBlueprintFunctionLibrary::AreFactionsHostile(MyFaction, CandidateFaction))
@@ -614,95 +616,9 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
         UpdateBestCandidate(Candidate, bPreferred, false, DistSq + GetCrowdPenalty(Candidate));
     }
 
-    // 🔧 修改 - 当优先阵营没有任何可用目标时，允许回退到任意敌对阵营
-    if (bHasPreferredFaction && !bHasPreferredLeader &&
-        !NearestPreferredSoldier && !NearestPreferredLeader)
-    {
-        // 🔧 修改 - 回退扫描仅补充“其他阵营”候选，避免打断优先规则
-        for (TActorIterator<AXBSoldierCharacter> It(World); It; ++It)
-        {
-            AXBSoldierCharacter* Candidate = *It;
-            if (!Candidate || Candidate == SoldierActor)
-            {
-                continue;
-            }
-
-            if (LeaderActor && Candidate == LeaderActor)
-            {
-                continue;
-            }
-
-            if (Candidate->GetSoldierState() == EXBSoldierState::Dead)
-            {
-                continue;
-            }
-
-            // 🔧 修改 - 优先读取所属主将阵营，避免跨主将误伤
-            // 🔧 修改 - 使用统一阵营解析，避免在主将类型上误调用接口
-            EXBFaction CandidateFaction = EXBFaction::Neutral;
-            AXBCharacterBase* CandidateLeaderOwner = nullptr;
-            if (!ResolveTargetFaction(Candidate, CandidateFaction, CandidateLeaderOwner))
-            {
-                continue;
-            }
-            if (!UXBBlueprintFunctionLibrary::AreFactionsHostile(MyFaction, CandidateFaction))
-            {
-                continue;
-            }
-
-            // 🔧 修改 - 先用真实距离过滤，再叠加拥挤惩罚用于排序
-            const float DistSq = FVector::DistSquared(SoldierLocation, Candidate->GetActorLocation());
-            if (DistSq > VisionRangeSq)
-            {
-                continue;
-            }
-
-            CachedPerceptionResult.DetectedEnemies.Add(Candidate);
-            UpdateBestCandidate(Candidate, false, true, DistSq + GetCrowdPenalty(Candidate));
-        }
-
-        for (TActorIterator<AXBCharacterBase> It(World); It; ++It)
-        {
-            AXBCharacterBase* Candidate = *It;
-            if (!Candidate || Candidate == SoldierActor)
-            {
-                continue;
-            }
-
-            if (LeaderActor && Candidate == LeaderActor)
-            {
-                continue;
-            }
-
-            if (Candidate->IsDead())
-            {
-                continue;
-            }
-
-            // 🔧 修改 - 优先读取所属主将阵营，避免跨主将误伤
-            // 🔧 修改 - 使用统一阵营解析，避免在主将类型上误调用接口
-            EXBFaction CandidateFaction = EXBFaction::Neutral;
-            AXBCharacterBase* CandidateLeaderOwner = nullptr;
-            if (!ResolveTargetFaction(Candidate, CandidateFaction, CandidateLeaderOwner))
-            {
-                continue;
-            }
-            if (!UXBBlueprintFunctionLibrary::AreFactionsHostile(MyFaction, CandidateFaction))
-            {
-                continue;
-            }
-
-            // 🔧 修改 - 先用真实距离过滤，再叠加拥挤惩罚用于排序
-            const float DistSq = FVector::DistSquared(SoldierLocation, Candidate->GetActorLocation());
-            if (DistSq > VisionRangeSq)
-            {
-                continue;
-            }
-
-            CachedPerceptionResult.DetectedEnemies.Add(Candidate);
-            UpdateBestCandidate(Candidate, false, false, DistSq + GetCrowdPenalty(Candidate));
-        }
-    }
+    // ✨ 修改 - 删除阵营回退扫描块
+    // 士兵必须严格继承主将目标，禁止自主选择其他阵营目标
+    // 如果主将没有明确目标，士兵也不能自主攻击
 
     // 更新缓存时间戳
     PerceptionCacheTime = CurrentTime;
@@ -1070,6 +986,16 @@ EXBBehaviorResult UXBSoldierBehaviorInterface::MoveToActor(AActor* Target, float
     float Distance = FVector::Dist(Soldier->GetActorLocation(), Target->GetActorLocation());
     if (Distance <= AcceptanceRadius)
     {
+        return EXBBehaviorResult::Success;
+    }
+
+    // ✨ 新增 - 移动缓冲（Hysteresis）：防止在攻击范围边缘反复触发移动/停止
+    // 仅当距离显著超出攻击范围时才发起新移动请求
+    const float MoveHysteresis = Soldier->GetAttackRange() * 0.15f;
+    const float EffectiveAcceptance = AcceptanceRadius + MoveHysteresis;
+    if (Distance <= EffectiveAcceptance)
+    {
+        // 士兵处于缓冲区内，认为足够近，不发起移动
         return EXBBehaviorResult::Success;
     }
 

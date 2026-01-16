@@ -239,6 +239,24 @@ void UBTService_XBUpdateSoldierState::TickNode(UBehaviorTreeComponent& OwnerComp
         // 🔧 修改 - 距离超限时允许强制脱战，并继续保留追击跟随目标的回收逻辑
         if (bShouldRetreat && Soldier->GetSoldierState() == EXBSoldierState::Combat)
         {
+            // ✨ 核心修复：战斗中且有有效目标时，完全屏蔽撤退逻辑（防止与追击冲突导致抖动）
+            // 仅当距离真正超限时才允许脱战
+            if (AXBCharacterBase* LeaderCharacter = Soldier->GetLeaderCharacter())
+            {
+                // 主将在战斗且士兵有有效目标时，保持战斗状态
+                if (LeaderCharacter->IsInCombat() && CurrentTarget)
+                {
+                    // 仅当距离未超限时才跳过所有脱战逻辑
+                    if (DistToLeader < DisengageDistanceValue)
+                    {
+                        // ✨ 修改 - 不执行任何脱战/撤退操作，让士兵专注追击
+                        BlackboardComp->SetValueAsBool(XBSoldierBBKeys::ShouldRetreat, false);
+                        // 直接跳过后续撤退判定块
+                        goto SkipRetreatLogic;
+                    }
+                }
+            }
+
             // ✨ 新增 - 距离超限时强制脱战，避免主将战斗导致脱战抖动
             if (DistToLeader >= DisengageDistanceValue)
             {
@@ -274,6 +292,7 @@ void UBTService_XBUpdateSoldierState::TickNode(UBehaviorTreeComponent& OwnerComp
         }
     }
     
+SkipRetreatLogic:
     // ==================== 更新攻击状态 ====================
     
     // 写入是否可攻击

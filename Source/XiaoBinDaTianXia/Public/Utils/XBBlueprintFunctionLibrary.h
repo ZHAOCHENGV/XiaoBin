@@ -90,9 +90,20 @@ public:
      * @param ActorB Actor B
      * @return 是否敌对
      * @note 支持 AXBCharacterBase 和 AXBSoldierCharacter
+     *       同一军队内部不敌对（即使阵营为FreeForAll）
      */
     UFUNCTION(BlueprintPure, Category = "XB|阵营", meta = (DisplayName = "Actor是否敌对"))
     static bool AreActorsHostile(const AActor* ActorA, const AActor* ActorB);
+
+    /**
+     * @brief  判断两个单位是否属于同一军队（同一主将麾下）
+     * @param  ActorA 单位A
+     * @param  ActorB 单位B
+     * @return 是否属于同一军队
+     * @note   同一军队内部不相互攻击
+     */
+    UFUNCTION(BlueprintPure, Category = "XB|阵营", meta = (DisplayName = "是否同一军队"))
+    static bool AreSameArmy(const AActor* ActorA, const AActor* ActorB);
 
     /**
      * @brief 获取Actor的阵营
