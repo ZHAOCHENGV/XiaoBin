@@ -1585,7 +1585,33 @@ void AXBCharacterBase::HandleDeath()
         StopSprint();
     }
 
-    KillAllSoldiers();
+    // ✨ 修改 - 根据配置决定是否杀死麾下士兵
+    // 若不杀死，解除士兵与主将的绑定关系并允许其被其他主将招募
+    if (bKillSoldiersOnDeath)
+    {
+        KillAllSoldiers();
+    }
+    else
+    {
+        // 解除士兵绑定但不杀死
+        bIsCleaningUpSoldiers = true;
+        UE_LOG(LogXBCharacter, Log, TEXT("将领 %s 死亡，释放 %d 个士兵（不杀死）"), 
+            *GetName(), Soldiers.Num());
+        for (AXBSoldierCharacter* Soldier : Soldiers)
+        {
+            if (Soldier && IsValid(Soldier) && Soldier->GetSoldierState() != EXBSoldierState::Dead)
+            {
+                // 解除主将绑定
+                Soldier->SetLeaderCharacter(nullptr);
+                // 退出战斗状态
+                Soldier->ExitCombat();
+                // 设置为休眠态，可被其他主将招募
+                Soldier->EnterDormantState(EXBDormantType::Sleeping);
+            }
+        }
+        Soldiers.Empty();
+        bIsCleaningUpSoldiers = false;
+    }
 
     bool bMontageStarted = false;
     if (DeathMontage)
@@ -1871,7 +1897,8 @@ void AXBCharacterBase::KillAllSoldiers()
         {
             if (Soldier->GetSoldierState() != EXBSoldierState::Dead)
             {
-                Soldier->TakeSoldierDamage(Soldier->GetCurrentHealth() + 100.0f, this);
+                //Soldier->TakeSoldierDamage(Soldier->GetCurrentHealth() + 100.0f, this);
+                Soldier->HandleDeath();
             }
         }
     }

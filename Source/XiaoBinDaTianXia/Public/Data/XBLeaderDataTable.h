@@ -50,7 +50,7 @@ struct XIAOBINDATIANXIA_API FXBLeaderAIConfig
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|行为", meta = (DisplayName = "行为树资源"))
     TSoftObjectPtr<UBehaviorTree> BehaviorTree;
 
-    // ❌ 删除 MoveMode - 移动模式现在由 Actor 初始化决定
+
 
     /** @brief 视野范围 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|感知", meta = (DisplayName = "视野范围", ClampMin = "100.0"))
@@ -71,17 +71,9 @@ struct XIAOBINDATIANXIA_API FXBLeaderAIConfig
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "随机移动间隔", ClampMin = "0.1"))
     float WanderInterval = 2.0f;
 
-    /** @brief 随机移动到达半径 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "随机移动到达半径", ClampMin = "10.0"))
-    float WanderAcceptanceRadius = 120.0f;
-
-    /** @brief 路线到达半径 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "路线到达半径", ClampMin = "10.0"))
-    float RouteAcceptanceRadius = 120.0f;
-
-    /** @brief 原地站立回位半径 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "站立回位半径", ClampMin = "10.0"))
-    float StandReturnRadius = 150.0f;
+    /** @brief 到达判定半径（统一用于所有移动模式） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "到达判定半径", ClampMin = "10.0"))
+    float AcceptanceRadius = 120.0f;
 
     /** @brief 最小移动距离（避免小碎步原地踏步） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "最小移动距离", ClampMin = "50.0"))
@@ -113,7 +105,7 @@ struct XIAOBINDATIANXIA_API FXBAbilityConfig
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "技能", meta = (DisplayName = "基础伤害", ClampMin = "0.0"))
     float BaseDamage = 10.0f;
 
-    // ❌ 删除 - DamageMultiplier（倍率统一由 UXBAttributeSet::DamageMultiplier 管理）
+
 
     /** @brief 冷却时间（秒），0表示无冷却 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "技能", meta = (DisplayName = "冷却时间", ClampMin = "0.0"))

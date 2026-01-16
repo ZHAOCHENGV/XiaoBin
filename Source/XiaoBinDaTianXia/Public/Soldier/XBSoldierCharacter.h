@@ -250,6 +250,9 @@ public:
     UFUNCTION(BlueprintPure, Category = "XB|Soldier", meta = (DisplayName = "获取跟随将领"))
     AActor* GetFollowTarget() const { return FollowTarget.Get(); }
 
+    UFUNCTION(BlueprintCallable, Category = "XB|Soldier", meta = (DisplayName = "设置将领角色"))
+    void SetLeaderCharacter(AXBCharacterBase* NewLeader);
+
     UFUNCTION(BlueprintPure, Category = "XB|Soldier", meta = (DisplayName = "获取将领角色"))
     AXBCharacterBase* GetLeaderCharacter() const;
 
@@ -443,6 +446,7 @@ public:
      */
     void RefreshFollowingAfterLeaderInit(AXBCharacterBase* Leader, int32 SlotIndex);
 
+    void HandleDeath();
 protected:
     /**
      * @brief  刷新近战命中GA配置
@@ -652,7 +656,7 @@ protected:
 
     // ==================== 内部方法 ====================
 
-    void HandleDeath();
+  
     bool PlayAttackMontage();
     void ApplyVisualConfig();
     void FaceTarget(AActor* Target, float DeltaTime);

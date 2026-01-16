@@ -22,6 +22,7 @@
 #include "Animation/AnimInstance.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "EngineUtils.h"  // ✨ 新增 - 世界遍历支持
+#include "Components/CapsuleComponent.h"
 
 UXBSoldierBehaviorInterface::UXBSoldierBehaviorInterface()
 {
@@ -972,9 +973,15 @@ EXBBehaviorResult UXBSoldierBehaviorInterface::MoveToActor(AActor* Target, float
         return EXBBehaviorResult::Failed;
     }
 
+    // ✨ 修改 - 计算正确的停止距离
+    // 停在攻击范围内而非贴脸：AcceptanceRadius = AttackRange - CapsuleRadius
     if (AcceptanceRadius < 0.0f)
     {
-        AcceptanceRadius = Soldier->GetAttackRange() * 0.9f;
+        const float AttackRange = Soldier->GetAttackRange();
+        const float CapsuleRadius = Soldier->GetCapsuleComponent() 
+            ? Soldier->GetCapsuleComponent()->GetScaledCapsuleRadius() 
+            : 40.0f;
+        AcceptanceRadius = FMath::Max(50.0f, AttackRange - CapsuleRadius);
     }
 
     AAIController* AIController = Cast<AAIController>(Soldier->GetController());
@@ -984,18 +991,32 @@ EXBBehaviorResult UXBSoldierBehaviorInterface::MoveToActor(AActor* Target, float
     }
 
     float Distance = FVector::Dist(Soldier->GetActorLocation(), Target->GetActorLocation());
+    
+    // ✨ 新增 - 攻击阶段降低避让权重（站桩输出）
+    if (UCharacterMovementComponent* MoveComp = Soldier->GetCharacterMovement())
+    {
+        if (Distance <= Soldier->GetAttackRange())
+        {
+            // 攻击阶段：极低避让权重，防止被友军挤开打断攻击
+            MoveComp->AvoidanceWeight = 0.05f;
+        }
+        else
+        {
+            // 移动阶段：恢复正常避让
+            MoveComp->AvoidanceWeight = Soldier->GetAvoidanceWeight();
+        }
+    }
+    
     if (Distance <= AcceptanceRadius)
     {
         return EXBBehaviorResult::Success;
     }
 
-    // ✨ 新增 - 移动缓冲（Hysteresis）：防止在攻击范围边缘反复触发移动/停止
-    // 仅当距离显著超出攻击范围时才发起新移动请求
+    // 移动缓冲：防止在攻击范围边缘反复触发移动/停止
     const float MoveHysteresis = Soldier->GetAttackRange() * 0.15f;
     const float EffectiveAcceptance = AcceptanceRadius + MoveHysteresis;
     if (Distance <= EffectiveAcceptance)
     {
-        // 士兵处于缓冲区内，认为足够近，不发起移动
         return EXBBehaviorResult::Success;
     }
 

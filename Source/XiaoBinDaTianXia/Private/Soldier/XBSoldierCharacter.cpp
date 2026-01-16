@@ -22,7 +22,7 @@
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Soldier/Component/XBSoldierFollowComponent.h"
-#include "Soldier/Component/XBSoldierDebugComponent.h"
+#include "Soldier/Component/XBSoldierDebugComponent.h"      
 #include "Soldier/Component/XBSoldierBehaviorInterface.h"
 #include "Soldier/Component/XBSoldierPoolSubsystem.h"
 #include "Character/XBCharacterBase.h"
@@ -1632,6 +1632,11 @@ void AXBSoldierCharacter::SetFollowTarget(AActor* NewLeader, int32 SlotIndex)
     }
 }
 
+void AXBSoldierCharacter::SetLeaderCharacter(AXBCharacterBase* NewLeader)
+{
+    SetFollowTarget(NewLeader, INDEX_NONE);
+}
+
 AXBCharacterBase* AXBSoldierCharacter::GetLeaderCharacter() const
 {
     return Cast<AXBCharacterBase>(FollowTarget.Get());
@@ -1791,6 +1796,40 @@ void AXBSoldierCharacter::ExitCombat()
 
 float AXBSoldierCharacter::TakeSoldierDamage(float DamageAmount, AActor* DamageSource)
 {
+    // ✨ 新增 - 友军伤害硬拦截（C++层级绝对防御）
+    if (DamageSource)
+    {
+        AXBCharacterBase* MyLeader = GetLeaderCharacter();
+        
+        // 1. 绝对防御：主将不能伤害自己的士兵
+        if (MyLeader && DamageSource == MyLeader)
+        {
+            UE_LOG(LogXBCombat, Verbose, TEXT("士兵 %s: 主将伤害被硬拦截"), *GetName());
+            return 0.0f;
+        }
+        
+        // 2. 绝对防御：同队士兵不能互相伤害
+        if (AXBSoldierCharacter* SourceSoldier = Cast<AXBSoldierCharacter>(DamageSource))
+        {
+            if (MyLeader && SourceSoldier->GetLeaderCharacter() == MyLeader)
+            {
+                UE_LOG(LogXBCombat, Verbose, TEXT("士兵 %s: 同队士兵伤害被硬拦截"), *GetName());
+                return 0.0f;
+            }
+        }
+        
+        // 3. 绝对防御：主将的技能投射物也不能伤害自己的士兵
+        // (DamageSource 可能是投射物，需要追溯其所有者)
+        if (AActor* SourceOwner = DamageSource->GetOwner())
+        {
+            if (MyLeader && SourceOwner == MyLeader)
+            {
+                UE_LOG(LogXBCombat, Verbose, TEXT("士兵 %s: 主将投射物伤害被硬拦截"), *GetName());
+                return 0.0f;
+            }
+        }
+    }
+
     if (bIsDead || CurrentState == EXBSoldierState::Dead)
     {
         return 0.0f;
@@ -1807,7 +1846,7 @@ float AXBSoldierCharacter::TakeSoldierDamage(float DamageAmount, AActor* DamageS
     UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 受到 %.1f 伤害, 剩余血量: %.1f"), 
         *GetName(), ActualDamage, CurrentHealth);
 
-    // 🔧 修改 - 受击不再直接触发战斗，确保仅由主将主动攻击敌方主将时进入战斗
+   
 
     if (CurrentHealth <= 0.0f)
     {
@@ -2359,9 +2398,9 @@ void AXBSoldierCharacter::HandleDeath()
                     bMontageStarted = true;
                     DeathAnimDuration = Duration;
                 }
-            }  // 关闭 if (AnimInstance)
-        }      // 关闭 if (DeathMontage)
-    }          // 关闭 if (IsDataAccessorValid())
+            }  
+        }      
+    }         
 
     // 🔧 修改 - 根据死亡动画时长安排回收
     FTimerHandle RecycleTimerHandle;
@@ -2393,7 +2432,7 @@ void AXBSoldierCharacter::HandleDeath()
     );
 
     UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 死亡，%.1f秒后回收"), *GetName(), DeathAnimDuration + 0.5f);
-    // 🔧 修改 - 死亡流程结束，函数正常闭合
+    
 }
 
 // ==================== 编队事件绑定 ====================

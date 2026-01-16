@@ -93,13 +93,33 @@ private:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI", meta = (DisplayName = "巡逻路线Actor", ExposeOnSpawn = "true", AllowPrivateAccess = "true"))
 	TObjectPtr<AActor> PatrolSplineActor;
 
-	// ? 新增 - 假人默认移动方式
 	/**
 	 * @brief 假人默认移动方式
 	 * @note  覆盖数据表中的 MoveMode，避免依赖表配置
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "默认移动方式", AllowPrivateAccess = "true"))
 	EXBLeaderAIMoveMode DummyMoveMode = EXBLeaderAIMoveMode::Stand;
+
+	/** @brief 出生点缓存（用于 Stand 模式回归） */
+	FVector SpawnLocation;
+
+	/** @brief 出生朝向缓存（用于 Stand 模式回归） */
+	FRotator SpawnRotation;
+
+public:
+	/**
+	 * @brief  获取回归位置（按模式决定）
+	 * @return 回归目标坐标
+	 * @note   Stand=出生点, Wander=当前位置, Route=巡逻路线最近点
+	 */
+	UFUNCTION(BlueprintPure, Category = "AI|移动", meta = (DisplayName = "获取回归位置"))
+	FVector GetReturnLocation() const;
+
+	/** @brief 获取出生点 */
+	UFUNCTION(BlueprintPure, Category = "AI|移动", meta = (DisplayName = "获取出生点"))
+	FVector GetSpawnLocation() const { return SpawnLocation; }
+
+private:
 
 	// ✨ 新增 - 假人受击响应延迟
 	/**

@@ -554,6 +554,10 @@ protected:
 
     FTimerHandle DeathDestroyTimerHandle;
 
+    /** @brief 主将死亡时是否杀死麾下士兵（设为 false 时，士兵保持存活并解除绑定） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "死亡", meta = (DisplayName = "死亡时杀死士兵"))
+    bool bKillSoldiersOnDeath = true;
+
     void KillAllSoldiers();
 
     // ==================== AI配置 ====================

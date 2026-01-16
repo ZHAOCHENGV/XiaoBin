@@ -25,16 +25,18 @@ AXBDummyCharacter::AXBDummyCharacter()
 	Faction = EXBFaction::FreeForAll;
 
 	// ✨ 新增 - 启用控制器旋转，以支持AI的SetFocus转向
-	// 这样AI控制器调用SetFocus时，角色会平滑转向目标
-	bUseControllerRotationYaw = true;
+	// 🔧 修改 - 禁用 UseControllerRotationYaw 以避免强制锁定到控制器方向，
+	// 改为使用 OrientRotationToMovement 实现平滑转向
+	bUseControllerRotationYaw = false;
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationRoll = false;
 
 	// 禁用移动方向旋转，避免与控制器旋转冲突
 	if (GetCharacterMovement())
 	{
-		GetCharacterMovement()->bOrientRotationToMovement = false;
-		GetCharacterMovement()->bUseControllerDesiredRotation = true; // 使用控制器期望的旋转
+		// 🔧 修改 - 启用朝向移动方向旋转，使AI移动更自然
+		GetCharacterMovement()->bOrientRotationToMovement = true;
+		GetCharacterMovement()->bUseControllerDesiredRotation = false; 
 		GetCharacterMovement()->RotationRate = FRotator(0.0f, 360.0f, 0.0f); // 设置旋转速度
 	}
 
@@ -51,12 +53,35 @@ AXBDummyCharacter::AXBDummyCharacter()
 void AXBDummyCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// ✨ 新增 - 记录出生点，用于 Stand 模式回归
+	SpawnLocation = GetActorLocation();
+	SpawnRotation = GetActorRotation(); // 记录初始朝向
 }
 
 
 void AXBDummyCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	// ✨ 新增 - Stand 模式回归后自动复位朝向
+	if (DummyMoveMode == EXBLeaderAIMoveMode::Stand)
+	{
+		// 检查是否已回到出生点附近（且已停止移动）
+		const float DistSq = FVector::DistSquared(GetActorLocation(), SpawnLocation);
+		const float StopThresholdSq = FMath::Square(50.0f); // 50cm 误差
+
+		if (DistSq < StopThresholdSq)
+		{
+			// 检查速度是否接近零
+			if (GetVelocity().SizeSquared() < 10.0f)
+			{
+				// 平滑插值回初始朝向
+				FRotator NewRot = FMath::RInterpTo(GetActorRotation(), SpawnRotation, DeltaTime, 5.0f);
+				SetActorRotation(NewRot);
+			}
+		}
+	}
 }
 
 /**
@@ -143,41 +168,39 @@ void AXBDummyCharacter::InitializeLeaderData()
 /**
  * @brief  执行假人受击后的攻击逻辑
  * @return 是否成功执行攻击
- * @note   详细流程分析: 检查战斗组件 -> 判断冷却 -> 优先释放技能或普攻
+ * @note   详细流程分析: 检查战斗组件 -> 判断冷却 -> 普攻优先（确保持续输出）
  *         性能/架构注意事项: 仅负责释放，不处理目标选择
  */
 bool AXBDummyCharacter::ExecuteDamageResponseAttack()
 {
-	// 🔧 修改 - 必须存在战斗组件才能释放技能/普攻
+	// 必须存在战斗组件才能释放技能/普攻
 	if (!CombatComponent)
 	{
 		UE_LOG(LogXBCombat, Warning, TEXT("假人 %s 无战斗组件，无法释放技能/普攻"), *GetName());
 		return false;
 	}
 
-	// 🔧 修改 - 读取冷却状态，按优先规则选择释放
 	const bool bSkillOnCooldown = CombatComponent->IsSkillOnCooldown();
 	const bool bBasicOnCooldown = CombatComponent->IsBasicAttackOnCooldown();
 
-	// 🔧 修改 - 技能冷却则释放普攻，普攻冷却则释放技能
-	if (bSkillOnCooldown && !bBasicOnCooldown)
+	// ✨ 修改 - 普攻优先（确保持续输出），技能作为爆发补充
+	// 逻辑：普攻可用时先普攻，避免技能阻塞导致呆滞
+	if (!bBasicOnCooldown)
 	{
-		return CombatComponent->PerformBasicAttack();
+		if (CombatComponent->PerformBasicAttack())
+		{
+			return true;
+		}
 	}
 
-	if (bBasicOnCooldown && !bSkillOnCooldown)
-	{
-		return CombatComponent->PerformSpecialSkill();
-	}
-
-	// 🔧 修改 - 两者都可用时优先释放技能
+	// 普攻冷却或失败，尝试技能
 	if (!bSkillOnCooldown)
 	{
 		return CombatComponent->PerformSpecialSkill();
 	}
 
-	// 🔧 修改 - 两者都在冷却则不释放
-	UE_LOG(LogXBCombat, Log, TEXT("假人 %s 技能与普攻均在冷却中"), *GetName());
+	// 两者都在冷却（正常情况，等待冷却）
+	UE_LOG(LogXBCombat, Verbose, TEXT("假人 %s 技能与普攻均在冷却中"), *GetName());
 	return false;
 }
 
@@ -239,5 +262,37 @@ void AXBDummyCharacter::TriggerDamageResponse()
 	else
 	{
 		UE_LOG(LogXBCombat, Warning, TEXT("假人 %s 无法获取AI控制器，响应失败"), *GetName());
+	}
+}
+
+/**
+ * @brief  获取回归位置（按模式决定）
+ * @return 回归目标坐标
+ * @note   Stand=出生点, Wander=当前位置, Route=巡逻路线最近点
+ */
+FVector AXBDummyCharacter::GetReturnLocation() const
+{
+	switch (DummyMoveMode)
+	{
+	case EXBLeaderAIMoveMode::Stand:
+		// 原地站立模式：回到出生点
+		return SpawnLocation;
+
+	case EXBLeaderAIMoveMode::Wander:
+		// 随机移动模式：以当前位置为中心
+		return GetActorLocation();
+
+	case EXBLeaderAIMoveMode::Route:
+		// 固定路线模式：返回巡逻路线最近点
+		if (USplineComponent* Spline = GetPatrolSplineComponent())
+		{
+			const float Key = Spline->FindInputKeyClosestToWorldLocation(GetActorLocation());
+			return Spline->GetLocationAtSplineInputKey(Key, ESplineCoordinateSpace::World);
+		}
+		// 无路线时回退到出生点
+		return SpawnLocation;
+
+	default:
+		return GetActorLocation();
 	}
 }

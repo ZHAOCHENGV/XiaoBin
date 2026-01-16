@@ -121,26 +121,40 @@ void UBTService_XBUpdateSoldierState::TickNode(UBehaviorTreeComponent& OwnerComp
     
    // 🔧 修改: 增加对 IsDead 的强校验
     bool bTargetIsDead = false;
+    bool bTargetIsFriendly = false;  // ✨ 新增 - 同主将友军标记
     if (CurrentTarget)
     {
+        // ✨ 新增 - 同主将友军判定
+        AXBCharacterBase* MyLeader = Soldier->GetLeaderCharacter();
+        AXBCharacterBase* TargetLeader = nullptr;
+        
         if (AXBSoldierCharacter* TS = Cast<AXBSoldierCharacter>(CurrentTarget))
         {
             if (TS->IsDead() || TS->GetSoldierState() == EXBSoldierState::Dead) bTargetIsDead = true;
+            TargetLeader = TS->GetLeaderCharacter();
         }
         else if (AXBCharacterBase* TL = Cast<AXBCharacterBase>(CurrentTarget))
         {
             if (TL->IsDead()) bTargetIsDead = true;
+            TargetLeader = TL;
+        }
+        
+        // 同主将 = 同队友军，严禁攻击
+        if (MyLeader && TargetLeader && MyLeader == TargetLeader)
+        {
+            bTargetIsFriendly = true;
+            UE_LOG(LogXBAI, Verbose, TEXT("士兵 %s 的目标与自己同属一个主将，视为友军"), *Soldier->GetName());
         }
     }
 
     bool bTargetValid = false;
     bool bTargetBecameInvalid = false;
     
-    // 如果目标已死，强制视为无效
-    if (bTargetIsDead)
+    // ✨ 修改 - 目标为友军时也视为无效
+    if (bTargetIsDead || bTargetIsFriendly)
     {
         bTargetValid = false;
-        bTargetBecameInvalid = true; // 标记失效，触发下方寻敌逻辑
+        bTargetBecameInvalid = true;
     }
     else if (bCheckTargetValidity && CurrentTarget && BehaviorInterface)
     {
@@ -239,49 +253,30 @@ void UBTService_XBUpdateSoldierState::TickNode(UBehaviorTreeComponent& OwnerComp
         // 🔧 修改 - 距离超限时允许强制脱战，并继续保留追击跟随目标的回收逻辑
         if (bShouldRetreat && Soldier->GetSoldierState() == EXBSoldierState::Combat)
         {
-            // ✨ 核心修复：战斗中且有有效目标时，完全屏蔽撤退逻辑（防止与追击冲突导致抖动）
-            // 仅当距离真正超限时才允许脱战
-            if (AXBCharacterBase* LeaderCharacter = Soldier->GetLeaderCharacter())
+            // ✨ 核心修复 - 战斗状态锁定
+            // 战斗中且有有效目标时，强制 ShouldRetreat = false
+            // 除非距离超过极远阈值（3000+），否则战斗优先级高于跟随优先级
+            const float MaxTeleportDistance = 3000.0f;
+            
+            if (CurrentTarget && DistToLeader < MaxTeleportDistance)
             {
-                // 主将在战斗且士兵有有效目标时，保持战斗状态
-                if (LeaderCharacter->IsInCombat() && CurrentTarget)
-                {
-                    // 仅当距离未超限时才跳过所有脱战逻辑
-                    if (DistToLeader < DisengageDistanceValue)
-                    {
-                        // ✨ 修改 - 不执行任何脱战/撤退操作，让士兵专注追击
-                        BlackboardComp->SetValueAsBool(XBSoldierBBKeys::ShouldRetreat, false);
-                        // 直接跳过后续撤退判定块
-                        goto SkipRetreatLogic;
-                    }
-                }
+                // 战斗状态锁定：有目标且未追太远，绝对不允许回队
+                BlackboardComp->SetValueAsBool(XBSoldierBBKeys::ShouldRetreat, false);
+                goto SkipRetreatLogic;
             }
-
-            // ✨ 新增 - 距离超限时强制脱战，避免主将战斗导致脱战抖动
-            if (DistToLeader >= DisengageDistanceValue)
+            
+            // 极远距离时强制脱战（超过3000码）
+            if (DistToLeader >= MaxTeleportDistance)
             {
                 Soldier->ExitCombat();
                 Soldier->ReturnToFormation();
-                UE_LOG(LogXBAI, Log, TEXT("士兵 %s 超距强制脱战回队列"), *Soldier->GetName());
+                UE_LOG(LogXBAI, Log, TEXT("士兵 %s 极远距离强制脱战回队列 (距离=%.0f)"), *Soldier->GetName(), DistToLeader);
                 return;
             }
 
-            // ✨ 新增 - 目标为跟随态时允许脱战，避免追击导致编队散开
-            bool bTargetIsFollowing = false;
-            if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(CurrentTarget))
+            // 主将已脱战时跟随脱战
+            if (AXBCharacterBase* LeaderCharacter = Soldier->GetLeaderCharacter())
             {
-                bTargetIsFollowing = (TargetSoldier->GetSoldierState() == EXBSoldierState::Following);
-            }
-
-            if (bTargetIsFollowing)
-            {
-                Soldier->ExitCombat();
-                Soldier->ReturnToFormation();
-                UE_LOG(LogXBAI, Log, TEXT("士兵 %s 追击跟随目标超距脱战回队列"), *Soldier->GetName());
-            }
-            else if (AXBCharacterBase* LeaderCharacter = Soldier->GetLeaderCharacter())
-            {
-                // 说明：主将脱战会统一调用士兵 ExitCombat，这里仅在主将已脱战时执行回归
                 if (!LeaderCharacter->IsInCombat())
                 {
                     Soldier->ExitCombat();

@@ -21,6 +21,7 @@
 #include "Components/SplineComponent.h"
 #include "CollisionQueryParams.h"
 #include "Engine/OverlapResult.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "Utils/XBBlueprintFunctionLibrary.h"
 #include "Utils/XBLogCategories.h"
 
@@ -322,7 +323,16 @@ void UBTService_XBDummyLeaderAI::InitializeBlackboard(AXBDummyCharacter* Dummy, 
 	// 🔧 修改 - 写入初始位置和行为中心，保证站立/随机移动有基准
 	// 为什么要写入：避免黑板初始值为零导致行为目标无效
 	Blackboard->SetValueAsVector(HomeLocationKey, HomeLocation);
-	Blackboard->SetValueAsVector(BehaviorCenterKey, HomeLocation);
+
+	// ✨ 优化 - 行为中心优先使用 SpawnLocation，确保 Stand 模式归位准确
+	if (Dummy->GetDummyMoveMode() == EXBLeaderAIMoveMode::Stand)
+	{
+		Blackboard->SetValueAsVector(BehaviorCenterKey, Dummy->GetSpawnLocation());
+	}
+	else
+	{
+		Blackboard->SetValueAsVector(BehaviorCenterKey, HomeLocation);
+	}
 	// ✨ 修改 - 使用 Dummy->GetDummyMoveMode() 替代废弃的 AIConfig.MoveMode
 	Blackboard->SetValueAsInt(MoveModeKey, static_cast<int32>(Dummy->GetDummyMoveMode()));
 	Blackboard->SetValueAsInt(RouteIndexKey, 0);
@@ -545,11 +555,28 @@ void UBTService_XBDummyLeaderAI::HandleTargetLost(AXBDummyCharacter* Dummy, UBla
 	{
 	case EXBLeaderAIMoveMode::Stand:
 		{
-			// ✨ 原地站立模式：导航回出生点（Spawn Location）
-			const FVector HomeLocation = Blackboard->GetValueAsVector(HomeLocationKey);
-			Blackboard->SetValueAsVector(BehaviorCenterKey, HomeLocation);
-			Blackboard->SetValueAsVector(BehaviorDestinationKey, HomeLocation);
-			UE_LOG(LogXBAI, Log, TEXT("假人AI目标丢失(Stand模式)，回归出生点: %s"), *Dummy->GetName());
+			// ✨ 原地站立模式：回归出生点
+			// 1. 获取最原始的出生点
+			FVector SpawnLoc = Dummy->GetSpawnLocation();
+
+			// 2. 投影到导航网格（确保可达）
+			UNavigationSystemV1* NavSys = FNavigationSystem::GetCurrent<UNavigationSystemV1>(Dummy->GetWorld());
+			if (NavSys)
+			{
+				FNavLocation ProjectedLoc;
+				// 搜索范围略大一点(200,200,500)以容错
+				if (NavSys->ProjectPointToNavigation(SpawnLoc, ProjectedLoc, FVector(200, 200, 500)))
+				{
+					SpawnLoc = ProjectedLoc.Location;
+				}
+			}
+
+			// 3. 统一写入 BehaviorCenter，后续由 UpdateBehaviorDestination 同步给 BehaviorDestination
+			// 注意：这里同时写入 Destination 是为了立即生效，防止 Update 延迟
+			Blackboard->SetValueAsVector(BehaviorCenterKey, SpawnLoc);
+			Blackboard->SetValueAsVector(BehaviorDestinationKey, SpawnLoc);
+			
+			UE_LOG(LogXBAI, Log, TEXT("假人AI目标丢失(Stand模式)，重置中心点: %s"), *Dummy->GetName());
 		}
 		break;
 
@@ -630,17 +657,18 @@ void UBTService_XBDummyLeaderAI::UpdateBehaviorDestination(AXBDummyCharacter* Du
 	{
 	case EXBLeaderAIMoveMode::Stand:
 	{
-		// 🔧 修改 - 原地站立回到初始位置
-		// 为什么要回到初始点：保证站立模式的行为可预测
-		Blackboard->SetValueAsVector(BehaviorDestinationKey, Blackboard->GetValueAsVector(HomeLocationKey));
+		// 🔧 修改 - 原地站立模式：目的地 = 行为中心
+		// 逻辑流：HandleTargetLost/Init 设置 Center -> 这里读取 Center 赋给 Dest
+		// 确保 Center 是唯一的“归宿”数据源
+		const FVector Center = Blackboard->GetValueAsVector(BehaviorCenterKey);
+		Blackboard->SetValueAsVector(BehaviorDestinationKey, Center);
 		UE_LOG(LogXBAI, Verbose, TEXT("假人AI站立模式更新目的地: %s"), *Dummy->GetName());
 		break;
 	}
-	// 🔧 修改 - 明确使用 case 关键字，避免拼写错误导致编译失败
 	case EXBLeaderAIMoveMode::Wander:
 	{
+		// ... (Wander 逻辑保持不变) ...
 		// 🔧 修改 - 若当前目的地无效，忽略间隔直接重新计算
-		// 为什么要检测无效：避免黑板残留零向量导致无法移动
 		const FVector CurrentDestination = Blackboard->GetValueAsVector(BehaviorDestinationKey);
 		const bool bDestinationInvalid = CurrentDestination.ContainsNaN() ||
 			(CurrentDestination.IsNearlyZero() && !Dummy->GetActorLocation().IsNearlyZero());
@@ -654,25 +682,18 @@ void UBTService_XBDummyLeaderAI::UpdateBehaviorDestination(AXBDummyCharacter* Du
 		UNavigationSystemV1* NavSystem = FNavigationSystem::GetCurrent<UNavigationSystemV1>(Dummy->GetWorld());
 		if (!NavSystem)
 		{
-			// 🔧 修改 - 无导航系统时保持当前目的地（回退为行为中心），避免无效向量
-			// 为什么要回退中心：中心点通常位于可行走区域，风险更低
 			Blackboard->SetValueAsVector(BehaviorDestinationKey, Blackboard->GetValueAsVector(BehaviorCenterKey));
-			UE_LOG(LogXBAI, Warning, TEXT("假人AI随机移动失败：无导航系统，回退到行为中心: %s"), *Dummy->GetName());
 			NextWanderTime = CurrentTime + AIConfig.WanderInterval;
 			return;
 		}
 
-		// 🔧 修改 - 使用已修正的行为中心，避免 FLT_MAX 参与随机采样
 		const FVector BehaviorCenter = Blackboard->GetValueAsVector(BehaviorCenterKey);
 		const FVector CurrentLocation = Dummy->GetActorLocation();
-		
-		// 🔧 修改 - 直接使用 WanderRadius（原 PatrolRadius 已删除）
 		const float MinDistance = AIConfig.MinMoveDistance;
 		
 		FNavLocation RandomLocation;
 		bool bFoundValidPoint = false;
 		
-		// 尝试多次寻找满足最小距离的目标点
 		for (int32 Attempt = 0; Attempt < 5 && !bFoundValidPoint; ++Attempt)
 		{
 			if (NavSystem->GetRandomPointInNavigableRadius(BehaviorCenter, AIConfig.WanderRadius, RandomLocation))
@@ -689,14 +710,10 @@ void UBTService_XBDummyLeaderAI::UpdateBehaviorDestination(AXBDummyCharacter* Du
 		{	
 			Blackboard->SetValueAsVector(BehaviorDestinationKey, RandomLocation.Location);
 			NextWanderTime = CurrentTime + AIConfig.WanderInterval;
-			UE_LOG(LogXBAI, Verbose, TEXT("假人AI随机移动更新目的地: %s, 距离=%.1f"), *Dummy->GetName(), FVector::Dist(CurrentLocation, RandomLocation.Location));
 		}
 		else
 		{
-			// 🔧 修改 - 随机点失败时回退为行为中心，保证目的地有效
-			// 为什么要回退：随机点失败时继续使用无效点会导致停滞
 			Blackboard->SetValueAsVector(BehaviorDestinationKey, BehaviorCenter);
-			UE_LOG(LogXBAI, Warning, TEXT("假人AI随机移动失败：无法找到满足最小距离的可行走点，回退到行为中心: %s"), *Dummy->GetName());
 			NextWanderTime = CurrentTime + AIConfig.WanderInterval;
 		}
 		break;
@@ -704,35 +721,64 @@ void UBTService_XBDummyLeaderAI::UpdateBehaviorDestination(AXBDummyCharacter* Du
 	case EXBLeaderAIMoveMode::Route:
 	{
 		USplineComponent* SplineComp = Dummy->GetPatrolSplineComponent();
-		if (!SplineComp || SplineComp->GetNumberOfSplinePoints() <= 0)
+		if (!SplineComp || SplineComp->GetNumberOfSplinePoints() < 2)
 		{
 			if (!bLoggedMissingSpline)
 			{
-				UE_LOG(LogXBAI, Warning, TEXT("假人AI未找到巡逻路线样条，回退为原地站立: %s"), *Dummy->GetName());
+				UE_LOG(LogXBAI, Warning, TEXT("假人AI未找到有效巡逻路线样条，回退为行动中心: %s"), *Dummy->GetName());
 				bLoggedMissingSpline = true;
 			}
-
-			Blackboard->SetValueAsVector(BehaviorDestinationKey, Blackboard->GetValueAsVector(HomeLocationKey));
+			Blackboard->SetValueAsVector(BehaviorDestinationKey, Blackboard->GetValueAsVector(BehaviorCenterKey));
 			return;
 		}
 
-		const int32 PointCount = SplineComp->GetNumberOfSplinePoints();
-		int32 CurrentIndex = Blackboard->GetValueAsInt(RouteIndexKey);
-		CurrentIndex = FMath::Clamp(CurrentIndex, 0, PointCount - 1);
-
-		const FVector TargetLocation = SplineComp->GetLocationAtSplinePoint(CurrentIndex, ESplineCoordinateSpace::World);
-		const float Distance = FVector::Dist(Dummy->GetActorLocation(), TargetLocation);
-		if (Distance <= AIConfig.RouteAcceptanceRadius)
+		const FVector MyLoc = Dummy->GetActorLocation();
+		const float DistToSpline = FVector::Dist(MyLoc, SplineComp->FindLocationClosestToWorldLocation(MyLoc, ESplineCoordinateSpace::World));
+		
+		// ✨ 阶段1：回归样条线（Approaching Phase）
+		// 如果离路线太远（> 300），则先走到最近点，不使用 LookAhead
+		// 目的：避免因远处投影点不稳定导致的“顿挫震荡”，即使开启 Observe 也能平滑靠近
+		if (DistToSpline > 300.0f)
 		{
-			// 🔧 修改 - 到达后切换到下一点
-			// 为什么要切换：保证巡逻路线持续前进而非停在原点
-			CurrentIndex = (CurrentIndex + 1) % PointCount;
-			Blackboard->SetValueAsInt(RouteIndexKey, CurrentIndex);
+			const FVector ClosestPoint = SplineComp->FindLocationClosestToWorldLocation(MyLoc, ESplineCoordinateSpace::World);
+			
+			// 仅在目标点变化显著时更新（稳定器）
+			const FVector OldDest = Blackboard->GetValueAsVector(BehaviorDestinationKey);
+			if (FVector::DistSquared(OldDest, ClosestPoint) > FMath::Square(200.0f)) // 更宽松的阈值
+			{
+				Blackboard->SetValueAsVector(BehaviorDestinationKey, ClosestPoint);
+				UE_LOG(LogXBAI, Verbose, TEXT("假人AI回归样条线: Dist=%.1f, To=%s"), DistToSpline, *ClosestPoint.ToString());
+			}
+			return;
 		}
 
-		const FVector NextLocation = SplineComp->GetLocationAtSplinePoint(CurrentIndex, ESplineCoordinateSpace::World);
-		Blackboard->SetValueAsVector(BehaviorDestinationKey, NextLocation);
-		UE_LOG(LogXBAI, Verbose, TEXT("假人AI路线模式更新目的地: %s"), *Dummy->GetName());
+		// ✨ 阶段2：沿样条线前进（Following Phase）
+		// 已在路线上，启用 LookAhead 动态目标
+		const float CurrentDistanceParams = SplineComp->GetDistanceAlongSplineAtLocation(MyLoc, ESplineCoordinateSpace::World);
+		const float TotalLength = SplineComp->GetSplineLength();
+
+		const float MoveSpeed = Dummy->GetCharacterMovement()->GetMaxSpeed(); // 修正：MaxWalkSpeed
+		const float LookAheadDistance = FMath::Max(800.0f, MoveSpeed * 1.5f);
+		
+		float TargetDistance = CurrentDistanceParams + LookAheadDistance;
+
+		if (SplineComp->IsClosedLoop())
+		{
+			TargetDistance = FMath::Fmod(TargetDistance, TotalLength);
+		}
+		else if (TargetDistance > TotalLength)
+		{
+			TargetDistance = FMath::Fmod(TargetDistance, TotalLength);
+		}
+
+		const FVector TargetLocation = SplineComp->GetLocationAtDistanceAlongSpline(TargetDistance, ESplineCoordinateSpace::World);
+		
+		// 阈值检测，避免微小抖动触发重寻路
+		const FVector OldDestination = Blackboard->GetValueAsVector(BehaviorDestinationKey);
+		if (FVector::DistSquared(OldDestination, TargetLocation) > FMath::Square(150.0f)) // 适中阈值
+		{
+			Blackboard->SetValueAsVector(BehaviorDestinationKey, TargetLocation);
+		}
 		break;
 	}
 	default:
