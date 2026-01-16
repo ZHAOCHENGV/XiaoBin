@@ -106,6 +106,16 @@ private:
 	void UpdateBehaviorDestination(AXBDummyCharacter* Dummy, UBlackboardComponent* Blackboard);
 
 	/**
+	 * @brief  在无需 Observe Blackboard 的情况下持续更新移动请求
+	 * @param  Dummy 假人主将
+	 * @param  Destination 目标位置
+	 * @return 无
+	 * @note   详细流程分析: 行为树未观察黑板值时，通过服务主动下发 MoveTo
+	 *         性能/架构注意事项: 仅在巡逻路线模式使用，避免与战斗靠近冲突
+	 */
+	void RequestContinuousMove(AXBDummyCharacter* Dummy, const FVector& Destination) const;
+
+	/**
 	 * @brief  将路线索引重置到最近样条点
 	 * @param  Dummy 假人主将
 	 * @param  Blackboard 黑板组件
