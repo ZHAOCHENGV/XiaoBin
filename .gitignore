@@ -79,7 +79,8 @@ DerivedDataCache/*
 
 Windows/*
 
-# 忽略Content/*目录下的所有文件和文件夹
-Content/*
+#忽略Content/*目录下的所有文件和文件夹
+#Content/*
 # 但保留以下内容
-!Content/Blueprints
+#!Content/Blueprints
+
