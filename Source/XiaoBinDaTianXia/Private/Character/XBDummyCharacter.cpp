@@ -9,6 +9,7 @@
 #include "Utils/XBBlueprintFunctionLibrary.h"
 #include "Utils/XBLogCategories.h"
 #include "TimerManager.h"
+#include "Components/CapsuleComponent.h"
 #include "Components/SplineComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
@@ -54,8 +55,42 @@ void AXBDummyCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// ✨ 新增 - 记录出生点，用于 Stand 模式回归
-	SpawnLocation = GetActorLocation();
+	// ✨ 新增 - 使用地面检测设置准确的出生点
+	UWorld* World = GetWorld();
+	FVector CurrentLoc = GetActorLocation();
+	
+	if (World)
+	{
+		// 从当前位置向上500单位作为起点，向下1000单位作为终点
+		FVector TraceStart = CurrentLoc + FVector(0.0f, 0.0f, 500.0f);
+		FVector TraceEnd = CurrentLoc - FVector(0.0f, 0.0f, 1000.0f);
+		
+		FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(DummyGroundTrace), false, this);
+		FHitResult HitResult;
+		
+		if (World->LineTraceSingleByChannel(HitResult, TraceStart, TraceEnd, ECC_WorldStatic, QueryParams))
+		{
+			// 检测到地面，使用地面位置 + 胶囊体半高
+			float CapsuleHalfHeight = 88.0f;
+			if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+			{
+				CapsuleHalfHeight = Capsule->GetScaledCapsuleHalfHeight();
+			}
+			SpawnLocation = HitResult.Location + FVector(0.0f, 0.0f, CapsuleHalfHeight);
+			UE_LOG(LogXBAI, Log, TEXT("假人 %s 出生点地面检测成功: %s"), *GetName(), *SpawnLocation.ToString());
+		}
+		else
+		{
+			// 检测失败，使用当前位置
+			SpawnLocation = CurrentLoc;
+			UE_LOG(LogXBAI, Warning, TEXT("假人 %s 出生点地面检测失败，使用当前位置"), *GetName());
+		}
+	}
+	else
+	{
+		SpawnLocation = CurrentLoc;
+	}
+	
 	SpawnRotation = GetActorRotation(); // 记录初始朝向
 }
 
@@ -64,24 +99,7 @@ void AXBDummyCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	// ✨ 新增 - Stand 模式回归后自动复位朝向
-	if (DummyMoveMode == EXBLeaderAIMoveMode::Stand)
-	{
-		// 检查是否已回到出生点附近（且已停止移动）
-		const float DistSq = FVector::DistSquared(GetActorLocation(), SpawnLocation);
-		const float StopThresholdSq = FMath::Square(50.0f); // 50cm 误差
 
-		if (DistSq < StopThresholdSq)
-		{
-			// 检查速度是否接近零
-			if (GetVelocity().SizeSquared() < 10.0f)
-			{
-				// 平滑插值回初始朝向
-				FRotator NewRot = FMath::RInterpTo(GetActorRotation(), SpawnRotation, DeltaTime, 5.0f);
-				SetActorRotation(NewRot);
-			}
-		}
-	}
 }
 
 /**

@@ -63,6 +63,7 @@ void UBTService_XBDummyLeaderAI::OnBecomeRelevant(UBehaviorTreeComponent& OwnerC
 	NextWanderTime = 0.0f;
 	bHadCombatTarget = false;
 	bLoggedMissingSpline = false;
+	bRouteForward = true;
 
 	AAIController* AIController = OwnerComp.GetAIOwner();
 	UBlackboardComponent* Blackboard = OwnerComp.GetBlackboardComponent();
@@ -571,10 +572,10 @@ void UBTService_XBDummyLeaderAI::HandleTargetLost(AXBDummyCharacter* Dummy, UBla
 				}
 			}
 
-			// 3. 统一写入 BehaviorCenter，后续由 UpdateBehaviorDestination 同步给 BehaviorDestination
-			// 注意：这里同时写入 Destination 是为了立即生效，防止 Update 延迟
-			Blackboard->SetValueAsVector(BehaviorCenterKey, SpawnLoc);
-			Blackboard->SetValueAsVector(BehaviorDestinationKey, SpawnLoc);
+			// ✨ 修改 - 使用出生点XY + 当前Z高度，避免NavMesh高度差异导致的问题
+			const FVector SpawnXY_CurrentZ = FVector(SpawnLoc.X, SpawnLoc.Y, Dummy->GetActorLocation().Z);
+			Blackboard->SetValueAsVector(BehaviorCenterKey, SpawnXY_CurrentZ);
+			Blackboard->SetValueAsVector(BehaviorDestinationKey, SpawnXY_CurrentZ);
 			
 			UE_LOG(LogXBAI, Log, TEXT("假人AI目标丢失(Stand模式)，重置中心点: %s"), *Dummy->GetName());
 		}
@@ -606,6 +607,14 @@ void UBTService_XBDummyLeaderAI::HandleTargetLost(AXBDummyCharacter* Dummy, UBla
 				Blackboard->SetValueAsVector(BehaviorDestinationKey, HomeLocation);
 				UE_LOG(LogXBAI, Warning, TEXT("假人AI目标丢失(Route模式)但无巡逻路线，回退到出生点: %s"), *Dummy->GetName());
 			}
+		}
+		break;
+
+	case EXBLeaderAIMoveMode::Forward:
+		{
+			// ✨ 新增 - Forward模式战斗结束后按当前朝向继续直走
+			// 不重置行为中心，让UpdateBehaviorDestination继续按当前朝向移动
+			UE_LOG(LogXBAI, Log, TEXT("假人AI目标丢失(Forward模式)，继续向前: %s"), *Dummy->GetName());
 		}
 		break;
 
@@ -657,28 +666,33 @@ void UBTService_XBDummyLeaderAI::UpdateBehaviorDestination(AXBDummyCharacter* Du
 	{
 	case EXBLeaderAIMoveMode::Stand:
 	{
-		// 🔧 修改 - 原地站立模式：目的地 = 行为中心
-		// 逻辑流：HandleTargetLost/Init 设置 Center -> 这里读取 Center 赋给 Dest
-		// 确保 Center 是唯一的“归宿”数据源
+		// 🔧 修改 - 原地站立模式：回归出生点
 		const FVector Center = Blackboard->GetValueAsVector(BehaviorCenterKey);
-		Blackboard->SetValueAsVector(BehaviorDestinationKey, Center);
-		const float DistSq = FVector::DistSquared(Dummy->GetActorLocation(), Center);
-		if (DistSq > FMath::Square(50.0f))
+		const FVector AdjustedCenter = FVector(Center.X, Center.Y, Dummy->GetActorLocation().Z);
+		Blackboard->SetValueAsVector(BehaviorDestinationKey, AdjustedCenter);
+		
+		// ✨ 修复 - 增大停止阈值到100cm，避免卡顿
+		const float StopThresholdSq = FMath::Square(100.0f);  // 从10cm改为100cm
+		const float DistSq = FVector::DistSquaredXY(Dummy->GetActorLocation(), Center);
+
+		if (DistSq > StopThresholdSq)
 		{
-			RequestContinuousMove(Dummy, Center);
+			// ✨ 修复 - 直接调用AIController移动，绕过RequestContinuousMove的距离检查
+			if (AAIController* AIController = Cast<AAIController>(Dummy->GetController()))
+			{
+				AIController->MoveToLocation(AdjustedCenter);
+			}
 		}
 		else if (AAIController* AIController = Cast<AAIController>(Dummy->GetController()))
 		{
 			AIController->StopMovement();
 			AIController->ClearFocus(EAIFocusPriority::Gameplay);
 		}
-		UE_LOG(LogXBAI, Verbose, TEXT("假人AI站立模式更新目的地: %s"), *Dummy->GetName());
 		break;
 	}
 	case EXBLeaderAIMoveMode::Wander:
 	{
-		// ... (Wander 逻辑保持不变) ...
-		// 🔧 修改 - 若当前目的地无效，忽略间隔直接重新计算
+	
 		const FVector CurrentDestination = Blackboard->GetValueAsVector(BehaviorDestinationKey);
 		const bool bDestinationInvalid = CurrentDestination.ContainsNaN() ||
 			(CurrentDestination.IsNearlyZero() && !Dummy->GetActorLocation().IsNearlyZero());
@@ -769,29 +783,144 @@ void UBTService_XBDummyLeaderAI::UpdateBehaviorDestination(AXBDummyCharacter* Du
 
 		const float MoveSpeed = Dummy->GetCharacterMovement()->GetMaxSpeed(); // 修正：MaxWalkSpeed
 		const float LookAheadDistance = FMath::Max(800.0f, MoveSpeed * 1.5f);
-		
-		float TargetDistance = CurrentDistanceParams + LookAheadDistance;
+		const float EndTolerance = 100.0f;
 
-		if (SplineComp->IsClosedLoop())
-		{
-			TargetDistance = FMath::Fmod(TargetDistance, TotalLength);
-		}
-		else if (TargetDistance > TotalLength)
-		{
-			TargetDistance = FMath::Fmod(TargetDistance, TotalLength);
-		}
+			// 替换整个if (bIsClosedLoop)代码块
+			const bool bIsClosedLoop = SplineComp->IsClosedLoop();
+			if (bIsClosedLoop)
+			{
+				float TargetDistance = CurrentDistanceParams + LookAheadDistance;
+				// ✨ 修复 - 确保TargetDistance在有效范围内，避免负数
+				if (TargetDistance < 0.0f)
+				{
+					TargetDistance += TotalLength;
+				}
+				else if (TargetDistance >= TotalLength)
+				{
+					TargetDistance = FMath::Fmod(TargetDistance, TotalLength);
+				}
+    
+				const FVector TargetLocation = SplineComp->GetLocationAtDistanceAlongSpline(TargetDistance, ESplineCoordinateSpace::World);
+    
+				// 阈值检测，避免微小抖动触发重寻路
+				const FVector OldDestination = Blackboard->GetValueAsVector(BehaviorDestinationKey);
+				if (FVector::DistSquared(OldDestination, TargetLocation) > FMath::Square(150.0f))
+				{
+					Blackboard->SetValueAsVector(BehaviorDestinationKey, TargetLocation);
+				}
+				RequestContinuousMove(Dummy, Blackboard->GetValueAsVector(BehaviorDestinationKey));
+				break;
+			}
 
-		const FVector TargetLocation = SplineComp->GetLocationAtDistanceAlongSpline(TargetDistance, ESplineCoordinateSpace::World);
-		
-		// 阈值检测，避免微小抖动触发重寻路
-		const FVector OldDestination = Blackboard->GetValueAsVector(BehaviorDestinationKey);
-		if (FVector::DistSquared(OldDestination, TargetLocation) > FMath::Square(150.0f)) // 适中阈值
+
+			// ✨ 往复行走逻辑：0→1→0循环
+			// 检测是否到达终点或起点，自动切换方向
+			bool bDirectionChanged = false;
+		if (CurrentDistanceParams >= TotalLength - EndTolerance)
 		{
-			Blackboard->SetValueAsVector(BehaviorDestinationKey, TargetLocation);
+			if (bRouteForward)  // 只在首次到达时切换
+			{
+				bRouteForward = false;
+				bDirectionChanged = true;
+				UE_LOG(LogXBAI, Log, TEXT("假人AI到达样条线终点，切换为反向行走: %s"), *Dummy->GetName());
+			}
 		}
-		RequestContinuousMove(Dummy, Blackboard->GetValueAsVector(BehaviorDestinationKey));
+		else if (CurrentDistanceParams <= EndTolerance)
+		{
+			if (!bRouteForward)  // 只在首次到达时切换
+			{
+				bRouteForward = true;
+				bDirectionChanged = true;
+				UE_LOG(LogXBAI, Log, TEXT("假人AI到达样条线起点，切换为正向行走: %s"), *Dummy->GetName());
+			}
+		}			
+			// 根据方向计算目标距离
+			const float Direction = bRouteForward ? 1.0f : -1.0f;
+			float TargetDistance = CurrentDistanceParams + LookAheadDistance * Direction;
+			TargetDistance = FMath::Clamp(TargetDistance, 0.0f, TotalLength);
+
+			const FVector TargetLocation = SplineComp->GetLocationAtDistanceAlongSpline(TargetDistance, ESplineCoordinateSpace::World);
+			
+			// ✨ 修复 - 方向切换时强制更新目标，绕过距离检查
+			if (bDirectionChanged)
+			{
+				Blackboard->SetValueAsVector(BehaviorDestinationKey, TargetLocation);
+				// 直接调用AI移动，绕过RequestContinuousMove的距离检查
+				if (AAIController* AIController = Cast<AAIController>(Dummy->GetController()))
+				{
+					AIController->MoveToLocation(TargetLocation);
+				}
+			}
+			else
+			{
+				// 正常流程使用阈值检测
+				const FVector OldDestination = Blackboard->GetValueAsVector(BehaviorDestinationKey);
+				if (FVector::DistSquared(OldDestination, TargetLocation) > FMath::Square(150.0f))
+				{
+					Blackboard->SetValueAsVector(BehaviorDestinationKey, TargetLocation);
+				}
+				RequestContinuousMove(Dummy, Blackboard->GetValueAsVector(BehaviorDestinationKey));
+			}
+			break;
+	}
+	
+	case EXBLeaderAIMoveMode::Forward:
+	{
+		// ✨ 新增 - 向前行走模式
+		const float ForwardCheckDistance = 500.0f;
+		const FVector CurrentLoc = Dummy->GetActorLocation();
+		FVector ForwardDir = Dummy->GetActorForwardVector();
+		
+		// ✨ 新增 - 定时随机转向逻辑（10-20秒）
+		const float CurrentTime = Dummy->GetWorld()->GetTimeSeconds();
+		if (CurrentTime >= NextForwardTurnTime)
+		{
+			// 随机左转或右转45-90度
+			const float TurnAngle = FMath::FRandRange(-90.0f, 90.0f);
+			const FRotator CurrentRot = Dummy->GetActorRotation();
+			const FRotator NewRot = FRotator(0.0f, CurrentRot.Yaw + TurnAngle, 0.0f);
+			ForwardDir = NewRot.Vector();
+			
+			// 设置下次转向时间（使用配置的随机间隔）
+			NextForwardTurnTime = CurrentTime + FMath::FRandRange(AIConfig.ForwardTurnIntervalMin, AIConfig.ForwardTurnIntervalMax);
+			
+			UE_LOG(LogXBAI, Log, TEXT("假人AI定时随机转向: %s, 角度: %.1f"), *Dummy->GetName(), TurnAngle);
+		}
+		
+		const FVector ForwardTarget = CurrentLoc + ForwardDir * ForwardCheckDistance;
+		
+		// 检查前方是否有可行走路径
+		UNavigationSystemV1* NavSys = FNavigationSystem::GetCurrent<UNavigationSystemV1>(Dummy->GetWorld());
+		if (NavSys)
+		{
+			FNavLocation ProjectedLoc;
+			bool bHasPath = NavSys->ProjectPointToNavigation(ForwardTarget, ProjectedLoc, FVector(200, 200, 500));
+			
+			if (bHasPath)
+			{
+				// 前方有路，继续前进
+				Blackboard->SetValueAsVector(BehaviorDestinationKey, ProjectedLoc.Location);
+				RequestContinuousMove(Dummy, ProjectedLoc.Location);
+			}
+			else
+			{
+				// 前方无路，向后旋转180度
+				const FRotator CurrentRot = Dummy->GetActorRotation();
+				const FRotator NewRot = FRotator(0.0f, CurrentRot.Yaw + 180.0f, 0.0f);
+				const FVector NewForwardDir = NewRot.Vector();
+				const FVector NewTarget = CurrentLoc + NewForwardDir * ForwardCheckDistance;
+				
+				if (NavSys->ProjectPointToNavigation(NewTarget, ProjectedLoc, FVector(200, 200, 500)))
+				{
+					Blackboard->SetValueAsVector(BehaviorDestinationKey, ProjectedLoc.Location);
+					RequestContinuousMove(Dummy, ProjectedLoc.Location);
+					UE_LOG(LogXBAI, Log, TEXT("假人AI前方无路，向后旋转180度: %s"), *Dummy->GetName());
+				}
+			}
+		}
 		break;
 	}
+	
 	default:
 		break;
 	}

@@ -143,6 +143,9 @@ private:
 	/** @brief 下一次随机移动时间 */
 	float NextWanderTime = 0.0f;
 
+	/** @brief Forward模式下次转向时间 */
+	float NextForwardTurnTime = 0.0f;
+
 	/** @brief 是否曾拥有目标 */
 	bool bHadCombatTarget = false;
 
@@ -154,4 +157,7 @@ private:
 
 	/** @brief 丢失目标后的前进结束时间 */
 	float ForwardMoveEndTime = 0.0f;
+
+	/** @brief 巡逻路线当前方向（true=正向，false=反向） */
+	bool bRouteForward = true;
 };

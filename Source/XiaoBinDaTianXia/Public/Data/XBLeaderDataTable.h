@@ -31,7 +31,8 @@ enum class EXBLeaderAIMoveMode : uint8
 {
     Stand UMETA(DisplayName = "原地站立"),
     Wander UMETA(DisplayName = "范围内移动"),
-    Route UMETA(DisplayName = "固定路线")
+    Route UMETA(DisplayName = "固定路线"),
+    Forward UMETA(DisplayName = "向前行走")
 };
 
 /**
@@ -78,6 +79,14 @@ struct XIAOBINDATIANXIA_API FXBLeaderAIConfig
     /** @brief 最小移动距离（避免小碎步原地踏步） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "最小移动距离", ClampMin = "50.0"))
     float MinMoveDistance = 200.0f;
+
+    /** @brief Forward模式随机转向最小间隔（秒） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "随机转向最小间隔", ClampMin = "1.0"))
+    float ForwardTurnIntervalMin = 10.0f;
+
+    /** @brief Forward模式随机转向最大间隔（秒） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "随机转向最大间隔", ClampMin = "1.0"))
+    float ForwardTurnIntervalMax = 20.0f;
 };
 
 /**
