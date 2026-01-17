@@ -27,12 +27,6 @@ void UXBSaveSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void UXBSaveSubsystem::Deinitialize()
 {
-    // 自动保存
-    if (CurrentSaveGame)
-    {
-        SaveGame(TEXT("AutoSave"), 0);
-    }
-
     Super::Deinitialize();
 }
 

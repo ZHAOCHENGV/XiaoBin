@@ -72,7 +72,7 @@ protected:
 
 	/** 默认存档槽位数量 */
 	UPROPERTY(EditDefaultsOnly, Category = "XB|Save", meta = (DisplayName = "默认存档槽位数量"))
-	int32 DefaultSaveSlotCount = 5;
+	int32 DefaultSaveSlotCount = 0;
 
 	/** 存档槽位索引 */
 	UPROPERTY(meta = (DisplayName = "存档槽位索引"))

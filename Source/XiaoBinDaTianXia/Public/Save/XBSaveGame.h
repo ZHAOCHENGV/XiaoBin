@@ -117,7 +117,7 @@ struct FXBGameConfigData
 
     /** 初始带兵数 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "初始带兵数"))
-    int32 InitialSoldierCount = 3;
+    int32 InitialSoldierCount = 0;
     
     /** 地图选项 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "地图选项"))
