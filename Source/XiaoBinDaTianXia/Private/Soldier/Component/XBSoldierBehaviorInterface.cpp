@@ -10,7 +10,6 @@
 
 #include "Soldier/Component/XBSoldierBehaviorInterface.h"
 #include "Utils/XBLogCategories.h"
-#include "AI/XBSoldierPerceptionSubsystem.h"
 #include "Soldier/XBSoldierCharacter.h"
 #include "Soldier/Component/XBSoldierFollowComponent.h"
 #include "Data/XBSoldierDataAccessor.h"
@@ -37,21 +36,6 @@ void UXBSoldierBehaviorInterface::BeginPlay()
     // 缓存士兵引用
     CachedSoldier = Cast<AXBSoldierCharacter>(GetOwner());
 
-    // 缓存感知子系统
-    if (UWorld* World = GetWorld())
-    {
-        CachedPerceptionSubsystem = World->GetSubsystem<UXBSoldierPerceptionSubsystem>();
-
-        // 注册到感知子系统
-        if (CachedPerceptionSubsystem.IsValid() && CachedSoldier.IsValid())
-        {
-            CachedPerceptionSubsystem->RegisterActor(
-                CachedSoldier.Get(),
-                CachedSoldier->GetFaction()
-            );
-        }
-    }
-
     UE_LOG(LogXBAI, Log, TEXT("士兵行为接口组件初始化: %s"), 
         CachedSoldier.IsValid() ? *CachedSoldier->GetName() : TEXT("无效"));
 }
@@ -72,10 +56,7 @@ AXBSoldierCharacter* UXBSoldierBehaviorInterface::GetOwnerSoldier() const
     return CachedSoldier.Get();
 }
 
-UXBSoldierPerceptionSubsystem* UXBSoldierBehaviorInterface::GetPerceptionSubsystem() const
-{
-    return CachedPerceptionSubsystem.Get();
-}
+
 
 // ✨ 新增 - 统一阵营解析入口，避免跨主将误伤
 /**

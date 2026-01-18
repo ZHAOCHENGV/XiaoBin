@@ -18,12 +18,37 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "Army/XBSoldierTypes.h"
-#include "AI/XBSoldierPerceptionSubsystem.h"  // ✨ 新增 - 包含 FXBPerceptionResult 定义
 #include "XBSoldierBehaviorInterface.generated.h"
 
 class AXBSoldierCharacter;
-class UXBSoldierPerceptionSubsystem;
 class AXBCharacterBase;
+
+/**
+ * @brief 感知结果结构体（简化版，仅供 BehaviorInterface 内部使用）
+ */
+USTRUCT(BlueprintType)
+struct FXBPerceptionResult
+{
+    GENERATED_BODY()
+
+    /** @brief 检测到的敌人列表 */
+    UPROPERTY()
+    TArray<AActor*> DetectedEnemies;
+
+    /** @brief 最近的敌人 */
+    UPROPERTY()
+    AActor* NearestEnemy = nullptr;
+
+    /** @brief 到最近敌人的距离 */
+    UPROPERTY()
+    float DistanceToNearest = MAX_FLT;
+
+    /** @brief 结果时间戳 */
+    float ResultTime = 0.0f;
+
+    /** @brief 是否有效 */
+    bool bIsValid = false;
+};
 
 // ============================================
 // 行为执行结果枚举
@@ -205,8 +230,7 @@ protected:
     /** @brief 获取拥有者士兵 */
     AXBSoldierCharacter* GetOwnerSoldier() const;
 
-    /** @brief 获取感知子系统 */
-    UXBSoldierPerceptionSubsystem* GetPerceptionSubsystem() const;
+
 
     // ✨ 新增 - 统一阵营解析入口，避免跨主将误伤
     /**
@@ -239,9 +263,7 @@ protected:
     UPROPERTY()
     TWeakObjectPtr<AXBSoldierCharacter> CachedSoldier;
 
-    /** @brief 缓存的感知子系统 */
-    UPROPERTY()
-    TWeakObjectPtr<UXBSoldierPerceptionSubsystem> CachedPerceptionSubsystem;
+
 
     // ==================== 运行时状态 ====================
 

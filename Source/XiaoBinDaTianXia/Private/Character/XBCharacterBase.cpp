@@ -30,7 +30,7 @@
 #include "Animation/AnimInstance.h"
 #include "TimerManager.h"
 #include "XBCollisionChannels.h"
-#include "AI/XBSoldierPerceptionSubsystem.h"
+#include "Soldier/XBSoldierCharacter.h"
 #include "Particles/ParticleSystemComponent.h"
 #include "Soldier/Component/XBSoldierPoolSubsystem.h"
 #include "AI/XBSoldierAIController.h"
@@ -82,17 +82,6 @@ void AXBCharacterBase::BeginPlay()
 {
     Super::BeginPlay();
 
-    // 🔧 修改 - 将主将注册到感知子系统，确保士兵可以感知到主将
-    if (UWorld* World = GetWorld())
-    {
-        // 🔧 修改 - 仅在子系统有效时执行注册
-        if (UXBSoldierPerceptionSubsystem* Perception = World->GetSubsystem<UXBSoldierPerceptionSubsystem>())
-        {
-            // 🔧 修改 - 使用主将阵营注册，便于阵营筛选
-            Perception->RegisterActor(this, Faction);
-        }
-    }
-
     InitializeAbilitySystem();
     SetupMovementComponent();
 
@@ -123,17 +112,6 @@ void AXBCharacterBase::BeginPlay()
  */
 void AXBCharacterBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-    // 🔧 修改 - 获取世界实例用于感知注销
-    if (UWorld* World = GetWorld())
-    {
-        // 🔧 修改 - 子系统有效时执行注销
-        if (UXBSoldierPerceptionSubsystem* Perception = World->GetSubsystem<UXBSoldierPerceptionSubsystem>())
-        {
-            // 🔧 修改 - 注销当前主将
-            Perception->UnregisterActor(this);
-        }
-    }
-
     // 🔧 修改 - 调用父类 EndPlay
     Super::EndPlay(EndPlayReason);
 }
@@ -1173,14 +1151,6 @@ void AXBCharacterBase::EnterCombat()
     // 🔧 修改 - 进入战斗时取消无敌人脱战计时
     CancelNoEnemyDisengage();
 
-    if (UWorld* World = GetWorld())
-    {
-        if (UXBSoldierPerceptionSubsystem* Perception = World->GetSubsystem<UXBSoldierPerceptionSubsystem>())
-        {
-            Perception->MarkHotspotRegion(GetActorLocation(), 1500.0f);
-        }
-    }
-
     for (AXBSoldierCharacter* Soldier : Soldiers)
     {
         if (Soldier && Soldier->GetSoldierState() != EXBSoldierState::Dead)
@@ -1205,14 +1175,6 @@ void AXBCharacterBase::ExitCombat()
 
     GetWorldTimerManager().ClearTimer(CombatTimeoutHandle);
     CancelNoEnemyDisengage();
-
-    if (UWorld* World = GetWorld())
-    {
-        if (UXBSoldierPerceptionSubsystem* Perception = World->GetSubsystem<UXBSoldierPerceptionSubsystem>())
-        {
-            Perception->ClearHotspotRegion(GetActorLocation());
-        }
-    }
 
     for (AXBSoldierCharacter* Soldier : Soldiers)
     {

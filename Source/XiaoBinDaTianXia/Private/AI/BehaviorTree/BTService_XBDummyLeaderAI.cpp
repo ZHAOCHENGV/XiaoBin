@@ -10,7 +10,6 @@
  */
 
 #include "AI/BehaviorTree/BTService_XBDummyLeaderAI.h"
-#include "AI/XBSoldierPerceptionSubsystem.h"
 #include "AIController.h"
 #include "BehaviorTree/BlackboardComponent.h"
 #include "Character/Components/XBCombatComponent.h"
