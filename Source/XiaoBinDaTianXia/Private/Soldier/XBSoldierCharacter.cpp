@@ -2037,6 +2037,12 @@ void AXBSoldierCharacter::ReturnToFormation()
 
 FVector AXBSoldierCharacter::CalculateAvoidanceDirection(const FVector& DesiredDirection)
 {
+    // ✨ 新增 - 避让系统总开关
+    if (!bEnableAvoidanceSystem)
+    {
+        return DesiredDirection;
+    }
+
     float AvoidanceRadiusVal = GetAvoidanceRadius();
     float AvoidanceWeightVal = GetAvoidanceWeight();
 

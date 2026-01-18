@@ -1197,8 +1197,18 @@ void UXBSoldierFollowComponent::SetRVOAvoidanceEnabled(bool bEnable)
     UCharacterMovementComponent* MoveComp = GetCachedMovementComponent();
     if (MoveComp)
     {
+        // ✨ 新增 - 检查士兵总开关，若关闭则强制禁用RVO
+        bool bFinalEnable = bEnable;
+        if (AXBSoldierCharacter* Soldier = Cast<AXBSoldierCharacter>(GetOwner()))
+        {
+            if (!Soldier->bEnableAvoidanceSystem)
+            {
+                bFinalEnable = false;
+            }
+        }
+
         // 🔧 修改 - 根据战斗状态切换RVO避让
-        MoveComp->SetAvoidanceEnabled(bEnable);
+        MoveComp->SetAvoidanceEnabled(bFinalEnable);
     }
 }
 
