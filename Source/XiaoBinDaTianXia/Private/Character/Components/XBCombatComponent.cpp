@@ -22,6 +22,7 @@
 #include "GAS/XBAttributeSet.h"
 #include "GameFramework/Character.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "Animation/AnimInstance.h"
 #include "Engine/DataTable.h"
 #include "Data/XBLeaderDataTable.h"
@@ -602,14 +603,21 @@ bool UXBCombatComponent::IsTargetInBasicAttackRange(AActor* Target) const
         return false;
     }
 
-    // 🔧 关键修复 - 使用边缘距离（中心距离 - 双方碰撞半径）
-    // AttackRange 是从自己边缘到目标边缘的距离
+    // 🔧 关键修复 - 使用胶囊体组件获取半径，与移动任务保持一致
+    const ACharacter* OwnerChar = Cast<ACharacter>(Owner);
+    const ACharacter* TargetChar = Cast<ACharacter>(Target);
+    const float OwnerRadius = (OwnerChar && OwnerChar->GetCapsuleComponent())
+        ? OwnerChar->GetCapsuleComponent()->GetScaledCapsuleRadius()
+        : Owner->GetSimpleCollisionRadius();
+    const float TargetRadius = (TargetChar && TargetChar->GetCapsuleComponent())
+        ? TargetChar->GetCapsuleComponent()->GetScaledCapsuleRadius()
+        : Target->GetSimpleCollisionRadius();
+
     const float CenterDistance = FVector::Dist(Owner->GetActorLocation(), Target->GetActorLocation());
-    const float OwnerRadius = Owner->GetSimpleCollisionRadius();
-    const float TargetRadius = Target->GetSimpleCollisionRadius();
-    const float EdgeDistance = CenterDistance - OwnerRadius - TargetRadius;
+    const float EdgeDistance = FMath::Max(0.0f, CenterDistance - OwnerRadius - TargetRadius);
+    const float AttackRange = GetBasicAttackRange();
     
-    return EdgeDistance <= GetBasicAttackRange();
+    return EdgeDistance <= AttackRange;
 }
 
 // ✨ 新增 - 检查目标是否在技能范围内
@@ -631,12 +639,19 @@ bool UXBCombatComponent::IsTargetInSkillRange(AActor* Target) const
         return false;
     }
 
-    // 🔧 关键修复 - 使用边缘距离（中心距离 - 双方碰撞半径）
-    // AttackRange 是从自己边缘到目标边缘的距离
+    // 🔧 关键修复 - 使用胶囊体组件获取半径，与移动任务保持一致
+    const ACharacter* OwnerChar = Cast<ACharacter>(Owner);
+    const ACharacter* TargetChar = Cast<ACharacter>(Target);
+    const float OwnerRadius = (OwnerChar && OwnerChar->GetCapsuleComponent())
+        ? OwnerChar->GetCapsuleComponent()->GetScaledCapsuleRadius()
+        : Owner->GetSimpleCollisionRadius();
+    const float TargetRadius = (TargetChar && TargetChar->GetCapsuleComponent())
+        ? TargetChar->GetCapsuleComponent()->GetScaledCapsuleRadius()
+        : Target->GetSimpleCollisionRadius();
+
     const float CenterDistance = FVector::Dist(Owner->GetActorLocation(), Target->GetActorLocation());
-    const float OwnerRadius = Owner->GetSimpleCollisionRadius();
-    const float TargetRadius = Target->GetSimpleCollisionRadius();
-    const float EdgeDistance = CenterDistance - OwnerRadius - TargetRadius;
+    const float EdgeDistance = FMath::Max(0.0f, CenterDistance - OwnerRadius - TargetRadius);
+    const float AttackRange = GetSkillAttackRange();
     
-    return EdgeDistance <= GetSkillAttackRange();
+    return EdgeDistance <= AttackRange;
 }

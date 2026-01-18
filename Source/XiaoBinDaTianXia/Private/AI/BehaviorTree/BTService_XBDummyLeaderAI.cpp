@@ -215,6 +215,8 @@ void UBTService_XBDummyLeaderAI::TickNode(UBehaviorTreeComponent& OwnerComp, uin
 					// 🔧 修改 - 仅进入追击态，士兵战斗状态等待主将攻击触发
 					// 为什么要拆分：主将靠近时先行判断攻击条件，避免士兵提前冲锋
 					bHadCombatTarget = true;
+					// ✨ 修复 - 发现目标后立即选择能力，避免移动/攻击任务因能力未选择而失败
+					SelectCombatAbility(Dummy, Blackboard, FoundLeader);
 
 					UE_LOG(LogXBAI, Log, TEXT("假人主将 %s 发现敌方主将并进入战斗: %s"),
 						*Dummy->GetName(), *FoundLeader->GetName());
@@ -254,6 +256,8 @@ void UBTService_XBDummyLeaderAI::TickNode(UBehaviorTreeComponent& OwnerComp, uin
 				// 为什么要控制节奏：受到伤害后先由主将决定是否出手，再带动士兵
 				Dummy->ClearLastDamageLeader();
 				bHadCombatTarget = true;
+				// ✨ 修复 - 反击时立即选择能力，避免移动/攻击任务因能力未选择而失败
+				SelectCombatAbility(Dummy, Blackboard, DamageLeader);
 
 				UE_LOG(LogXBAI, Log, TEXT("假人主将 %s 受到伤害后反击主将: %s"),
 					*Dummy->GetName(), *DamageLeader->GetName());
