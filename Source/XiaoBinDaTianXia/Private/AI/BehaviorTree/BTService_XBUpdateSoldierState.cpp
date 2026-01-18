@@ -104,6 +104,9 @@ void UBTService_XBUpdateSoldierState::TickNode(UBehaviorTreeComponent& OwnerComp
     
     // 获取行为接口（可为空）
     UXBSoldierBehaviorInterface* BehaviorInterface = Soldier->GetBehaviorInterface();
+
+    // 记录上一次战斗状态，避免目标死亡时误判退回跟随
+    const bool bWasInCombat = BlackboardComp->GetValueAsBool(XBSoldierBBKeys::IsInCombat);
     
     // 缓存士兵位置
     FVector SoldierLocation = Soldier->GetActorLocation();
@@ -285,6 +288,19 @@ void UBTService_XBUpdateSoldierState::TickNode(UBehaviorTreeComponent& OwnerComp
             }
         }
     }
+
+    // 🔧 修复 - 目标死亡不应导致其他士兵脱战
+    // 说明：当目标失效但主将仍在战斗，且士兵上一帧已处于战斗，则保持战斗状态并寻找新目标
+    if (bTargetBecameInvalid && bWasInCombat && Soldier->GetSoldierState() != EXBSoldierState::Combat)
+    {
+        if (const AXBCharacterBase* LeaderCharacter = Soldier->GetLeaderCharacter())
+        {
+            if (LeaderCharacter->IsInCombat())
+            {
+                Soldier->EnterCombat();
+            }
+        }
+    }
     
 SkipRetreatLogic:
     // ==================== 更新攻击状态 ====================
@@ -323,23 +339,7 @@ SkipRetreatLogic:
             }
         }
     }
-
-    	/* ❌ 删除 - 士兵无权通知主将脱战，避免由于单兵视野受阻导致全军回队（主将自有判定）
-	// 🔧 修改 - 若战斗中没有敌人，通知主将延迟脱战
-	if (bInCombat && BehaviorInterface && !BehaviorInterface->HasEnemyInSight())
-	{
-		if (AXBCharacterBase* LeaderCharacter = Soldier->GetLeaderCharacter())
-		{
-			if (LeaderCharacter->HasEnemiesInCombat())
-			{
-				LeaderCharacter->SetHasEnemiesInCombat(false);
-				LeaderCharacter->ScheduleNoEnemyDisengage();
-				UE_LOG(LogXBAI, Log, TEXT("士兵 %s 通知主将 %s：无敌人，开始脱战计时"), 
-					*Soldier->GetName(), *LeaderCharacter->GetName());
-			}
-		}
-	}
-	*/
+    
 }
 
 // 🔧 修改 - 按要求补充描述函数头部注释与逐行注释
