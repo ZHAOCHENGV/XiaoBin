@@ -100,8 +100,6 @@ static bool CheckTargetInAttackRange(AActor* Dummy, float AttackRange, AActor* T
 			// 🔧 过滤3：检查是否是我们要找的目标
 			if (TargetActor && HitPawn == TargetActor)
 			{
-				
-				
 				UE_LOG(LogXBAI, Verbose, TEXT("球体碰撞检测(攻击)：在范围内找到目标Pawn %s (范围=%.1f, 缩放=%.2f, 缩放后半径=%.1f)"),
 					*HitPawn->GetName(), AttackRange, ScaleFactor, ScaledAttackRadius);
 				return true;

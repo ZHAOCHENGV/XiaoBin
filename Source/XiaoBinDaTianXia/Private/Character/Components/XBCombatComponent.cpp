@@ -275,7 +275,9 @@ bool UXBCombatComponent::PerformBasicAttack()
     // ✨ 新增 - 蒙太奇互斥检查：如果有任何攻击蒙太奇正在播放，则拒绝新的攻击
     if (IsAnyAttackMontagePlayingInternal())
     {
-        UE_LOG(LogTemp, Log, TEXT("普攻被拒绝: 已有攻击蒙太奇正在播放"));
+        UE_LOG(LogTemp, Verbose, TEXT("普攻被拒绝: 已有攻击蒙太奇正在播放"));
+        // 🔧 关键修复 - 攻击失败时给予短冷却，避免AI在同一帧无限选择同一技能
+        BasicAttackCooldownTimer = 0.5f; 
         return false;
     }
 
@@ -347,7 +349,9 @@ bool UXBCombatComponent::PerformSpecialSkill()
     // ✨ 新增 - 蒙太奇互斥检查：如果有任何攻击蒙太奇正在播放，则拒绝新的攻击
     if (IsAnyAttackMontagePlayingInternal())
     {
-        UE_LOG(LogTemp, Log, TEXT("技能被拒绝: 已有攻击蒙太奇正在播放"));
+        UE_LOG(LogTemp, Verbose, TEXT("技能被拒绝: 已有攻击蒙太奇正在播放"));
+        // 🔧 关键修复 - 攻击失败时给予短冷却，避免AI在同一帧无限选择同一技能
+        SkillCooldownTimer = 0.5f;
         return false;
     }
 

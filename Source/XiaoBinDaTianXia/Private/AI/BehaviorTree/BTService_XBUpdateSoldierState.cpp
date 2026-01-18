@@ -325,20 +325,22 @@ SkipRetreatLogic:
         }
     }
 
-    // 🔧 修改 - 若战斗中没有敌人，通知主将延迟脱战
-    if (bInCombat && BehaviorInterface && !BehaviorInterface->HasEnemyInSight())
-    {
-        if (AXBCharacterBase* LeaderCharacter = Soldier->GetLeaderCharacter())
-        {
-            if (LeaderCharacter->HasEnemiesInCombat())
-            {
-                LeaderCharacter->SetHasEnemiesInCombat(false);
-                LeaderCharacter->ScheduleNoEnemyDisengage();
-                UE_LOG(LogXBAI, Log, TEXT("士兵 %s 通知主将 %s：无敌人，开始脱战计时"), 
-                    *Soldier->GetName(), *LeaderCharacter->GetName());
-            }
-        }
-    }
+    	/* ❌ 删除 - 士兵无权通知主将脱战，避免由于单兵视野受阻导致全军回队（主将自有判定）
+	// 🔧 修改 - 若战斗中没有敌人，通知主将延迟脱战
+	if (bInCombat && BehaviorInterface && !BehaviorInterface->HasEnemyInSight())
+	{
+		if (AXBCharacterBase* LeaderCharacter = Soldier->GetLeaderCharacter())
+		{
+			if (LeaderCharacter->HasEnemiesInCombat())
+			{
+				LeaderCharacter->SetHasEnemiesInCombat(false);
+				LeaderCharacter->ScheduleNoEnemyDisengage();
+				UE_LOG(LogXBAI, Log, TEXT("士兵 %s 通知主将 %s：无敌人，开始脱战计时"), 
+					*Soldier->GetName(), *LeaderCharacter->GetName());
+			}
+		}
+	}
+	*/
 }
 
 // 🔧 修改 - 按要求补充描述函数头部注释与逐行注释
