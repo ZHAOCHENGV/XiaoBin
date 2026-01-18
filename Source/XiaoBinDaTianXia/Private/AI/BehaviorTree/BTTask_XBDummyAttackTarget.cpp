@@ -51,12 +51,12 @@ static bool CheckTargetInAttackRange(AActor* Dummy, float AttackRange, AActor* T
 		return false;
 	}
 
-	// 🔧 获取AI的缩放系数（假设均匀缩放，使用X轴）
+	// 🔧 获取AI的缩放系数（仅用于日志显示，不再参与计算）
 	const FVector Scale3D = Dummy->GetActorScale3D();
 	const float ScaleFactor = Scale3D.X;
 
-	// 🔧 计算缩放后的攻击半径
-	const float ScaledAttackRadius = AttackRange * ScaleFactor;
+	// 🔧 关键修改 - 攻击范围不再在此处进行二次缩放，直接使用传入值
+	const float ScaledAttackRadius = AttackRange;
 
 	// 🔧 球体中心为AI的中心位置
 	const FVector SphereCenter = Dummy->GetActorLocation();
