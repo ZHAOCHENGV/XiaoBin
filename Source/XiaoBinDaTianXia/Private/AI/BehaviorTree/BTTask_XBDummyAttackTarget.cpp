@@ -100,16 +100,7 @@ static bool CheckTargetInAttackRange(AActor* Dummy, float AttackRange, AActor* T
 			// 🔧 过滤3：检查是否是我们要找的目标
 			if (TargetActor && HitPawn == TargetActor)
 			{
-				// 🔧 可视化 - 蓝色球体表示攻击检测到目标
-				DrawDebugSphere(
-					Dummy->GetWorld(),
-					SphereCenter,
-					ScaledAttackRadius,
-					32,                    // 球体分段数
-					FColor::Blue,          // 蓝色表示攻击范围检测成功
-					false,                 // 不持久显示
-					0.1f                   // 显示0.1秒
-				);
+				
 				
 				UE_LOG(LogXBAI, Verbose, TEXT("球体碰撞检测(攻击)：在范围内找到目标Pawn %s (范围=%.1f, 缩放=%.2f, 缩放后半径=%.1f)"),
 					*HitPawn->GetName(), AttackRange, ScaleFactor, ScaledAttackRadius);
@@ -117,17 +108,6 @@ static bool CheckTargetInAttackRange(AActor* Dummy, float AttackRange, AActor* T
 			}
 		}
 	}
-
-	// 🔧 可视化 - 黄色球体表示攻击未检测到目标
-	DrawDebugSphere(
-		Dummy->GetWorld(),
-		SphereCenter,
-		ScaledAttackRadius,
-		32,                    // 球体分段数
-		FColor::Yellow,        // 黄色表示攻击范围检测失败
-		false,                 // 不持久显示
-		0.1f                   // 显示0.1秒
-	);
 
 	// 没有检测到目标
 	UE_LOG(LogXBAI, Verbose, TEXT("球体碰撞检测(攻击)：未在范围内找到目标 (范围=%.1f, 缩放=%.2f, 缩放后半径=%.1f)"),
