@@ -574,9 +574,7 @@ protected:
     float LastDisengageTime = 0.0f;
     
     FTimerHandle DisengageSprintTimerHandle;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "战斗", meta = (DisplayName = "战斗超时时间"))
-    float CombatTimeoutDuration = 999.0f;
+    
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "战斗", meta = (DisplayName = "无敌人脱战延迟", ClampMin = "0.0"))
     float NoEnemyDisengageDelay = 3.0f;

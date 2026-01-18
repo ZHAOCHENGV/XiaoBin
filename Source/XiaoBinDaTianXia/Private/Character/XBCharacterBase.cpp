@@ -1163,14 +1163,7 @@ void AXBCharacterBase::EnterCombat()
             }
         }
 
-        GetWorldTimerManager().ClearTimer(CombatTimeoutHandle);
-        GetWorldTimerManager().SetTimer(
-            CombatTimeoutHandle,
-            this,
-            &AXBCharacterBase::OnCombatTimeout,
-            CombatTimeoutDuration,
-            false
-        );
+  
         return;
     }
 
@@ -1196,13 +1189,6 @@ void AXBCharacterBase::EnterCombat()
         }
     }
 
-    GetWorldTimerManager().SetTimer(
-        CombatTimeoutHandle,
-        this,
-        &AXBCharacterBase::OnCombatTimeout,
-        CombatTimeoutDuration,
-        false
-    );
 
     OnCombatStateChanged.Broadcast(true);
 }

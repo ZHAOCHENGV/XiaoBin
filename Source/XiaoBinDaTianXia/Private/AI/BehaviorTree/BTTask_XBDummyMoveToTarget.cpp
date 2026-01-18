@@ -51,7 +51,7 @@ UBTTask_XBDummyMoveToTarget::UBTTask_XBDummyMoveToTarget()
  * @return 是否检测到Pawn类型的目标
  * @note 球体半径会根据AI的缩放系数自动调整
  */
-static bool CheckTargetInAttackRange(AActor* Dummy, float AttackRange, AActor* TargetActor)
+static bool CheckTargetInMoveRange(AActor* Dummy, float AttackRange, AActor* TargetActor)
 {
 	if (!Dummy || !Dummy->GetWorld())
 	{
@@ -191,7 +191,7 @@ EBTNodeResult::Type UBTTask_XBDummyMoveToTarget::ExecuteTask(UBehaviorTreeCompon
 	const float AttackRange = CalculateOptimalStopDistance(CombatComp, Dummy, Target, SelectedAbilityType);
 	
 	// 🔧 修改 - 使用球体碰撞检测判断目标是否在攻击范围内
-	if (CheckTargetInAttackRange(Dummy, AttackRange, Target))
+	if (CheckTargetInMoveRange(Dummy, AttackRange, Target))
 	{
 		AIController->ClearFocus(EAIFocusPriority::Gameplay);
 		UE_LOG(LogXBAI, Log, TEXT("假人 %s 已在攻击范围内（球体碰撞检测成功，范围=%.1f）"), 
@@ -306,7 +306,7 @@ void UBTTask_XBDummyMoveToTarget::TickTask(UBehaviorTreeComponent& OwnerComp, ui
 	const float AttackRange = CalculateOptimalStopDistance(CombatComp, Dummy, Target, SelectedAbilityType);
 	
 	// 🔧 修改 - 使用球体碰撞检测判断是否到达攻击范围
-	if (CheckTargetInAttackRange(Dummy, AttackRange, Target))
+	if (CheckTargetInMoveRange(Dummy, AttackRange, Target))
 	{
 		AIController->StopMovement();
 		AIController->ClearFocus(EAIFocusPriority::Gameplay);
