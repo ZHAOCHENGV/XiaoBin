@@ -273,7 +273,6 @@ void UBTService_XBUpdateSoldierState::TickNode(UBehaviorTreeComponent& OwnerComp
                 UE_LOG(LogXBAI, Log, TEXT("士兵 %s 极远距离强制脱战回队列 (距离=%.0f)"), *Soldier->GetName(), DistToLeader);
                 return;
             }
-
             // 主将已脱战时跟随脱战
             if (AXBCharacterBase* LeaderCharacter = Soldier->GetLeaderCharacter())
             {

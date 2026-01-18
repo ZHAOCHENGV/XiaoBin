@@ -1144,6 +1144,28 @@ bool UXBSoldierBehaviorInterface::ShouldDisengage() const
         return false;
     }
 
+    // ✨ 核心修复 - 士兵有有效攻击目标时，绝对不脱战
+    // 说明：即使感知系统判定"无敌人"，只要 CurrentAttackTarget 有效且存活，士兵就应继续战斗
+    // 这避免了战斗中因感知缓存刷新不及时而误触发脱战
+    if (AActor* Target = Soldier->CurrentAttackTarget.Get())
+    {
+        bool bTargetAlive = false;
+        if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(Target))
+        {
+            bTargetAlive = (TargetSoldier->GetSoldierState() != EXBSoldierState::Dead);
+        }
+        else if (AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(Target))
+        {
+            bTargetAlive = !TargetLeader->IsDead();
+        }
+        
+        if (bTargetAlive)
+        {
+            // 有活着的攻击目标，不允许脱战
+            return false;
+        }
+    }
+
     // 条件2：长时间无敌人
     float ReturnDelay = Soldier->GetReturnDelay();
     float CurrentTime = GetWorld()->GetTimeSeconds();

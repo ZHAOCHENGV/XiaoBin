@@ -1512,6 +1512,15 @@ void AXBCharacterBase::HandleDeath()
     {
         MovementComp->DisableMovement();
         MovementComp->StopMovementImmediately();
+        // ✨ 新增 - 死亡时禁用旋转跟随移动方向，防止尸体继续转向
+        MovementComp->bOrientRotationToMovement = false;
+    }
+
+    // ✨ 新增 - 清除 AI 控制器焦点，防止死亡后继续因 SetFocus 而转向
+    if (AAIController* AIController = Cast<AAIController>(GetController()))
+    {
+        AIController->ClearFocus(EAIFocusPriority::Gameplay);
+        AIController->StopMovement();
     }
 
     if (UCapsuleComponent* Capsule = GetCapsuleComponent())
