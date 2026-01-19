@@ -19,6 +19,7 @@
 #include "Utils/XBLogCategories.h"
 #include "Engine/World.h"
 #include "CollisionQueryParams.h"
+#include "DrawDebugHelpers.h"
 #include "GameFramework/Pawn.h"
 
 UBTService_XBDummyCombatRange::UBTService_XBDummyCombatRange()
@@ -197,7 +198,7 @@ bool UBTService_XBDummyCombatRange::CheckTargetInAttackRange(
 	ObjectParams.AddObjectTypesToQuery(ECC_GameTraceChannel4); // Leader通道
 	ObjectParams.AddObjectTypesToQuery(ECC_GameTraceChannel3); // Soldier通道
 
-	// 执行球体碰撞检测
+	// 执行球体碰撞检测（支持可配置的调试绘制）
 	TArray<FHitResult> HitResults;
 	const bool bHit = Dummy->GetWorld()->SweepMultiByObjectType(
 		HitResults,
@@ -208,6 +209,22 @@ bool UBTService_XBDummyCombatRange::CheckTargetInAttackRange(
 		FCollisionShape::MakeSphere(AttackRange),
 		QueryParams
 	);
+
+	// 调试绘制球体范围（根据配置的枚举值）
+	if (DebugDrawType != EDrawDebugTrace::None)
+	{
+		const FColor DebugColor = bHit ? FColor::Green : FColor::Red;
+		const float DebugLifeTime = (DebugDrawType == EDrawDebugTrace::ForDuration) ? 0.5f : -1.0f;
+		DrawDebugSphere(
+			Dummy->GetWorld(),
+			SphereCenter,
+			AttackRange,
+			32, // 球体段数
+			DebugColor,
+			DebugDrawType == EDrawDebugTrace::Persistent, // 是否持久绘制
+			DebugLifeTime
+		);
+	}
 
 	// 遍历命中结果
 	if (bHit)
@@ -221,7 +238,7 @@ bool UBTService_XBDummyCombatRange::CheckTargetInAttackRange(
 			}
 
 			// 检查是否是目标
-			APawn* HitPawn = Cast<APawn>(Hit.GetActor());
+			ACharacter* HitPawn = Cast<ACharacter>(Hit.GetActor());
 			if (HitPawn && HitPawn == TargetActor)
 			{
 				return true;

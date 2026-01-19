@@ -16,6 +16,8 @@
 
 #include "CoreMinimal.h"
 #include "BehaviorTree/BTService.h"
+#include "DrawDebugHelpers.h"
+#include "Kismet/KismetSystemLibrary.h"
 #include "BTService_XBDummyCombatRange.generated.h"
 
 class UXBCombatComponent;
@@ -54,6 +56,10 @@ protected:
 	/** @brief 是否在攻击范围内黑板键（输出） */
 	UPROPERTY(EditAnywhere, Category = "黑板", meta = (DisplayName = "攻击范围内键"))
 	FBlackboardKeySelector IsInAttackRangeKey;
+
+	/** @brief 球体追踪调试绘制类型 */
+	UPROPERTY(EditAnywhere, Category = "调试", meta = (DisplayName = "调试绘制类型"))
+	TEnumAsByte<EDrawDebugTrace::Type> DebugDrawType = EDrawDebugTrace::None;
 
 private:
 	/**
