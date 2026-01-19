@@ -1759,7 +1759,10 @@ void AXBSoldierCharacter::EnterCombat()
 
     if (FollowComponent)
     {
+        // 🔧 修改 - 战斗时关闭跟随组件，完全由行为树控制
+        FollowComponent->SetComponentTickEnabled(false);
         FollowComponent->EnterCombatMode();
+        UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 战斗时关闭跟随组件Tick"), *GetName());
     }
 
     SetSoldierState(EXBSoldierState::Combat);
@@ -1800,7 +1803,10 @@ void AXBSoldierCharacter::ExitCombat()
     
     if (FollowComponent)
     {
+        // 🔧 修改 - 退出战斗时重新启用跟随组件
+        FollowComponent->SetComponentTickEnabled(true);
         FollowComponent->ExitCombatMode();
+        UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 退出战斗时启用跟随组件Tick"), *GetName());
     }
     
     if (AAIController* AICtrl = Cast<AAIController>(GetController()))
