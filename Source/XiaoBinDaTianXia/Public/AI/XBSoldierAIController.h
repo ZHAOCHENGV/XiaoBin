@@ -14,7 +14,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "AIController.h"
+#include "DetourCrowdAIController.h"
 #include "XBSoldierAIController.generated.h"
 
 // 前向声明
@@ -79,7 +79,7 @@ enum class EXBBlackboardKeyType : uint8
  * @brief 士兵AI控制器
  */
 UCLASS()
-class XIAOBINDATIANXIA_API AXBSoldierAIController : public AAIController
+class XIAOBINDATIANXIA_API AXBSoldierAIController : public ADetourCrowdAIController
 {
     GENERATED_BODY()
 
@@ -105,6 +105,8 @@ public:
     UFUNCTION(BlueprintCallable, Category = "XB|AI", meta = (DisplayName = "暂停行为树"))
     void PauseBehaviorTree(bool bPause);
 
+   
+    
     // ==================== 黑板值更新 ====================
 
     UFUNCTION(BlueprintCallable, Category = "XB|AI", meta = (DisplayName = "设置目标"))

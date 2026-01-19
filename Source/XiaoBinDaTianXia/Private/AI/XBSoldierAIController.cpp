@@ -14,7 +14,6 @@
 
 #include "AI/XBSoldierAIController.h"
 #include "Utils/XBLogCategories.h"
-#include "Utils/XBBlueprintFunctionLibrary.h"
 #include "BehaviorTree/BehaviorTree.h"
 #include "BehaviorTree/BehaviorTreeComponent.h"
 #include "BehaviorTree/BlackboardComponent.h"
@@ -25,9 +24,8 @@
 #include "BehaviorTree/Blackboard/BlackboardKeyType_Bool.h"
 #include "BehaviorTree/Blackboard/BlackboardKeyType_Enum.h"
 #include "Soldier/XBSoldierCharacter.h"
-#include "Character/XBCharacterBase.h"
 #include "TimerManager.h"
-#include "GameFramework/CharacterMovementComponent.h"
+
 
 AXBSoldierAIController::AXBSoldierAIController()
 {
