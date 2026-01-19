@@ -1322,6 +1322,32 @@ void AXBSoldierCharacter::ApplyVisualConfig()
     if (SoldierMesh)
     {
         GetMesh()->SetSkeletalMesh(SoldierMesh);
+
+        // ✨ 新增 - 自适应胶囊体大小
+        // 1. 获取网格体边界
+        FBoxSphereBounds MeshBounds = SoldierMesh->GetBounds();
+        FVector BoxExtent = MeshBounds.BoxExtent;
+        
+        // 2. 计算新尺寸 
+        // Radius取X/Y最大值的0.6倍以适配人体圆柱 (避免过宽导致穿模或无法通过)
+        float NewRadius = FMath::Max(BoxExtent.X, BoxExtent.Y) * 0.6f; 
+        // HalfHeight直接取Z轴范围的一半
+        float NewHalfHeight = BoxExtent.Z;
+
+        // 3. 设定最小/最大限制防止异常
+        NewRadius = FMath::Clamp(NewRadius, 15.0f, 60.0f);
+        NewHalfHeight = FMath::Max(NewHalfHeight, 30.0f);
+
+        if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+        {
+            Capsule->SetCapsuleSize(NewRadius, NewHalfHeight);
+            
+            // 4. 调整Mesh位置到底部对齐
+            // 胶囊体原点在中心，Mesh原点在脚底，所以Z轴偏移为 -HalfHeight
+            GetMesh()->SetRelativeLocation(FVector(0.0f, 0.0f, -NewHalfHeight));
+             UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 胶囊体自适应调整: MeshBounds=%.1f, Radius=%.1f, HalfHeight=%.1f"), 
+                *GetName(), BoxExtent.Z * 2.0f, NewRadius, NewHalfHeight);
+        }
     }
 
     TSubclassOf<UAnimInstance> AnimClass = DataAccessor->GetAnimClass();
@@ -1781,6 +1807,14 @@ void AXBSoldierCharacter::EnterCombat()
             *GetName(), GetAvoidanceRadius(), GetAvoidanceWeight());
     }
 
+    // ✨ 新增 - 战斗状态下开启对士兵(Soldier)的阻挡，防止重叠
+    if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+    {
+        // ECC_GameTraceChannel3 corresponds to 'Soldier' channel
+        Capsule->SetCollisionResponseToChannel(ECC_GameTraceChannel3, ECR_Block);
+        UE_LOG(LogXBCombat, Verbose, TEXT("士兵 %s 进入战斗，开启士兵间碰撞阻挡"), *GetName());
+    }
+
     if (FollowComponent)
     {
         // 🔧 修改 - 战斗时关闭跟随组件，完全由行为树控制
@@ -1818,6 +1852,13 @@ void AXBSoldierCharacter::ExitCombat()
     {
         MoveComp->SetAvoidanceEnabled(false);  // 关闭RVO避让
         UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 退出战斗，关闭RVO避让"), *GetName());
+    }
+
+    // ✨ 新增 - 退出战斗（跟随/待机）恢复对士兵(Soldier)的重叠，允许穿模
+    if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+    {
+        Capsule->SetCollisionResponseToChannel(ECC_GameTraceChannel3, ECR_Overlap);
+        UE_LOG(LogXBCombat, Verbose, TEXT("士兵 %s 退出战斗，恢复士兵间碰撞重叠"), *GetName());
     }
     
     if (AXBSoldierAIController* SoldierAI = Cast<AXBSoldierAIController>(GetController()))
