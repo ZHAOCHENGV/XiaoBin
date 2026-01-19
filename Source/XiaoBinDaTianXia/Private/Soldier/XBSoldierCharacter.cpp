@@ -89,6 +89,15 @@ AXBSoldierCharacter::AXBSoldierCharacter()
         MovementComp->MaxWalkSpeed = 400.0f;
         MovementComp->BrakingDecelerationWalking = 2000.0f;
         MovementComp->SetComponentTickEnabled(false);
+        
+        // ✨ 新增 - 初始化RVO避让系统
+        MovementComp->bUseRVOAvoidance = true;
+        MovementComp->SetAvoidanceEnabled(false);  // 默认关闭，战斗时开启
+        MovementComp->AvoidanceConsiderationRadius = 500.0f;
+        MovementComp->AvoidanceWeight = 0.5f;
+        MovementComp->AvoidanceGroup.SetFlagsDirectly(1);  // 避让组1
+        MovementComp->GroupsToAvoid.SetFlagsDirectly(1);   // 避让组1
+        MovementComp->GroupsToIgnore.SetFlagsDirectly(0);  // 不忽略任何组
     }
 
     AutoPossessAI = EAutoPossessAI::Disabled;
@@ -1737,11 +1746,15 @@ void AXBSoldierCharacter::EnterCombat()
         }
     }
 
-    // 🔧 修改 - 战斗开始时同步避让参数，避免士兵相互重叠
+    // 🔧 修改 - 战斗开始时启用RVO避让系统，同步避让参数
     if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
     {
+        MoveComp->bUseRVOAvoidance = true;
+        MoveComp->SetAvoidanceEnabled(true);  // 开启RVO避让
         MoveComp->AvoidanceConsiderationRadius = GetAvoidanceRadius();
         MoveComp->AvoidanceWeight = GetAvoidanceWeight();
+        UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 进入战斗，启用RVO避让（半径=%.0f, 权重=%.2f）"), 
+            *GetName(), GetAvoidanceRadius(), GetAvoidanceWeight());
     }
 
     if (FollowComponent)
@@ -1773,7 +1786,13 @@ void AXBSoldierCharacter::ExitCombat()
 
     CurrentAttackTarget = nullptr;
 
-    // 🔧 修改 - 退出战斗时关闭行为树，切回跟随逻辑
+    // 🔧 修改 - 退出战斗时关闭RVO避让，切回跟随逻辑
+    if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+    {
+        MoveComp->SetAvoidanceEnabled(false);  // 关闭RVO避让
+        UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 退出战斗，关闭RVO避让"), *GetName());
+    }
+    
     if (AXBSoldierAIController* SoldierAI = Cast<AXBSoldierAIController>(GetController()))
     {
         SoldierAI->StopBehaviorTreeLogic();

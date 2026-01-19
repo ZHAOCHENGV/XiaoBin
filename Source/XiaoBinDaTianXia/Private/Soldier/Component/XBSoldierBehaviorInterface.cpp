@@ -461,9 +461,9 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
             return 0.0f;
         }
 
-        // 🔧 修改 - 以士兵半径为尺度进行惩罚，避免大量士兵挤到同一目标
+        // 🔧 修改 - 大幅增加拥挤惩罚，让士兵更倾向于选择无人攻击的目标
         const float AvoidanceRadius = Soldier->GetSimpleCollisionRadius();
-        const float CrowdPenaltyWeight = FMath::Max(200.0f, AvoidanceRadius * AvoidanceRadius);
+        const float CrowdPenaltyWeight = FMath::Max(5000.0f, AvoidanceRadius * AvoidanceRadius * 10.0f);
         return static_cast<float>(*AttackerCount) * CrowdPenaltyWeight;
     };
 
@@ -973,18 +973,18 @@ EXBBehaviorResult UXBSoldierBehaviorInterface::MoveToActor(AActor* Target, float
 
     float Distance = FVector::Dist(Soldier->GetActorLocation(), Target->GetActorLocation());
     
-    // ✨ 新增 - 攻击阶段降低避让权重（站桩输出）
+    // ✨ 优化 - 调整避让权重，战斗时保持一定避让能力，避免扎堆
     if (UCharacterMovementComponent* MoveComp = Soldier->GetCharacterMovement())
     {
         if (Distance <= Soldier->GetAttackRange())
         {
-            // 攻击阶段：极低避让权重，防止被友军挤开打断攻击
-            MoveComp->AvoidanceWeight = 0.05f;
+            // 攻击阶段：降低但不完全关闭避让权重，避免挤成一团
+            MoveComp->AvoidanceWeight = 0.3f;
         }
         else
         {
-            // 移动阶段：恢复正常避让
-            MoveComp->AvoidanceWeight = Soldier->GetAvoidanceWeight();
+            // 移动阶段：提高避让权重，更好地绕开障碍
+            MoveComp->AvoidanceWeight = FMath::Max(0.5f, Soldier->GetAvoidanceWeight());
         }
     }
     
@@ -1001,11 +1001,31 @@ EXBBehaviorResult UXBSoldierBehaviorInterface::MoveToActor(AActor* Target, float
         return EXBBehaviorResult::Success;
     }
 
-    EPathFollowingRequestResult::Type Result = AIController->MoveToActor(
-        Target,
+    // ✨ 新增 - 添加随机偏移，让士兵从不同角度接近目标，避免扎堆
+    FVector TargetLocation = Target->GetActorLocation();
+    FVector SoldierLocation = Soldier->GetActorLocation();
+    FVector ToTarget = (TargetLocation - SoldierLocation).GetSafeNormal2D();
+    
+    // 计算垂直于目标方向的向量
+    FVector RightVector = FVector::CrossProduct(ToTarget, FVector::UpVector);
+    
+    // 使用士兵ID作为随机种子，保证每个士兵的偏移一致且可预测
+    FRandomStream RandomStream(Soldier->GetUniqueID());
+    float RandomAngle = RandomStream.FRandRange(-60.0f, 60.0f);  // ±60度的角度偏移
+    float RandomDistance = RandomStream.FRandRange(50.0f, 150.0f);  // 50-150单位的距离偏移
+    
+    // 计算偏移后的位置
+    FVector Offset = RightVector.RotateAngleAxis(RandomAngle, FVector::UpVector) * RandomDistance;
+    FVector DispersedTarget = TargetLocation + Offset;
+    
+    // 使用分散后的位置作为移动目标，让士兵围绕目标形成包围圈
+    EPathFollowingRequestResult::Type Result = AIController->MoveToLocation(
+        DispersedTarget,
         AcceptanceRadius,
-        true,
-        true
+        true,  // bStopOnOverlap
+        true,  // bUsePathfinding
+        true,  // bProjectDestinationToNavigation
+        true   // bCanStrafe
     );
 
     // 🔧 修改 - 使用 if-else 替代 switch
