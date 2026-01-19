@@ -20,6 +20,8 @@
 #include "Engine/World.h"
 #include "CollisionQueryParams.h"
 #include "DrawDebugHelpers.h"
+#include "Components/CapsuleComponent.h"
+#include "Engine/OverlapResult.h"
 #include "GameFramework/Pawn.h"
 
 UBTService_XBDummyCombatRange::UBTService_XBDummyCombatRange()
@@ -111,10 +113,18 @@ void UBTService_XBDummyCombatRange::TickNode(
 		return;
 	}
 
-	// 计算当前优先攻击范围
-	const float AttackRange = CalculateCurrentAttackRange(CombatComp);
+	// 获取当前选择的能力类型
+	static const FName DefaultAbilityTypeKey(TEXT("SelectedAbilityType"));
+	const FName AbilityTypeKeyName = AbilityTypeKey.SelectedKeyName.IsNone()
+		? DefaultAbilityTypeKey
+		: AbilityTypeKey.SelectedKeyName;
+	const EXBDummyLeaderAbilityType SelectedAbilityType =
+		static_cast<EXBDummyLeaderAbilityType>(Blackboard->GetValueAsInt(AbilityTypeKeyName));
+
+	// 根据选择的能力类型计算攻击范围
+	const float AttackRange = CalculateCurrentAttackRange(CombatComp, SelectedAbilityType);
 	
-	// 球体碰撞检测
+	// 球体重叠检测（而非扫描）
 	const bool bInRange = CheckTargetInAttackRange(Dummy, AttackRange, Target);
 	
 	// 更新黑板变量
@@ -134,38 +144,38 @@ void UBTService_XBDummyCombatRange::TickNode(
 }
 
 /**
- * @brief 计算当前优先攻击范围
+ * @brief 根据选择的能力类型计算攻击范围
  * @param CombatComp 战斗组件
- * @return 当前应使用的攻击范围（技能优先、普攻其次）
- * @note   优先级: 技能未冷却用技能范围 > 普攻未冷却用普攻范围 > 都冷却用最小范围
+ * @param SelectedAbilityType 当前选择的能力类型（从黑板读取）
+ * @return 对应能力的攻击范围
+ * @note   直接根据黑板中的能力选择返回范围，不再依赖冷却状态
  */
-float UBTService_XBDummyCombatRange::CalculateCurrentAttackRange(UXBCombatComponent* CombatComp) const
+float UBTService_XBDummyCombatRange::CalculateCurrentAttackRange(
+	UXBCombatComponent* CombatComp, EXBDummyLeaderAbilityType SelectedAbilityType) const
 {
 	if (!CombatComp)
 	{
 		return 100.0f; // 默认值
 	}
 
-	// 获取技能和普攻的范围与冷却状态
+	// 获取技能和普攻的范围
 	const float SkillRange = CombatComp->GetSkillAttackRange();
 	const float BasicRange = CombatComp->GetBasicAttackRange();
-	const bool bSkillOnCooldown = CombatComp->IsSkillOnCooldown();
-	const bool bBasicOnCooldown = CombatComp->IsBasicAttackOnCooldown();
 
-	// 优先级1：技能未冷却，使用技能范围
-	if (!bSkillOnCooldown)
+	// 根据选择的能力类型返回对应范围
+	switch (SelectedAbilityType)
 	{
+	case EXBDummyLeaderAbilityType::SpecialSkill:
 		return SkillRange;
-	}
-
-	// 优先级2：普攻未冷却，使用普攻范围
-	if (!bBasicOnCooldown)
-	{
+		
+	case EXBDummyLeaderAbilityType::BasicAttack:
 		return BasicRange;
+		
+	case EXBDummyLeaderAbilityType::None:
+	default:
+		// 如果没有选择能力，返回最小范围
+		return FMath::Min(SkillRange, BasicRange);
 	}
-
-	// 优先级3：都在冷却，使用最小范围
-	return FMath::Min(SkillRange, BasicRange);
 }
 
 /**
@@ -181,34 +191,82 @@ bool UBTService_XBDummyCombatRange::CheckTargetInAttackRange(
 {
 	if (!Dummy || !Dummy->GetWorld())
 	{
+		UE_LOG(LogXBAI, Warning, TEXT("❌ 范围检测失败：Dummy 或 World 无效"));
+		return false;
+	}
+
+	if (!TargetActor)
+	{
+		UE_LOG(LogXBAI, Warning, TEXT("❌ 范围检测失败：TargetActor 无效"));
 		return false;
 	}
 
 	// 球体中心为AI的中心位置
 	const FVector SphereCenter = Dummy->GetActorLocation();
+	const FVector TargetLocation = TargetActor->GetActorLocation();
+	
+	// 🔍 调试信息1：计算实际距离
+	const float ActualDistance = FVector::Dist(SphereCenter, TargetLocation);
+	UE_LOG(LogXBAI, Log, TEXT("🔍 范围检测开始：Dummy=%s, Target=%s, 检测范围=%.1f, 实际距离=%.1f"),
+		*Dummy->GetName(), *TargetActor->GetName(), AttackRange, ActualDistance);
 
 	// 配置碰撞查询参数
 	FCollisionQueryParams QueryParams;
-	QueryParams.AddIgnoredActor(Dummy);
+	QueryParams.AddIgnoredActor(Dummy); // 必须忽略自己，否则只会检测到自己
 	QueryParams.bTraceComplex = false;
+	
+	// 🔍 调试信息2：检查目标的碰撞设置
+	if (ACharacter* TargetCharacter = Cast<ACharacter>(TargetActor))
+	{
+		if (UCapsuleComponent* CapsuleComp = TargetCharacter->GetCapsuleComponent())
+		{
+			const ECollisionEnabled::Type CollisionEnabled = CapsuleComp->GetCollisionEnabled();
+			const ECollisionResponse CollisionResponse = CapsuleComp->GetCollisionResponseToChannel(ECC_Pawn);
+			const ECollisionChannel ObjectType = CapsuleComp->GetCollisionObjectType();
+			
+			UE_LOG(LogXBAI, Log, TEXT("🔍 目标碰撞设置：CollisionEnabled=%d, ResponseToPawn=%d, ObjectType=%d"),
+				static_cast<int32>(CollisionEnabled),
+				static_cast<int32>(CollisionResponse),
+				static_cast<int32>(ObjectType));
+		}
+	}
 
 	// 配置碰撞对象类型
+	// 🔧 修复：添加 Channel17 以支持 ObjectType=17 的检测
 	FCollisionObjectQueryParams ObjectParams;
-	ObjectParams.AddObjectTypesToQuery(ECC_Pawn);
-	ObjectParams.AddObjectTypesToQuery(ECC_GameTraceChannel4); // Leader通道
-	ObjectParams.AddObjectTypesToQuery(ECC_GameTraceChannel3); // Soldier通道
+	ObjectParams.AddObjectTypesToQuery(ECC_Pawn);                    // Pawn通道 (3)
+	ObjectParams.AddObjectTypesToQuery(ECC_GameTraceChannel4);       // Leader通道 (7)
+	ObjectParams.AddObjectTypesToQuery(ECC_GameTraceChannel3);       // Soldier通道 (6)
+	ObjectParams.AddObjectTypesToQuery(ECC_GameTraceChannel17);      // 自定义通道17
 
-	// 执行球体碰撞检测（支持可配置的调试绘制）
-	TArray<FHitResult> HitResults;
-	const bool bHit = Dummy->GetWorld()->SweepMultiByObjectType(
-		HitResults,
-		SphereCenter,
+	// 🔧 关键修复 - 使用 OverlapMultiByObjectType 而非 SweepMultiByObjectType
+	// 原因：Sweep在起点和终点相同时可能无法检测到已经在球体内的物体
+	TArray<FOverlapResult> OverlapResults;
+	const bool bHit = Dummy->GetWorld()->OverlapMultiByObjectType(
+		OverlapResults,
 		SphereCenter,
 		FQuat::Identity,
 		ObjectParams,
 		FCollisionShape::MakeSphere(AttackRange),
 		QueryParams
 	);
+
+	// 🔍 调试信息3：输出所有检测到的物体
+	UE_LOG(LogXBAI, Log, TEXT("🔍 Overlap检测结果：检测到 %d 个物体"), OverlapResults.Num());
+	for (int32 i = 0; i < OverlapResults.Num(); ++i)
+	{
+		const FOverlapResult& Overlap = OverlapResults[i];
+		AActor* HitActor = Overlap.GetActor();
+		UPrimitiveComponent* HitComp = Overlap.GetComponent();
+		
+		if (HitActor && HitComp)
+		{
+			const float Distance = FVector::Dist(SphereCenter, HitActor->GetActorLocation());
+			UE_LOG(LogXBAI, Log, TEXT("   [%d] Actor=%s, Component=%s, Distance=%.1f, ObjectType=%d"),
+				i, *HitActor->GetName(), *HitComp->GetName(), Distance,
+				static_cast<int32>(HitComp->GetCollisionObjectType()));
+		}
+	}
 
 	// 调试绘制球体范围（根据配置的枚举值）
 	if (DebugDrawType != EDrawDebugTrace::None)
@@ -224,26 +282,51 @@ bool UBTService_XBDummyCombatRange::CheckTargetInAttackRange(
 			DebugDrawType == EDrawDebugTrace::Persistent, // 是否持久绘制
 			DebugLifeTime
 		);
+		
+		// 绘制到目标的连线
+		DrawDebugLine(
+			Dummy->GetWorld(),
+			SphereCenter,
+			TargetLocation,
+			ActualDistance <= AttackRange ? FColor::Green : FColor::Red,
+			DebugDrawType == EDrawDebugTrace::Persistent,
+			DebugLifeTime,
+			0,
+			2.0f
+		);
 	}
 
-	// 遍历命中结果
+	// 遍历重叠结果
 	if (bHit)
 	{
-		for (const FHitResult& Hit : HitResults)
+		for (const FOverlapResult& Overlap : OverlapResults)
 		{
 			// 过滤磁场组件
-			if (UXBMagnetFieldComponent* MagnetComp = Cast<UXBMagnetFieldComponent>(Hit.GetComponent()))
+			if (UXBMagnetFieldComponent* MagnetComp = Cast<UXBMagnetFieldComponent>(Overlap.GetComponent()))
 			{
+				UE_LOG(LogXBAI, VeryVerbose, TEXT("   ⏭️ 跳过磁场组件: %s"), *MagnetComp->GetName());
 				continue;
 			}
 
 			// 检查是否是目标
-			ACharacter* HitPawn = Cast<ACharacter>(Hit.GetActor());
-			if (HitPawn && HitPawn == TargetActor)
+			ACharacter* HitCharacter = Cast<ACharacter>(Overlap.GetActor());
+			if (HitCharacter && HitCharacter == TargetActor)
 			{
+				UE_LOG(LogXBAI, Log, TEXT("✅ 范围检测成功：目标 %s 在攻击范围内 (范围=%.1f, 实际距离=%.1f)"),
+					*HitCharacter->GetName(), AttackRange, ActualDistance);
 				return true;
 			}
 		}
+		
+		// 检测到了其他物体，但不是目标
+		UE_LOG(LogXBAI, Warning, TEXT("⚠️ 范围检测失败：检测到%d个物体，但目标 %s 不在其中"),
+			OverlapResults.Num(), *TargetActor->GetName());
+	}
+	else
+	{
+		// 完全没有检测到任何物体
+		UE_LOG(LogXBAI, Warning, TEXT("❌ 范围检测失败：未检测到任何物体 (范围=%.1f, 实际距离=%.1f, 目标=%s)"),
+			AttackRange, ActualDistance, *TargetActor->GetName());
 	}
 
 	return false;

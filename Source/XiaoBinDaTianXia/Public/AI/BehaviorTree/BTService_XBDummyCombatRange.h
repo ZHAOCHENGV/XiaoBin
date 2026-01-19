@@ -21,6 +21,8 @@
 #include "BTService_XBDummyCombatRange.generated.h"
 
 class UXBCombatComponent;
+enum class EXBDummyLeaderAbilityType : uint8;
+
 
 /**
  * @brief 假人主将战斗范围检测服务
@@ -72,9 +74,10 @@ private:
 	bool CheckTargetInAttackRange(AActor* Dummy, float AttackRange, AActor* TargetActor) const;
 
 	/**
-	 * @brief 计算当前优先攻击范围
+	 * @brief 根据选择的能力类型计算攻击范围
 	 * @param CombatComp 战斗组件
-	 * @return 当前应使用的攻击范围（技能优先、普攻其次）
+	 * @param SelectedAbilityType 当前选择的能力类型
+	 * @return 对应能力的攻击范围
 	 */
-	float CalculateCurrentAttackRange(UXBCombatComponent* CombatComp) const;
+	float CalculateCurrentAttackRange(UXBCombatComponent* CombatComp, EXBDummyLeaderAbilityType SelectedAbilityType) const;
 };
