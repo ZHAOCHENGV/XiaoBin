@@ -262,7 +262,7 @@ void AXBSoldierCharacter::Tick(float DeltaTime)
 
     // ✨ 新增 - 技能/攻击动作期间禁止移动和旋转
     // 🔧 修复 - 士兵没有 CombatComponent，改为直接检查蒙太奇播放状态
-    if (IsDataAccessorValid())
+    /*if (IsDataAccessorValid())
     {
         if (UAnimMontage* AttackMontage = DataAccessor->GetBasicAttackMontage())
         {
@@ -282,7 +282,7 @@ void AXBSoldierCharacter::Tick(float DeltaTime)
                 }
             }
         }
-    }
+    }*/
 }
 
 void AXBSoldierCharacter::EnableMovementAndTick()
@@ -1773,8 +1773,8 @@ void AXBSoldierCharacter::EnterCombat()
     // 🔧 修改 - 战斗开始时启用RVO避让系统，同步避让参数
     if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
     {
-        MoveComp->bUseRVOAvoidance = true;
-        MoveComp->SetAvoidanceEnabled(true);  // 开启RVO避让
+            MoveComp->bUseRVOAvoidance = false;
+        MoveComp->SetAvoidanceEnabled(false);  // 开启RVO避让
         MoveComp->AvoidanceConsiderationRadius = GetAvoidanceRadius();
         MoveComp->AvoidanceWeight = GetAvoidanceWeight();
         UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 进入战斗，启用RVO避让（半径=%.0f, 权重=%.2f）"), 
@@ -2087,7 +2087,8 @@ void AXBSoldierCharacter::ReturnToFormation()
 FVector AXBSoldierCharacter::CalculateAvoidanceDirection(const FVector& DesiredDirection)
 {
     // ✨ 新增 - 避让系统总开关
-    if (!bEnableAvoidanceSystem)
+    // 🔧 修改 - 跟随模式强制禁用避让，仅在战斗且开启时生效
+    if (CurrentState == EXBSoldierState::Following || !bEnableAvoidanceSystem)
     {
         return DesiredDirection;
     }
