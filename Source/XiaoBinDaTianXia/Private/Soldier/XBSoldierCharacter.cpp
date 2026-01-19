@@ -2407,7 +2407,7 @@ void AXBSoldierCharacter::HandleDeath()
             }  
         }      
     }         
-
+  
     // 🔧 修改 - 根据死亡动画时长安排回收
     FTimerHandle RecycleTimerHandle;
     GetWorldTimerManager().SetTimer(
@@ -2432,6 +2432,7 @@ void AXBSoldierCharacter::HandleDeath()
                     UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 已重置为休眠态（无对象池）"), *GetName());
                 }
             }
+           
         },
         DeathAnimDuration + 0.5f,
         false
@@ -2511,7 +2512,11 @@ void AXBSoldierCharacter::HandleFormationUpdated()
     {
         return;
     }
-
+    
+    if (CurrentState == EXBSoldierState::Combat)  // ← 增加这一行
+    {
+        return;  // 战斗中不响应编队更新
+    }
     const int32 SafeSlotIndex = FMath::Max(FormationSlotIndex, 0);
     const float Delay = bEnableFormationTailDelay ? FormationTailDelayPerSlot * SafeSlotIndex : 0.0f;
 
