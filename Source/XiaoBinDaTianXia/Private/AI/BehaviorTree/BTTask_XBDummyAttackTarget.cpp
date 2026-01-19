@@ -36,82 +36,6 @@ UBTTask_XBDummyAttackTarget::UBTTask_XBDummyAttackTarget()
 	bNotifyTaskFinished = true;
 }
 
-/**
- * @brief 检查目标是否在攻击范围内（球体碰撞检测）
- * @param Dummy 假人AI
- * @param AttackRange 攻击范围（技能或普攻的范围值）
- * @param TargetActor 目标Actor
- * @return 是否检测到目标
- * @note 球体半径会根据AI的缩放系数自动调整，并过滤磁场组件
- */
-static bool CheckTargetInAttackRange(AActor* Dummy, float AttackRange, AActor* TargetActor)
-{
-	if (!Dummy || !Dummy->GetWorld())
-	{
-		return false;
-	}
-
-	// 🔧 获取AI的缩放系数（仅用于日志显示，不再参与计算）
-	const FVector Scale3D = Dummy->GetActorScale3D();
-	const float ScaleFactor = Scale3D.X;
-
-	// 🔧 关键修改 - 攻击范围不再在此处进行二次缩放，直接使用传入值
-	const float ScaledAttackRadius = AttackRange;
-
-	// 🔧 球体中心为AI的中心位置
-	const FVector SphereCenter = Dummy->GetActorLocation();
-
-	// 🔧 配置碰撞查询参数
-	FCollisionQueryParams QueryParams;
-	QueryParams.AddIgnoredActor(Dummy); // 忽略自己
-	QueryParams.bTraceComplex = false;  // 使用简单碰撞
-
-	// 🔧 执行球体碰撞检测
-	TArray<FHitResult> HitResults;
-	const bool bHit = Dummy->GetWorld()->SweepMultiByProfile(
-		HitResults,
-		SphereCenter,
-		SphereCenter, // 起点和终点相同，只做overlap检测
-		FQuat::Identity,
-		"Pawn", // 只检测Pawn通道
-		FCollisionShape::MakeSphere(ScaledAttackRadius),
-		QueryParams
-	);
-
-	// 🔧 遍历命中结果，检查是否有Pawn类型的目标
-	if (bHit)
-	{
-		for (const FHitResult& Hit : HitResults)
-		{
-			// 🔧 过滤1：忽略磁场组件的碰撞
-			if (UXBMagnetFieldComponent* MagnetComp = Cast<UXBMagnetFieldComponent>(Hit.GetComponent()))
-			{
-				UE_LOG(LogXBAI, VeryVerbose, TEXT("球体碰撞检测(攻击)：忽略磁场组件 %s"), *MagnetComp->GetName());
-				continue; // 跳过磁场组件
-			}
-
-			// 🔧 过滤2：检查是否是Pawn类型
-			APawn* HitPawn = Cast<APawn>(Hit.GetActor());
-			if (!HitPawn)
-			{
-				continue; // 不是Pawn，跳过
-			}
-
-			// 🔧 过滤3：检查是否是我们要找的目标
-			if (TargetActor && HitPawn == TargetActor)
-			{
-				UE_LOG(LogXBAI, Verbose, TEXT("球体碰撞检测(攻击)：在范围内找到目标Pawn %s (范围=%.1f, 缩放=%.2f, 缩放后半径=%.1f)"),
-					*HitPawn->GetName(), AttackRange, ScaleFactor, ScaledAttackRadius);
-				return true;
-			}
-		}
-	}
-
-	// 没有检测到目标
-	UE_LOG(LogXBAI, Verbose, TEXT("球体碰撞检测(攻击)：未在范围内找到目标 (范围=%.1f, 缩放=%.2f, 缩放后半径=%.1f)"),
-		AttackRange, ScaleFactor, ScaledAttackRadius);
-	return false;
-}
 
 /**
  * @brief 执行任务
@@ -172,31 +96,24 @@ EBTNodeResult::Type UBTTask_XBDummyAttackTarget::ExecuteTask(UBehaviorTreeCompon
 		return EBTNodeResult::Failed;
 	}
 
-	// 检查攻击范围和冷却状态
+	// 检查冷却状态
+	// 注：范围检查由 BTDecorator_XBDummyInAttackRange 装饰器负责
 	const bool bSkillOnCooldown = CombatComp->IsSkillOnCooldown();
 	const bool bBasicOnCooldown = CombatComp->IsBasicAttackOnCooldown();
-	const float SkillRange = CombatComp->GetSkillAttackRange();
-	const float BasicRange = CombatComp->GetBasicAttackRange();
-
-	// 🔧 修改 - 使用球体碰撞检测替代距离计算
-	const bool bInSkillRange = CheckTargetInAttackRange(Dummy, SkillRange, TargetLeader);
-	const bool bInBasicRange = CheckTargetInAttackRange(Dummy, BasicRange, TargetLeader);
 
 	// 🔧 新增 - 详细调试日志
 	const FString AbilityTypeName = (SelectedAbilityType == EXBDummyLeaderAbilityType::SpecialSkill) ? TEXT("技能") :
 		(SelectedAbilityType == EXBDummyLeaderAbilityType::BasicAttack) ? TEXT("普攻") : TEXT("无");
-	UE_LOG(LogXBAI, Log, TEXT("假人 %s 攻击检查: 选择=%s, 技能范围=%.1f(在范围=%s,CD=%s), 普攻范围=%.1f(在范围=%s,CD=%s)"),
-		*Dummy->GetName(), *AbilityTypeName,
-		SkillRange, bInSkillRange ? TEXT("是") : TEXT("否"), bSkillOnCooldown ? TEXT("是") : TEXT("否"),
-		BasicRange, bInBasicRange ? TEXT("是") : TEXT("否"), bBasicOnCooldown ? TEXT("是") : TEXT("否"));
 
-	// 🔧 修改 - 按已选择能力判断范围与冷却，避免未到对应范围就停下
-	const bool bSelectedSkillReady = SelectedAbilityType == EXBDummyLeaderAbilityType::SpecialSkill && !bSkillOnCooldown && bInSkillRange;
-	const bool bSelectedBasicReady = SelectedAbilityType == EXBDummyLeaderAbilityType::BasicAttack && !bBasicOnCooldown && bInBasicRange;
+	// 🔧 修改 - 仅检查冷却状态，范围由装饰器保证
+	const bool bSelectedSkillReady = SelectedAbilityType == EXBDummyLeaderAbilityType::SpecialSkill && !bSkillOnCooldown;
+	const bool bSelectedBasicReady = SelectedAbilityType == EXBDummyLeaderAbilityType::BasicAttack && !bBasicOnCooldown;
 	if (!bSelectedSkillReady && !bSelectedBasicReady)
 	{
-		UE_LOG(LogXBAI, Log, TEXT("假人 %s 攻击条件不满足: 技能就绪=%s, 普攻就绪=%s"),
-			*Dummy->GetName(), bSelectedSkillReady ? TEXT("是") : TEXT("否"), bSelectedBasicReady ? TEXT("是") : TEXT("否"));
+		UE_LOG(LogXBAI, Log, TEXT("假人 %s 攻击条件不满足: 选择=%s, 技能CD=%s, 普攻CD=%s"),
+			*Dummy->GetName(), *AbilityTypeName, 
+			bSkillOnCooldown ? TEXT("是") : TEXT("否"), 
+			bBasicOnCooldown ? TEXT("是") : TEXT("否"));
 		return EBTNodeResult::Failed;
 	}
 
@@ -301,20 +218,15 @@ void UBTTask_XBDummyAttackTarget::TickTask(UBehaviorTreeComponent& OwnerComp, ui
 			return;
 		}
 
+		// 注：范围检查由 BTDecorator_XBDummyInAttackRange 装饰器负责
 		const bool bSkillOnCooldown = CombatComp->IsSkillOnCooldown();
 		const bool bBasicOnCooldown = CombatComp->IsBasicAttackOnCooldown();
-		const float SkillRange = CombatComp->GetSkillAttackRange();
-		const float BasicRange = CombatComp->GetBasicAttackRange();
-
-		// 🔧 修改 - 使用球体碰撞检测替代距离计算
-		const bool bInSkillRange = CheckTargetInAttackRange(Dummy, SkillRange, TargetLeader);
-		const bool bInBasicRange = CheckTargetInAttackRange(Dummy, BasicRange, TargetLeader);
 
 		// 清除焦点
 		AIController->ClearFocus(EAIFocusPriority::Gameplay);
 
-		// 🔧 修改 - 仅释放已选择的能力，确保与移动范围一致
-		if (SelectedAbilityType == EXBDummyLeaderAbilityType::SpecialSkill && bInSkillRange && !bSkillOnCooldown)
+		// 🔧 修改 - 仅检查冷却状态，范围由装饰器保证
+		if (SelectedAbilityType == EXBDummyLeaderAbilityType::SpecialSkill && !bSkillOnCooldown)
 		{
 			CombatComp->PerformSpecialSkill();
 			UE_LOG(LogXBAI, Log, TEXT("假人 %s 转向完成(%.1f度)，释放技能"), *Dummy->GetName(), AngleDegrees);
@@ -323,7 +235,7 @@ void UBTTask_XBDummyAttackTarget::TickTask(UBehaviorTreeComponent& OwnerComp, ui
 			return;
 		}
 
-		if (SelectedAbilityType == EXBDummyLeaderAbilityType::BasicAttack && bInBasicRange && !bBasicOnCooldown)
+		if (SelectedAbilityType == EXBDummyLeaderAbilityType::BasicAttack && !bBasicOnCooldown)
 		{
 			CombatComp->PerformBasicAttack();
 			UE_LOG(LogXBAI, Log, TEXT("假人 %s 转向完成(%.1f度)，释放普攻"), *Dummy->GetName(), AngleDegrees);

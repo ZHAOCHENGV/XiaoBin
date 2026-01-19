@@ -173,7 +173,7 @@ void UBTService_XBDummyLeaderAI::TickNode(UBehaviorTreeComponent& OwnerComp, uin
 		{
 			Blackboard->SetValueAsBool(InCombatKey, true);
 			// 🔧 修改 - 仅标记行为树进入战斗靠近阶段，士兵参战延迟到主将真实攻击触发
-			// 为什么要延迟：避免仅因视野锁定就提前驱动士兵攻击，符合“主将先出手”的战斗节奏
+			// 为什么要延迟：避免仅因视野锁定就提前驱动攻击，符合"主将先出手"的战斗节奏
 			bHadCombatTarget = true;
 
 			// 🔧 修改 - 战斗时将行为目的地锁定为目标位置，确保主动靠近
@@ -182,8 +182,7 @@ void UBTService_XBDummyLeaderAI::TickNode(UBehaviorTreeComponent& OwnerComp, uin
 			// ✨ 新增 - 在战斗阶段选择一个可用能力并写入黑板
 			// 为什么要在服务中选择：确保移动任务与攻击任务统一使用同一能力范围
 			SelectCombatAbility(Dummy, Blackboard, CurrentTarget);
-			// 降低日志频率
-			// UE_LOG(LogXBAI, Verbose, TEXT("假人AI战斗靠近目标，更新目的地: %s -> %s"), *Dummy->GetName(), *CurrentTarget->GetName());
+			// 注：IsInAttackRange 的判断由 BTDecorator_XBDummyInAttackRange 装饰器负责
 		}
 	}
 
@@ -343,6 +342,7 @@ void UBTService_XBDummyLeaderAI::InitializeBlackboard(AXBDummyCharacter* Dummy, 
 	Blackboard->SetValueAsBool(InCombatKey, false);
 	Blackboard->SetValueAsVector(BehaviorDestinationKey, HomeLocation);
 	Blackboard->SetValueAsInt(SelectedAbilityTypeKey, static_cast<int32>(EXBDummyLeaderAbilityType::None));
+	// 注：IsInAttackRange 的判断由 BTDecorator_XBDummyInAttackRange 装饰器负责
 
 }
 

@@ -194,16 +194,9 @@ EBTNodeResult::Type UBTTask_XBDummyMoveToTarget::ExecuteTask(UBehaviorTreeCompon
 	AIController->SetFocus(Target);
 
 	// 🔧 修改 - 计算攻击范围（技能或普攻的范围值）
+	// 注：范围检查由 BTDecorator_XBDummyInAttackRange 装饰器负责
+	// 移动任务只负责移动到范围内
 	const float AttackRange = CalculateOptimalStopDistance(CombatComp, Dummy, Target, SelectedAbilityType);
-	
-	// 🔧 修改 - 使用球体碰撞检测判断目标是否在攻击范围内
-	if (CheckTargetInMoveRange(Dummy, AttackRange, Target))
-	{
-		AIController->ClearFocus(EAIFocusPriority::Gameplay);
-		UE_LOG(LogXBAI, Log, TEXT("假人 %s 已在攻击范围内（球体碰撞检测成功，范围=%.1f）"), 
-			*Dummy->GetName(), AttackRange);
-		return EBTNodeResult::Succeeded;
-	}
 	
 	// 🔧 修改 - 发起移动请求，移动到攻击范围的80%位置（留一些裕度）
 	EPathFollowingRequestResult::Type MoveResult = AIController->MoveToActor(
