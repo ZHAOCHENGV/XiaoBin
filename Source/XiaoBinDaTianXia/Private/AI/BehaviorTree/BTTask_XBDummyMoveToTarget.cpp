@@ -73,14 +73,20 @@ static bool CheckTargetInMoveRange(AActor* Dummy, float AttackRange, AActor* Tar
 	QueryParams.AddIgnoredActor(Dummy); // 忽略自己
 	QueryParams.bTraceComplex = false;  // 使用简单碰撞
 
+	// 🔧 修改 - 添加Leader和Soldier通道，确保主将也能被检测到
+	FCollisionObjectQueryParams ObjectParams;
+	ObjectParams.AddObjectTypesToQuery(ECC_Pawn);  // Pawn通道
+	ObjectParams.AddObjectTypesToQuery(ECC_GameTraceChannel4);  // Leader通道（XBCollision::Leader）
+	ObjectParams.AddObjectTypesToQuery(ECC_GameTraceChannel3);  // Soldier通道（XBCollision::Soldier）
+
 	// 🔧 执行球体碰撞检测
 	TArray<FHitResult> HitResults;
-	const bool bHit = Dummy->GetWorld()->SweepMultiByProfile(
+	const bool bHit = Dummy->GetWorld()->SweepMultiByObjectType(
 		HitResults,
 		SphereCenter,
 		SphereCenter, // 起点和终点相同，只做overlap检测
 		FQuat::Identity,
-		"Pawn", // 只检测Pawn通道
+		ObjectParams,  // 使用多通道检测
 		FCollisionShape::MakeSphere(ScaledAttackRadius),
 		QueryParams
 	);
@@ -108,7 +114,7 @@ static bool CheckTargetInMoveRange(AActor* Dummy, float AttackRange, AActor* Tar
 			if (TargetActor && HitPawn == TargetActor)
 			{
 				
-				UE_LOG(LogXBAI, Verbose, TEXT("球体碰撞检测：在攻击范围内找到目标Pawn %s (范围=%.1f, 缩放=%.2f, 缩放后半径=%.1f)"),
+				UE_LOG(LogXBAI, Log, TEXT("✅ 球体碰撞检测成功：在攻击范围内找到目标 %s (范围=%.1f, 缩放=%.2f, 缩放后半径=%.1f)"),
 					*HitPawn->GetName(), AttackRange, ScaleFactor, ScaledAttackRadius);
 				return true;
 			}
@@ -117,7 +123,7 @@ static bool CheckTargetInMoveRange(AActor* Dummy, float AttackRange, AActor* Tar
 	
 
 	// 没有检测到目标
-	UE_LOG(LogXBAI, Verbose, TEXT("球体碰撞检测：未在攻击范围内找到目标 (范围=%.1f, 缩放=%.2f, 缩放后半径=%.1f)"),
+	UE_LOG(LogXBAI, Warning, TEXT("❌ 球体碰撞检测失败：未在攻击范围内找到目标 (范围=%.1f, 缩放=%.2f, 缩放后半径=%.1f)"),
 		AttackRange, ScaleFactor, ScaledAttackRadius);
 	return false;
 }

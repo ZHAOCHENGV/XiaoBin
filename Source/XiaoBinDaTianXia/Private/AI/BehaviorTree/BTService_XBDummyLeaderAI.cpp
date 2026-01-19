@@ -379,11 +379,26 @@ EXBDummyLeaderAbilityType UBTService_XBDummyLeaderAI::SelectCombatAbility(
 	// 🔧 修复 - 每次都重新评估能力选择，确保攻击完成后立即选择新能力
 	// 按优先级选择可用能力：技能优先，其次普攻
 	EXBDummyLeaderAbilityType NewType = EXBDummyLeaderAbilityType::None;
-	if (!CombatComp->IsSkillOnCooldown())
+	
+	const bool bSkillOnCooldown = CombatComp->IsSkillOnCooldown();
+	const bool bBasicOnCooldown = CombatComp->IsBasicAttackOnCooldown();
+	
+	// ✨ 新增 - 检查是否正在攻击（蒙太奇播放中），避免选中无法释放的技能
+	const bool bIsAttacking = CombatComp->IsAttacking();
+	
+	// 🔧 修改 - 如果正在攻击，不改变当前选择，等待攻击完成
+	if (bIsAttacking)
+	{
+		UE_LOG(LogXBAI, Verbose, TEXT("假人AI正在攻击中，保持当前能力选择: Dummy=%s"), *Dummy->GetName());
+		return CurrentType;
+	}
+	
+	// 选择可用的技能
+	if (!bSkillOnCooldown)
 	{
 		NewType = EXBDummyLeaderAbilityType::SpecialSkill;
 	}
-	else if (!CombatComp->IsBasicAttackOnCooldown())
+	else if (!bBasicOnCooldown)
 	{
 		NewType = EXBDummyLeaderAbilityType::BasicAttack;
 	}

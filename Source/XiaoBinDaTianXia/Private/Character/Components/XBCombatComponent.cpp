@@ -276,8 +276,7 @@ bool UXBCombatComponent::PerformBasicAttack()
     if (IsAnyAttackMontagePlayingInternal())
     {
         UE_LOG(LogTemp, Verbose, TEXT("普攻被拒绝: 已有攻击蒙太奇正在播放"));
-        // 🔧 关键修复 - 攻击失败时给予短冷却，避免AI在同一帧无限选择同一技能
-        BasicAttackCooldownTimer = 0.5f; 
+        // 🔧 修改 - 不设置冷却，避免影响AI的能力选择逻辑
         return false;
     }
 
@@ -350,8 +349,8 @@ bool UXBCombatComponent::PerformSpecialSkill()
     if (IsAnyAttackMontagePlayingInternal())
     {
         UE_LOG(LogTemp, Verbose, TEXT("技能被拒绝: 已有攻击蒙太奇正在播放"));
-        // 🔧 关键修复 - 攻击失败时给予短冷却，避免AI在同一帧无限选择同一技能
-        SkillCooldownTimer = 0.5f;
+        // 🔧 修改 - 不设置冷却，避免影响AI的能力选择逻辑
+        // 如果蒙太奇正在播放，应该由攻击任务等待，而不是设置冷却
         return false;
     }
 

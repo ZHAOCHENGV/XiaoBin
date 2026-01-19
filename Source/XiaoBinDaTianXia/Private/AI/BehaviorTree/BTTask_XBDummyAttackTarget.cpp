@@ -332,8 +332,8 @@ void UBTTask_XBDummyAttackTarget::TickTask(UBehaviorTreeComponent& OwnerComp, ui
 			return;
 		}
 
-		// 无法攻击
-		UE_LOG(LogXBAI, Verbose, TEXT("假人 %s 转向完成但无法攻击"), *Dummy->GetName());
+		// 🔧 修改 - 如果释放失败（蒙太奇正在播放等原因），清空能力选择让AI重新评估
+		UE_LOG(LogXBAI, Verbose, TEXT("假人 %s 转向完成但无法攻击，清空能力选择"), *Dummy->GetName());
 		Blackboard->SetValueAsInt(AbilityTypeKeyName, static_cast<int32>(EXBDummyLeaderAbilityType::None));
 		FinishLatentTask(OwnerComp, EBTNodeResult::Failed);
 		return;

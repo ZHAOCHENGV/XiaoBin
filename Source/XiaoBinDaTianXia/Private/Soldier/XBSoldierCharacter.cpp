@@ -90,9 +90,9 @@ AXBSoldierCharacter::AXBSoldierCharacter()
         MovementComp->BrakingDecelerationWalking = 2000.0f;
         MovementComp->SetComponentTickEnabled(false);
         
-        // ✨ 新增 - 初始化RVO避让系统
+        // ✨ 新增 - 初始化RVO避让系统参数（不在构造函数中启用/禁用，避免断言）
         MovementComp->bUseRVOAvoidance = true;
-        MovementComp->SetAvoidanceEnabled(false);  // 默认关闭，战斗时开启
+        // 🔧 修改 - 移除 SetAvoidanceEnabled 调用，避让启用/禁用在 EnterCombat/ExitCombat 中控制
         MovementComp->AvoidanceConsiderationRadius = 500.0f;
         MovementComp->AvoidanceWeight = 0.5f;
         MovementComp->AvoidanceGroup.SetFlagsDirectly(1);  // 避让组1
