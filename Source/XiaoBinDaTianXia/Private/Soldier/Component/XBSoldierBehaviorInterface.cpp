@@ -400,10 +400,10 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
     AActor* SoldierActor = Soldier;
     AActor* LeaderActor = MyLeader;
 
-    // 🔧 修改 - 仅在战斗态启用“拥挤规避”统计，减少非战斗时的开销
-    const bool bEnableCrowdAvoidance = (Soldier->GetSoldierState() == EXBSoldierState::Combat);
+    // 🔧 修改 - 仅在战斗态启用“拥挤分散”统计，减少非战斗时的开销
+    const bool bEnableCrowdDistribution = (Soldier->GetSoldierState() == EXBSoldierState::Combat);
     TMap<AActor*, int32> TargetAttackers;
-    if (bEnableCrowdAvoidance)
+    if (bEnableCrowdDistribution)
     {
         // 🔧 修改 - 统计友军正在攻击的目标数量，降低目标拥挤度
         for (TActorIterator<AXBSoldierCharacter> It(World); It; ++It)
@@ -450,7 +450,7 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
 
     auto GetCrowdPenalty = [&](AActor* Candidate) -> float
     {
-        if (!bEnableCrowdAvoidance || !Candidate)
+        if (!bEnableCrowdDistribution || !Candidate)
         {
             return 0.0f;
         }
@@ -462,8 +462,8 @@ bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
         }
 
         // 🔧 修改 - 大幅增加拥挤惩罚，让士兵更倾向于选择无人攻击的目标
-        const float AvoidanceRadius = Soldier->GetSimpleCollisionRadius();
-        const float CrowdPenaltyWeight = FMath::Max(5000.0f, AvoidanceRadius * AvoidanceRadius * 10.0f);
+        const float CollisionRadius = Soldier->GetSimpleCollisionRadius();
+        const float CrowdPenaltyWeight = FMath::Max(5000.0f, CollisionRadius * CollisionRadius * 10.0f);
         return static_cast<float>(*AttackerCount) * CrowdPenaltyWeight;
     };
 
@@ -973,20 +973,7 @@ EXBBehaviorResult UXBSoldierBehaviorInterface::MoveToActor(AActor* Target, float
 
     float Distance = FVector::Dist(Soldier->GetActorLocation(), Target->GetActorLocation());
     
-    // ✨ 优化 - 调整避让权重，战斗时保持一定避让能力，避免扎堆
-    if (UCharacterMovementComponent* MoveComp = Soldier->GetCharacterMovement())
-    {
-        if (Distance <= Soldier->GetAttackRange())
-        {
-            // 攻击阶段：降低但不完全关闭避让权重，避免挤成一团
-            MoveComp->AvoidanceWeight = 0.3f;
-        }
-        else
-        {
-            // 移动阶段：提高避让权重，更好地绕开障碍
-            MoveComp->AvoidanceWeight = FMath::Max(0.5f, Soldier->GetAvoidanceWeight());
-        }
-    }
+ 
     
     if (Distance <= AcceptanceRadius)
     {

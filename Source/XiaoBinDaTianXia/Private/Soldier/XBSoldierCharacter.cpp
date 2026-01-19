@@ -90,14 +90,7 @@ AXBSoldierCharacter::AXBSoldierCharacter()
         MovementComp->BrakingDecelerationWalking = 2000.0f;
         MovementComp->SetComponentTickEnabled(false);
         
-        // ✨ 新增 - 初始化RVO避让系统参数（不在构造函数中启用/禁用，避免断言）
-        MovementComp->bUseRVOAvoidance = true;
-        // 🔧 修改 - 移除 SetAvoidanceEnabled 调用，避让启用/禁用在 EnterCombat/ExitCombat 中控制
-        MovementComp->AvoidanceConsiderationRadius = 500.0f;
-        MovementComp->AvoidanceWeight = 0.5f;
-        MovementComp->AvoidanceGroup.SetFlagsDirectly(1);  // 避让组1
-        MovementComp->GroupsToAvoid.SetFlagsDirectly(1);   // 避让组1
-        MovementComp->GroupsToIgnore.SetFlagsDirectly(0);  // 不忽略任何组
+
     }
 
     AutoPossessAI = EAutoPossessAI::Disabled;
@@ -1468,15 +1461,7 @@ float AXBSoldierCharacter::GetArrivalThreshold() const
     return IsDataAccessorValid() ? DataAccessor->GetArrivalThreshold() : 50.0f;
 }
 
-float AXBSoldierCharacter::GetAvoidanceRadius() const
-{
-    return IsDataAccessorValid() ? DataAccessor->GetAvoidanceRadius() : 50.0f;
-}
 
-float AXBSoldierCharacter::GetAvoidanceWeight() const
-{
-    return IsDataAccessorValid() ? DataAccessor->GetAvoidanceWeight() : 0.3f;
-}
 
 // ==================== 招募系统 ====================
 
@@ -1796,16 +1781,7 @@ void AXBSoldierCharacter::EnterCombat()
         }
     }
 
-    // 🔧 修改 - 战斗开始时启用RVO避让系统，同步避让参数
-    if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
-    {
-            MoveComp->bUseRVOAvoidance = false;
-        MoveComp->SetAvoidanceEnabled(false);  // 开启RVO避让
-        MoveComp->AvoidanceConsiderationRadius = GetAvoidanceRadius();
-        MoveComp->AvoidanceWeight = GetAvoidanceWeight();
-        UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 进入战斗，启用RVO避让（半径=%.0f, 权重=%.2f）"), 
-            *GetName(), GetAvoidanceRadius(), GetAvoidanceWeight());
-    }
+
 
     // ✨ 新增 - 战斗状态下开启对士兵(Soldier)的阻挡，防止重叠
     if (UCapsuleComponent* Capsule = GetCapsuleComponent())
@@ -1847,12 +1823,7 @@ void AXBSoldierCharacter::ExitCombat()
 
     CurrentAttackTarget = nullptr;
 
-    // 🔧 修改 - 退出战斗时关闭RVO避让，切回跟随逻辑
-    if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
-    {
-        MoveComp->SetAvoidanceEnabled(false);  // 关闭RVO避让
-        UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 退出战斗，关闭RVO避让"), *GetName());
-    }
+
 
     // ✨ 新增 - 退出战斗（跟随/待机）恢复对士兵(Soldier)的重叠，允许穿模
     if (UCapsuleComponent* Capsule = GetCapsuleComponent())
@@ -2125,67 +2096,7 @@ void AXBSoldierCharacter::ReturnToFormation()
     SetSoldierState(EXBSoldierState::Following);
 }
 
-FVector AXBSoldierCharacter::CalculateAvoidanceDirection(const FVector& DesiredDirection)
-{
-    // ✨ 新增 - 避让系统总开关
-    // 🔧 修改 - 跟随模式强制禁用避让，仅在战斗且开启时生效
-    if (CurrentState == EXBSoldierState::Following || !bEnableAvoidanceSystem)
-    {
-        return DesiredDirection;
-    }
 
-    float AvoidanceRadiusVal = GetAvoidanceRadius();
-    float AvoidanceWeightVal = GetAvoidanceWeight();
-
-    if (AvoidanceRadiusVal <= 0.0f)
-    {
-        return DesiredDirection;
-    }
-
-    FVector AvoidanceForce = FVector::ZeroVector;
-    FVector MyLocation = GetActorLocation();
-
-    FXBDetectionResult AlliesResult;
-    UXBBlueprintFunctionLibrary::DetectAlliesInRadius(
-        this,
-        MyLocation,
-        AvoidanceRadiusVal,
-        Faction,
-        true,
-        AlliesResult
-    );
-
-    int32 AvoidanceCount = 0;
-
-    for (AActor* OtherActor : AlliesResult.DetectedActors)
-    {
-        if (OtherActor == this)
-        {
-            continue;
-        }
-
-        float Distance = FVector::Dist2D(MyLocation, OtherActor->GetActorLocation());
-        if (Distance > KINDA_SMALL_NUMBER)
-        {
-            FVector AwayDirection = (MyLocation - OtherActor->GetActorLocation()).GetSafeNormal2D();
-            float Strength = 1.0f - (Distance / AvoidanceRadiusVal);
-            AvoidanceForce += AwayDirection * Strength;
-            AvoidanceCount++;
-        }
-    }
-
-    if (AvoidanceCount == 0)
-    {
-        return DesiredDirection;
-    }
-
-    AvoidanceForce.Normalize();
-
-    FVector BlendedDirection = DesiredDirection * (1.0f - AvoidanceWeightVal) + 
-                               AvoidanceForce * AvoidanceWeightVal;
-
-    return BlendedDirection.GetSafeNormal();
-}
 
 void AXBSoldierCharacter::MoveToFormationPosition()
 {

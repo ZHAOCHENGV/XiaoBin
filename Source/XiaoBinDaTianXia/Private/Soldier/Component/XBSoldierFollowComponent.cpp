@@ -1192,25 +1192,7 @@ void UXBSoldierFollowComponent::SetMovementMode(bool bEnableWalking)
     }
 }
 
-void UXBSoldierFollowComponent::SetRVOAvoidanceEnabled(bool bEnable)
-{
-    UCharacterMovementComponent* MoveComp = GetCachedMovementComponent();
-    if (MoveComp)
-    {
-        // ✨ 新增 - 检查士兵总开关，若关闭则强制禁用RVO
-        bool bFinalEnable = bEnable;
-        if (AXBSoldierCharacter* Soldier = Cast<AXBSoldierCharacter>(GetOwner()))
-        {
-            if (!Soldier->bEnableAvoidanceSystem)
-            {
-                bFinalEnable = false;
-            }
-        }
 
-        // 🔧 修改 - 根据战斗状态切换RVO避让
-        MoveComp->SetAvoidanceEnabled(bFinalEnable);
-    }
-}
 
 void UXBSoldierFollowComponent::SetCombatState(bool bInCombat)
 {
@@ -1225,11 +1207,7 @@ void UXBSoldierFollowComponent::SetCombatState(bool bInCombat)
     {
         // 🔧 修改 - 战斗时开启碰撞与避让，避免士兵重叠
         SetSoldierCollisionEnabled(true);
-        SetRVOAvoidanceEnabled(true);
-    }
-    else
-    {
-        SetRVOAvoidanceEnabled(false);
+
 
         // 🔧 修改 - 退出战斗后根据跟随模式恢复碰撞设置
         if (bDisableCollisionDuringTransition && CurrentMode == EXBFollowMode::RecruitTransition)

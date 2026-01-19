@@ -167,7 +167,7 @@ protected:
 
     void SetSoldierCollisionEnabled(bool bEnableCollision);
     void SetMovementMode(bool bEnableWalking);
-    void SetRVOAvoidanceEnabled(bool bEnable);
+
 
     bool ShouldForceTeleport() const;
     void PerformForceTeleport();

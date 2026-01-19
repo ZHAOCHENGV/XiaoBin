@@ -225,20 +225,9 @@ public:
     UFUNCTION(BlueprintPure, Category = "XB|Soldier|AI", meta = (DisplayName = "获取到达阈值"))
     float GetArrivalThreshold() const;
 
-    UFUNCTION(BlueprintPure, Category = "XB|Soldier|AI", meta = (DisplayName = "获取避让半径"))
-    float GetAvoidanceRadius() const;
 
-    UFUNCTION(BlueprintPure, Category = "XB|Soldier|AI", meta = (DisplayName = "获取避让权重"))
-    float GetAvoidanceWeight() const;
 
-    // ✨ 新增 - 避让系统开关
-    /**
-     * @brief 是否启用士兵避让系统（RVO + 自定义避让）
-     * @note   详细流程分析: 控制 CalculateAvoidanceDirection 和 RVO 开启状态
-     *         调试/临时需求: 默认关闭以解决队形混乱问题
-     */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI", meta = (DisplayName = "启用避让系统"))
-    bool bEnableAvoidanceSystem = false;
+
 
     // ==================== 招募系统 ====================
 
@@ -671,7 +660,7 @@ protected:
     bool PlayAttackMontage();
     void ApplyVisualConfig();
     void FaceTarget(AActor* Target, float DeltaTime);
-    FVector CalculateAvoidanceDirection(const FVector& DesiredDirection);
+
 
     // ✨ 新增 - 跟随/待机自动反击入口
     /**
