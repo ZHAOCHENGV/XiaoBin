@@ -112,11 +112,12 @@ protected:
 
     void SetAttackingState(bool bNewAttacking);
 
+public:
     // ✨ 新增 - 蒙太奇互斥检查
     /**
      * @brief 检查是否有任何攻击/技能蒙太奇正在播放
      * @return 是否有蒙太奇正在播放
-     * @note 用于阻止在动画播放期间触发新的攻击
+     * @note 用于阻止在动画播放期间触发新的攻击，或限制移动
      */
     bool IsAnyAttackMontagePlayingInternal() const;
 

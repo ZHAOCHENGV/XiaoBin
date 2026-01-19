@@ -259,6 +259,30 @@ void AXBSoldierCharacter::Tick(float DeltaTime)
 
     // 🔧 修改 - 跟随/待机状态下尝试自动反击，修复无主将战斗不响应问题
     TryAutoEngage(DeltaTime);
+
+    // ✨ 新增 - 技能/攻击动作期间禁止移动和旋转
+    // 🔧 修复 - 士兵没有 CombatComponent，改为直接检查蒙太奇播放状态
+    if (IsDataAccessorValid())
+    {
+        if (UAnimMontage* AttackMontage = DataAccessor->GetBasicAttackMontage())
+        {
+            if (GetMesh() && GetMesh()->GetAnimInstance() && GetMesh()->GetAnimInstance()->Montage_IsPlaying(AttackMontage))
+            {
+                if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+                {
+                    MoveComp->StopMovementImmediately(); // 停止移动
+                    MoveComp->Velocity = FVector::ZeroVector; // 强制速度为0
+                    MoveComp->ClearAccumulatedForces(); // 清除累积力
+                }
+                
+                // 禁止通过控制器旋转（如果AI正在Focus目标）
+                if (AController* ContextController = GetController())
+                {
+                    ContextController->StopMovement();
+                }
+            }
+        }
+    }
 }
 
 void AXBSoldierCharacter::EnableMovementAndTick()

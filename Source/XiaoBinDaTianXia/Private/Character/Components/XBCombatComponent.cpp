@@ -17,6 +17,7 @@
 
 #include "Character/Components/XBCombatComponent.h"
 #include "Character/XBCharacterBase.h"
+#include "Character/XBPlayerCharacter.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
 #include "GAS/XBAttributeSet.h"
@@ -266,7 +267,9 @@ bool UXBCombatComponent::PerformBasicAttack()
         BasicAttackCooldownTimer);
 
     // 冷却检查
-    if (BasicAttackCooldownTimer > 0.0f)
+    // 🔧 修改 - 玩家角色不检查数值冷却，仅依赖蒙太奇播放状态
+    const bool bIsPlayer = GetOwner() && GetOwner()->IsA(AXBPlayerCharacter::StaticClass());
+    if (!bIsPlayer && BasicAttackCooldownTimer > 0.0f)
     {
         UE_LOG(LogTemp, Log, TEXT("普攻冷却中: %.2f秒"), BasicAttackCooldownTimer);
         return false;
@@ -339,7 +342,9 @@ bool UXBCombatComponent::PerformSpecialSkill()
         bIsAttacking ? TEXT("true") : TEXT("false"), SkillCooldownTimer);
 
     // 冷却检查
-    if (SkillCooldownTimer > 0.0f)
+    // 🔧 修改 - 玩家角色不检查数值冷却，仅依赖蒙太奇播放状态
+    const bool bIsPlayer = GetOwner() && GetOwner()->IsA(AXBPlayerCharacter::StaticClass());
+    if (!bIsPlayer && SkillCooldownTimer > 0.0f)
     {
         UE_LOG(LogTemp, Log, TEXT("技能冷却中: %.2f秒"), SkillCooldownTimer);
         return false;
