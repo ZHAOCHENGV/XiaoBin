@@ -243,6 +243,34 @@ void AXBSoldierCharacter::Tick(float DeltaTime) {
   // 🔧 修改 - 跟随/待机状态下尝试自动反击，修复无主将战斗不响应问题
   TryAutoEngage(DeltaTime);
 
+  // 🔧 修改 - 战斗中检测目标是否被阻挡，超过阈值允许申请新目标
+  if (CurrentState == EXBSoldierState::Combat) {
+    AActor *AssignedTarget = CurrentAttackTarget.Get();
+    if (BehaviorInterface && AssignedTarget &&
+        BehaviorInterface->IsTargetValid(AssignedTarget)) {
+      const bool bInRange = IsInAttackRange(AssignedTarget);
+      const float Speed2D = GetVelocity().Size2D();
+      if (!bInRange && Speed2D <= 1.0f) {
+        TargetBlockedTime += DeltaTime;
+        if (TargetBlockedTime >= TargetBlockedThreshold && !bTargetBlocked) {
+          bTargetBlocked = true;
+          RequestNewTarget();
+        }
+      } else {
+        TargetBlockedTime = 0.0f;
+      }
+    } else if (AssignedTarget) {
+      bTargetLostByDeath = true;
+      UnbindAssignedTargetEvents();
+      CurrentAttackTarget = nullptr;
+      RequestNewTarget();
+    } else {
+      TargetBlockedTime = 0.0f;
+    }
+  } else {
+    TargetBlockedTime = 0.0f;
+  }
+
   // ✨ 新增 - 技能/攻击动作期间禁止移动和旋转
   // 🔧 修复 - 士兵没有 CombatComponent，改为直接检查蒙太奇播放状态
   if (IsDataAccessorValid()) {
@@ -341,6 +369,11 @@ void AXBSoldierCharacter::FullInitialize(UDataTable *DataTable, FName RowName,
   FollowTarget = nullptr;
   FormationSlotIndex = INDEX_NONE;
   CurrentAttackTarget = nullptr;
+  GetWorldTimerManager().ClearTimer(TargetRequestTimerHandle);
+  UnbindAssignedTargetEvents();
+  bTargetBlocked = false;
+  bTargetLostByDeath = false;
+  TargetBlockedTime = 0.0f;
 
   // 6. 重置跟随组件状态
   if (FollowComponent) {
@@ -1039,6 +1072,11 @@ void AXBSoldierCharacter::DisableActiveComponents() {
   FollowTarget = nullptr;
   FormationSlotIndex = INDEX_NONE;
   CurrentAttackTarget = nullptr;
+  GetWorldTimerManager().ClearTimer(TargetRequestTimerHandle);
+  UnbindAssignedTargetEvents();
+  bTargetBlocked = false;
+  bTargetLostByDeath = false;
+  TargetBlockedTime = 0.0f;
 
   UE_LOG(LogXBSoldier, Verbose, TEXT("士兵 %s: 激活态组件已禁用"), *GetName());
 }
@@ -1644,13 +1682,6 @@ void AXBSoldierCharacter::EnterCombat() {
 
   SetSoldierState(EXBSoldierState::Combat);
 
-  if (BehaviorInterface) {
-    AActor *FoundEnemy = nullptr;
-    if (BehaviorInterface->SearchForEnemy(FoundEnemy)) {
-      CurrentAttackTarget = FoundEnemy;
-    }
-  }
-
   UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 进入战斗, 目标: %s"), *GetName(),
          CurrentAttackTarget.IsValid() ? *CurrentAttackTarget->GetName()
                                        : TEXT("无"));
@@ -1664,6 +1695,10 @@ void AXBSoldierCharacter::ExitCombat() {
   }
 
   CurrentAttackTarget = nullptr;
+  UnbindAssignedTargetEvents();
+  bTargetBlocked = false;
+  bTargetLostByDeath = false;
+  TargetBlockedTime = 0.0f;
 
   // 🔧 修改 - RVO 避让已由 SetSoldierState(Following)
   // 自动关闭，此处无需重复处理
@@ -1749,9 +1784,9 @@ float AXBSoldierCharacter::TakeSoldierDamage(float DamageAmount,
 /**
  * @brief 跟随/待机状态下自动进入战斗
  * @param DeltaTime 帧间隔
- * @note   详细流程分析: 校验主将战斗状态 -> 累计计时 -> 触发寻敌 ->
- * 若命中则进入战斗并锁定目标 性能/架构注意事项:
- * 仅在跟随/待机且主将已命中敌方主将时执行，避免无意义扫描
+ * @note   详细流程分析: 校验主将战斗状态 -> 累计计时 -> 检查已分配目标 ->
+ * 若目标有效则进入战斗 性能/架构注意事项:
+ * 仅在跟随/待机且主将已命中敌方主将时执行，避免无意义索敌
  */
 void AXBSoldierCharacter::TryAutoEngage(float DeltaTime) {
   // 未启用自动反击则直接返回
@@ -1781,11 +1816,6 @@ void AXBSoldierCharacter::TryAutoEngage(float DeltaTime) {
     return;
   }
 
-  // 没有行为接口无法执行寻敌
-  if (!BehaviorInterface) {
-    return;
-  }
-
   // 计时器未到则不执行扫描
   AutoEngageCheckTimer -= DeltaTime;
   if (AutoEngageCheckTimer > 0.0f) {
@@ -1793,17 +1823,13 @@ void AXBSoldierCharacter::TryAutoEngage(float DeltaTime) {
   }
   AutoEngageCheckTimer = FMath::Max(0.05f, AutoEngageCheckInterval);
 
-  // 尝试寻找敌人并进入战斗
-  AActor *FoundEnemy = nullptr;
-  if (BehaviorInterface->SearchForEnemy(FoundEnemy) && FoundEnemy) {
-    // 🔧 修改 - 再次确认敌对关系，避免同阵营误判
-    if (UXBBlueprintFunctionLibrary::AreActorsHostile(this, FoundEnemy)) {
-      EnterCombat();
-      CurrentAttackTarget = FoundEnemy;
-      BehaviorInterface->RecordEnemySeen();
-      UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 自动发现敌人并进入战斗: %s"),
-             *GetName(), *FoundEnemy->GetName());
-    }
+  AActor *AssignedTarget = CurrentAttackTarget.Get();
+  if (AssignedTarget && BehaviorInterface &&
+      BehaviorInterface->IsTargetValid(AssignedTarget)) {
+    EnterCombat();
+    BehaviorInterface->RecordEnemySeen();
+    UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 被动接收目标进入战斗: %s"),
+           *GetName(), *AssignedTarget->GetName());
   }
 }
 
@@ -1813,6 +1839,92 @@ bool AXBSoldierCharacter::PerformAttack(AActor *Target) {
     return Result == EXBBehaviorResult::Success;
   }
   return false;
+}
+
+void AXBSoldierCharacter::ReceiveAssignedTarget(AActor *AssignedTarget) {
+  if (CurrentState == EXBSoldierState::Dead ||
+      CurrentState == EXBSoldierState::Dormant ||
+      CurrentState == EXBSoldierState::Dropping) {
+    return;
+  }
+
+  UnbindAssignedTargetEvents();
+  CurrentAttackTarget = AssignedTarget;
+  BindAssignedTargetEvents(AssignedTarget);
+  bTargetBlocked = false;
+  bTargetLostByDeath = false;
+  TargetBlockedTime = 0.0f;
+
+  if (!AssignedTarget) {
+    ReturnToFormation();
+    return;
+  }
+
+  if (AAIController *AICtrl = Cast<AAIController>(GetController())) {
+    if (UBlackboardComponent *BBComp = AICtrl->GetBlackboardComponent()) {
+      BBComp->SetValueAsObject(XBSoldierBBKeys::CurrentTarget, AssignedTarget);
+      if (AssignedTarget) {
+        BBComp->SetValueAsVector(XBSoldierBBKeys::TargetLocation,
+                                 AssignedTarget->GetActorLocation());
+      }
+      BBComp->SetValueAsBool(XBSoldierBBKeys::HasTarget, AssignedTarget != nullptr);
+    }
+  }
+
+  UE_LOG(LogXBCombat, Verbose, TEXT("士兵 %s 接收目标: %s"), *GetName(),
+         AssignedTarget ? *AssignedTarget->GetName() : TEXT("无"));
+}
+
+void AXBSoldierCharacter::RequestNewTarget() {
+  if (CurrentState == EXBSoldierState::Dead ||
+      CurrentState == EXBSoldierState::Dormant ||
+      CurrentState == EXBSoldierState::Dropping) {
+    return;
+  }
+
+  AXBCharacterBase *Leader = GetLeaderCharacter();
+  if (!Leader) {
+    return;
+  }
+
+  if (!ShouldRequestNewTarget()) {
+    return;
+  }
+
+  if (GetWorldTimerManager().IsTimerActive(TargetRequestTimerHandle)) {
+    return;
+  }
+
+  const float Delay =
+      FMath::Max(0.0f, FMath::FRandRange(TargetRequestDelayRange.X,
+                                         TargetRequestDelayRange.Y));
+
+  GetWorldTimerManager().SetTimer(
+      TargetRequestTimerHandle,
+      FTimerDelegate::CreateWeakLambda(
+          this, [this, Leader]() {
+            if (!IsValid(this) || CurrentState == EXBSoldierState::Dead) {
+              return;
+            }
+
+            AActor *NewTarget = Leader->AssignTargetToSoldier(this);
+            bTargetBlocked = false;
+            bTargetLostByDeath = false;
+            TargetBlockedTime = 0.0f;
+
+            if (!NewTarget) {
+              ExitCombat();
+              ReturnToFormation();
+              return;
+            }
+
+            ReceiveAssignedTarget(NewTarget);
+          }),
+      Delay, false);
+}
+
+bool AXBSoldierCharacter::ShouldRequestNewTarget() const {
+  return bTargetBlocked || bTargetLostByDeath;
 }
 
 bool AXBSoldierCharacter::PlayAttackMontage() {
@@ -1882,6 +1994,10 @@ bool AXBSoldierCharacter::IsInAttackRange(AActor *Target) const {
 
 void AXBSoldierCharacter::ReturnToFormation() {
   CurrentAttackTarget = nullptr;
+  UnbindAssignedTargetEvents();
+  bTargetBlocked = false;
+  bTargetLostByDeath = false;
+  TargetBlockedTime = 0.0f;
 
   if (FollowComponent) {
     FollowComponent->ExitCombatMode();
@@ -2018,6 +2134,7 @@ void AXBSoldierCharacter::SetEscaping(bool bEscaping) {
 
       if (CurrentState == EXBSoldierState::Combat) {
         CurrentAttackTarget = nullptr;
+        UnbindAssignedTargetEvents();
         SetSoldierState(EXBSoldierState::Following);
       }
 
@@ -2054,6 +2171,7 @@ void AXBSoldierCharacter::ResetForPooling() {
   CurrentHealth = 100.0f;
 
   CurrentAttackTarget = nullptr;
+  UnbindAssignedTargetEvents();
 
   AttackCooldownTimer = 0.0f;
   TargetSearchTimer = 0.0f;
@@ -2172,6 +2290,11 @@ void AXBSoldierCharacter::HandleDeath() {
   }
 
   GetWorldTimerManager().ClearTimer(DelayedAIStartTimerHandle);
+  GetWorldTimerManager().ClearTimer(TargetRequestTimerHandle);
+  UnbindAssignedTargetEvents();
+  bTargetBlocked = false;
+  bTargetLostByDeath = false;
+  TargetBlockedTime = 0.0f;
 
   bIsDead = true;
 
@@ -2347,6 +2470,71 @@ void AXBSoldierCharacter::HandleFormationUpdated() {
 
   UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 编队更新排队补位，延迟 %.2fs"),
          *GetName(), Delay);
+}
+
+void AXBSoldierCharacter::HandleAssignedTargetSoldierDied(
+    AXBSoldierCharacter *DeadSoldier) {
+  if (!DeadSoldier) {
+    return;
+  }
+
+  if (CurrentAttackTarget.Get() == DeadSoldier) {
+    UnbindAssignedTargetEvents();
+    CurrentAttackTarget = nullptr;
+    bTargetLostByDeath = true;
+    RequestNewTarget();
+  }
+}
+
+void AXBSoldierCharacter::HandleAssignedTargetLeaderDied(
+    AXBCharacterBase *DeadLeader) {
+  if (!DeadLeader) {
+    return;
+  }
+
+  if (CurrentAttackTarget.Get() == DeadLeader) {
+    UnbindAssignedTargetEvents();
+    CurrentAttackTarget = nullptr;
+    bTargetLostByDeath = true;
+    RequestNewTarget();
+  }
+}
+
+void AXBSoldierCharacter::BindAssignedTargetEvents(AActor *AssignedTarget) {
+  if (!AssignedTarget || !IsValid(AssignedTarget)) {
+    return;
+  }
+
+  if (AXBSoldierCharacter *TargetSoldier =
+          Cast<AXBSoldierCharacter>(AssignedTarget)) {
+    TargetSoldier->OnSoldierDied.AddDynamic(
+        this, &AXBSoldierCharacter::HandleAssignedTargetSoldierDied);
+    return;
+  }
+
+  if (AXBCharacterBase *TargetLeader = Cast<AXBCharacterBase>(AssignedTarget)) {
+    TargetLeader->OnCharacterDeath.AddDynamic(
+        this, &AXBSoldierCharacter::HandleAssignedTargetLeaderDied);
+  }
+}
+
+void AXBSoldierCharacter::UnbindAssignedTargetEvents() {
+  AActor *AssignedTarget = CurrentAttackTarget.Get();
+  if (!AssignedTarget) {
+    return;
+  }
+
+  if (AXBSoldierCharacter *TargetSoldier =
+          Cast<AXBSoldierCharacter>(AssignedTarget)) {
+    TargetSoldier->OnSoldierDied.RemoveDynamic(
+        this, &AXBSoldierCharacter::HandleAssignedTargetSoldierDied);
+    return;
+  }
+
+  if (AXBCharacterBase *TargetLeader = Cast<AXBCharacterBase>(AssignedTarget)) {
+    TargetLeader->OnCharacterDeath.RemoveDynamic(
+        this, &AXBSoldierCharacter::HandleAssignedTargetLeaderDied);
+  }
 }
 
 void AXBSoldierCharacter::FaceTarget(AActor *Target, float DeltaTime) {

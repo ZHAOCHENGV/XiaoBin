@@ -315,29 +315,13 @@ SkipRetreatLogic:
     // 写入战斗标记
     BlackboardComp->SetValueAsBool(XBSoldierBBKeys::IsInCombat, bInCombat);
     
-    // ==================== 自动寻找目标 ====================
-    
-    // 只有在战斗中，或者目标刚刚失效(比如刚打死一个)时，才自动寻找新目标
-    if (bAutoFindTarget && !CurrentTarget && BehaviorInterface && (bInCombat || bTargetBecameInvalid))
+    // ==================== 被动申请目标 ====================
+
+    // 仅在战斗中或目标刚失效时触发申请，不主动索敌
+    if (bAutoFindTarget && !CurrentTarget && (bInCombat || bTargetBecameInvalid) &&
+        Soldier->ShouldRequestNewTarget())
     {
-        AActor* NewTarget = nullptr;
-        if (BehaviorInterface->SearchForEnemy(NewTarget))
-        {
-            // 🔧 核心修复：防止 Service 自动搜到自己
-            if (NewTarget == Soldier)
-            {
-                NewTarget = nullptr;
-            }
-            
-            if (NewTarget && TargetKey.SelectedKeyName != NAME_None)
-            {
-                BlackboardComp->SetValueAsObject(TargetKey.SelectedKeyName, NewTarget);
-                BlackboardComp->SetValueAsBool(XBSoldierBBKeys::HasTarget, true);
-                
-                UE_LOG(LogTemp, Log, TEXT("士兵 %s 自动补位新目标 %s"),
-                    *Soldier->GetName(), *NewTarget->GetName());
-            }
-        }
+        Soldier->RequestNewTarget();
     }
     
 }
@@ -354,7 +338,7 @@ SkipRetreatLogic:
 FString UBTService_XBUpdateSoldierState::GetStaticDescription() const
 {
     // 返回描述字符串
-    return FString::Printf(TEXT("更新士兵状态（使用感知系统）\n目标键: %s\n主将键: %s"),
+    return FString::Printf(TEXT("更新士兵状态（被动目标）\n目标键: %s\n主将键: %s"),
         *TargetKey.SelectedKeyName.ToString(),
         *LeaderKey.SelectedKeyName.ToString());
 }

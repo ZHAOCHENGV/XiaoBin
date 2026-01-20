@@ -20,6 +20,7 @@
 #include "AbilitySystemInterface.h"
 #include "Army/XBSoldierTypes.h"
 #include "Data/XBSoldierDataTable.h"
+#include "TimerManager.h"
 #include "XBSoldierCharacter.generated.h"
 
 // ============================================
@@ -313,6 +314,28 @@ public:
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier", meta = (DisplayName = "执行攻击"))
     bool PerformAttack(AActor* Target);
 
+    /**
+     * @brief  接收主将分配的目标
+     * @param  AssignedTarget 分配的目标
+     * @note   由主将通过接口调用
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Soldier|Combat", meta = (DisplayName = "接收分配目标"))
+    void ReceiveAssignedTarget(AActor* AssignedTarget);
+
+    /**
+     * @brief  向主将申请新目标（带随机延迟）
+     * @note   当前目标死亡时调用
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Soldier|Combat", meta = (DisplayName = "申请新目标"))
+    void RequestNewTarget();
+
+    /**
+     * @brief  是否允许申请新目标
+     * @note   仅在目标死亡或路径阻挡时允许
+     */
+    UFUNCTION(BlueprintPure, Category = "XB|Soldier|Combat", meta = (DisplayName = "允许申请新目标"))
+    bool ShouldRequestNewTarget() const;
+
 public:
     UFUNCTION(BlueprintPure, Category = "XB|Soldier", meta = (DisplayName = "获取当前血量"))
     float GetCurrentHealth() const { return CurrentHealth; }
@@ -400,6 +423,16 @@ public:
     UPROPERTY(BlueprintReadOnly, Category = "状态", meta = (DisplayName = "当前攻击目标"))
     TWeakObjectPtr<AActor> CurrentAttackTarget;
 
+    /** @brief 申请新目标的随机延迟范围（秒） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Soldier|Combat",
+        meta = (DisplayName = "申请目标延迟范围"))
+    FVector2D TargetRequestDelayRange = FVector2D(0.3f, 1.0f);
+
+    /** @brief 目标被阻挡时允许申请新目标的持续时间（秒） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Soldier|Combat",
+        meta = (DisplayName = "阻挡判定时间"))
+    float TargetBlockedThreshold = 0.5f;
+
     // ==================== AI系统友元 ====================
 
     friend class AXBSoldierAIController;
@@ -463,6 +496,11 @@ protected:
      *         性能/架构注意事项: 仅在初始化阶段调用，避免运行时重复授予
      */
     void RefreshMeleeHitAbilityFromData();
+
+    FTimerHandle TargetRequestTimerHandle;
+    float TargetBlockedTime = 0.0f;
+    bool bTargetBlocked = false;
+    bool bTargetLostByDeath = false;
 protected:
 
     // ✨ 新增 - 配置跟随并开始移动
@@ -499,6 +537,15 @@ protected:
      */
     UFUNCTION()
     void HandleFormationUpdated();
+
+    UFUNCTION()
+    void HandleAssignedTargetSoldierDied(AXBSoldierCharacter* DeadSoldier);
+
+    UFUNCTION()
+    void HandleAssignedTargetLeaderDied(AXBCharacterBase* DeadLeader);
+
+    void BindAssignedTargetEvents(AActor* AssignedTarget);
+    void UnbindAssignedTargetEvents();
     
     // ==================== 数据访问器组件 ====================
 
