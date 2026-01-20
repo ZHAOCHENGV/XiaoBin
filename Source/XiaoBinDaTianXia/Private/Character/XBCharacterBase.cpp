@@ -1362,7 +1362,7 @@ void AXBCharacterBase::OnAttackHit(AActor* HitTarget)
  * @brief  为麾下士兵分配敌方目标
  * @param  EnemyLeader 敌方主将
  * @return 无
- * 功能说明: 按兵种与距离分配目标，仅从敌方主将的士兵数组中挑选目标
+ * 功能说明: 按兵种与距离分配目标，仅在目标主将与其士兵范围内分配
  * 详细流程: 校验主将 -> 收集存活士兵 -> 收集存活敌兵 -> 计算负载与距离 -> 分配目标并广播
  * 注意事项: 仅分配存活目标，避免无效引用
  */
@@ -1407,9 +1407,14 @@ void AXBCharacterBase::AssignTargetsToSoldiers(AXBCharacterBase* EnemyLeader)
         }
     }
 
-    // 若敌方无存活士兵则不分配目标
+    // 若敌方无存活士兵，改为锁定敌方主将
     if (AliveEnemySoldiers.Num() == 0)
     {
+        for (AXBSoldierCharacter* Soldier : AliveSoldiers)
+        {
+            Soldier->ReceiveAssignedTarget(EnemyLeader);
+            OnAssignTargetDelegate.Broadcast(Soldier, EnemyLeader);
+        }
         return;
     }
 
@@ -1480,7 +1485,7 @@ void AXBCharacterBase::AssignTargetsToSoldiers(AXBCharacterBase* EnemyLeader)
  * @return 分配的目标（可能为空）
  * 功能说明: 以负载均衡为主，结合兵种与距离选择目标
  * 详细流程: 校验申请者 -> 获取敌方主将 -> 收集存活敌兵 -> 统计负载 -> 选择目标
- * 注意事项: 仅从敌方主将的士兵数组中选择目标
+ * 注意事项: 目标仅能是敌方主将或其士兵
  */
 AActor* AXBCharacterBase::AssignTargetToSoldier(AXBSoldierCharacter* RequestingSoldier)
 {
@@ -1517,7 +1522,7 @@ AActor* AXBCharacterBase::AssignTargetToSoldier(AXBSoldierCharacter* RequestingS
         }
     }
 
-    // 无存活敌兵则不分配目标
+    // 无存活敌兵则返回敌方主将
     if (AliveEnemySoldiers.Num() == 0)
     {
         return nullptr;
@@ -1559,8 +1564,8 @@ AActor* AXBCharacterBase::AssignTargetToSoldier(AXBSoldierCharacter* RequestingS
         }
     }
 
-    // 返回最终目标（仅允许敌方士兵）
-    return BestTarget ? static_cast<AActor*>(BestTarget) : nullptr;
+    // 返回最终目标（敌方士兵或敌方主将）
+    return BestTarget ? static_cast<AActor*>(BestTarget) : static_cast<AActor*>(EnemyLeader);
 }
 
 void AXBCharacterBase::RecallAllSoldiers()

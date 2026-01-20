@@ -40,6 +40,7 @@
 #include "Soldier/Component/XBSoldierBehaviorInterface.h"
 #include "Soldier/Component/XBSoldierDebugComponent.h"
 #include "Soldier/Component/XBSoldierFollowComponent.h"
+#include "XBCollisionChannels.h"
 #include "Soldier/Component/XBSoldierPoolSubsystem.h"
 #include "TimerManager.h"
 #include "Utils/XBBlueprintFunctionLibrary.h"
@@ -406,7 +407,9 @@ void AXBSoldierCharacter::StartDropFlight(const FVector &StartLocation,
 
   // 🔧 修改 - 确保碰撞完全禁用（避免触发磁场）
   if (UCapsuleComponent *Capsule = GetCapsuleComponent()) {
-    Capsule->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    Capsule->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+    Capsule->SetCollisionResponseToAllChannels(ECR_Ignore);
+    Capsule->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
   }
 
   // 完全禁用移动组件
@@ -590,6 +593,7 @@ void AXBSoldierCharacter::OnDropLanded() {
   // ✨ Step 1: 恢复碰撞
   if (UCapsuleComponent *Capsule = GetCapsuleComponent()) {
     Capsule->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    Capsule->SetCollisionProfileName(XBCollision::SoldierPresetName);
   }
 
   // ✨ Step 2: 恢复移动组件（让物理系统接管）
@@ -1660,6 +1664,17 @@ void AXBSoldierCharacter::ExitCombat() {
     return;
   }
 
+  if (AXBCharacterBase *Leader = GetLeaderCharacter()) {
+    AXBCharacterBase *TargetLeader = Leader->GetLastAttackedEnemyLeader();
+    if (TargetLeader && !TargetLeader->IsDead()) {
+      UE_LOG(LogXBCombat, Verbose,
+             TEXT("士兵 %s: 主将仍锁定目标主将 %s，保持战斗"),
+             *GetName(), *TargetLeader->GetName());
+      RequestNewTarget();
+      return;
+    }
+  }
+
   CurrentAttackTarget = nullptr;
   UnbindAssignedTargetEvents();
 
@@ -1820,6 +1835,33 @@ void AXBSoldierCharacter::ReceiveAssignedTarget(AActor *AssignedTarget) {
     return;
   }
 
+  AXBCharacterBase *Leader = GetLeaderCharacter();
+  AXBCharacterBase *TargetLeader =
+      Leader ? Leader->GetLastAttackedEnemyLeader() : nullptr;
+  if (!TargetLeader || TargetLeader->IsDead()) {
+    return;
+  }
+
+  if (AssignedTarget == nullptr) {
+    return;
+  }
+
+  bool bIsTargetLeader = (AssignedTarget == TargetLeader);
+  bool bIsTargetLeaderSoldier = false;
+  if (AXBSoldierCharacter *TargetSoldier =
+          Cast<AXBSoldierCharacter>(AssignedTarget)) {
+    bIsTargetLeaderSoldier = (TargetSoldier->GetLeaderCharacter() == TargetLeader &&
+                              TargetSoldier->GetSoldierState() !=
+                                  EXBSoldierState::Dead);
+  }
+
+  if (!bIsTargetLeader && !bIsTargetLeaderSoldier) {
+    UE_LOG(LogXBCombat, Verbose,
+           TEXT("士兵 %s: 目标不属于主将锁定的目标主将 %s，忽略分配"),
+           *GetName(), *TargetLeader->GetName());
+    return;
+  }
+
   AActor *ExistingTarget = CurrentAttackTarget.Get();
   if (ExistingTarget && ExistingTarget != AssignedTarget) {
     bool bExistingTargetDead = false;
@@ -1892,6 +1934,11 @@ void AXBSoldierCharacter::RequestNewTarget() {
   // 获取主将
   AXBCharacterBase *Leader = GetLeaderCharacter();
   if (!Leader) {
+    return;
+  }
+
+  AXBCharacterBase *TargetLeader = Leader->GetLastAttackedEnemyLeader();
+  if (!TargetLeader || TargetLeader->IsDead()) {
     return;
   }
 
@@ -2009,6 +2056,17 @@ bool AXBSoldierCharacter::IsInAttackRange(AActor *Target) const {
 void AXBSoldierCharacter::ReturnToFormation() {
   CurrentAttackTarget = nullptr;
   UnbindAssignedTargetEvents();
+
+  if (AXBCharacterBase *Leader = GetLeaderCharacter()) {
+    AXBCharacterBase *TargetLeader = Leader->GetLastAttackedEnemyLeader();
+    if (TargetLeader && !TargetLeader->IsDead()) {
+      UE_LOG(LogXBCombat, Verbose,
+             TEXT("士兵 %s: 主将仍锁定目标主将 %s，禁止回归编队"),
+             *GetName(), *TargetLeader->GetName());
+      RequestNewTarget();
+      return;
+    }
+  }
 
   if (FollowComponent) {
     // 🔧 修复 - 通过回归编队结束战斗时，确保跟随组件重新启用
@@ -2544,7 +2602,7 @@ void AXBSoldierCharacter::HandleAssignedTargetLeaderDied(
  */
 void AXBSoldierCharacter::BindAssignedTargetEvents(AActor *AssignedTarget) {
   // 无目标直接返回
-  if (!AssignedTarget) {
+  if (!AssignedTarget || !IsValid(AssignedTarget)) {
     return;
   }
 
