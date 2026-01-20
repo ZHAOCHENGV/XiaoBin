@@ -1531,10 +1531,11 @@ AActor* AXBCharacterBase::AssignTargetToSoldier(AXBSoldierCharacter* RequestingS
         }
     }
 
-    // 无存活敌兵则返回敌方主将
+    // 🔧 修复 - 无存活敌兵则返回敌方主将作为目标
+    // 说明：优先分配敌方士兵，敌兵死光后锁定敌方主将
     if (AliveEnemySoldiers.Num() == 0)
     {
-        return nullptr;
+        return EnemyLeader;
     }
 
     // 统计己方士兵当前锁定情况
