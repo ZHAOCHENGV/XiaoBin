@@ -234,8 +234,8 @@ float UAN_XBSpawnSkillActor::GetDamage(AActor* OwnerActor) const
                 BaseDamage = CombatComp->GetCurrentAttackFinalDamage();
                 if (BaseDamage <= 0.0f)
                 {
-                    // 回退到基础攻击力
-                    BaseDamage = CombatComp->GetBasicAttackDamage();
+                    // 回退到当前攻击伤害
+                    BaseDamage = CombatComp->GetCurrentAttackDamage();
                 }
             }
         }
@@ -255,12 +255,13 @@ float UAN_XBSpawnSkillActor::GetDamage(AActor* OwnerActor) const
  */
 AActor* UAN_XBSpawnSkillActor::GetCurrentTarget(AActor* OwnerActor) const
 {
-    // 从将领获取目标
+    // 从将领获取锁定的敌方目标
     if (AXBCharacterBase* Character = Cast<AXBCharacterBase>(OwnerActor))
     {
-        if (UXBCombatComponent* CombatComp = Character->GetCombatComponent())
+        // 优先返回锁定的敌方主将
+        if (AXBCharacterBase* EnemyLeader = Character->GetLastAttackedEnemyLeader())
         {
-            return CombatComp->GetCurrentTarget();
+            return EnemyLeader;
         }
     }
     // 从士兵获取目标

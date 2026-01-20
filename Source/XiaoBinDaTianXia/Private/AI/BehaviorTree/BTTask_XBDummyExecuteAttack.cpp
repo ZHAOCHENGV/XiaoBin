@@ -94,7 +94,7 @@ EBTNodeResult::Type UBTTask_XBDummyExecuteAttack::ExecuteTask(UBehaviorTreeCompo
 	UE_LOG(LogXBAI, Log, TEXT("假人 %s 受击反击开始转向目标"), *Dummy->GetName());
 
 	return EBTNodeResult::InProgress;
-MoveMode}
+}
 
 /**
  * @brief Tick更新任务
