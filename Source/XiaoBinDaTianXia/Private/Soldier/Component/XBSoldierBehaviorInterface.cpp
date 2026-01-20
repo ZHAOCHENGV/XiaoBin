@@ -173,9 +173,25 @@ bool UXBSoldierBehaviorInterface::IsTargetValid(AActor* Target) const
         return false;
     }
 
+    AXBCharacterBase* OwnerLeader = Soldier->GetLeaderCharacter();
+    if (!OwnerLeader)
+    {
+        return false;
+    }
+
+    AXBCharacterBase* TargetLeaderOwner = OwnerLeader->GetLastAttackedEnemyLeader();
+    if (!TargetLeaderOwner || TargetLeaderOwner->IsDead())
+    {
+        return false;
+    }
+
     // 检查是否是士兵且已死亡
     if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(Target))
     {
+        if (TargetSoldier->GetLeaderCharacter() != TargetLeaderOwner)
+        {
+            return false;
+        }
         if (TargetSoldier->GetSoldierState() == EXBSoldierState::Dead)
         {
             return false;
@@ -192,6 +208,10 @@ bool UXBSoldierBehaviorInterface::IsTargetValid(AActor* Target) const
     // 检查是否是将领且已死亡
     if (AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(Target))
     {
+        if (TargetLeader != TargetLeaderOwner)
+        {
+            return false;
+        }
         if (TargetLeader->IsDead())
         {
             return false;
@@ -622,6 +642,15 @@ bool UXBSoldierBehaviorInterface::ShouldDisengage() const
     // ✨ 新增 - 预先缓存追击距离与主将距离，减少重复计算
     float DisengageDistance = Soldier->GetDisengageDistance();
     float DistToLeader = GetDistanceToLeader();
+
+    if (AXBCharacterBase* Leader = Soldier->GetLeaderCharacter())
+    {
+        AXBCharacterBase* TargetLeader = Leader->GetLastAttackedEnemyLeader();
+        if (TargetLeader && !TargetLeader->IsDead())
+        {
+            return false;
+        }
+    }
 
     // ✨ 新增 - 目标状态判定：用于处理目标脱离战斗后的追击逻辑
     // 说明：当目标不处于战斗时，士兵允许追击，但必须受“追击距离”上限约束
