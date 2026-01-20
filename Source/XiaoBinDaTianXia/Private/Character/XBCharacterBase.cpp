@@ -1525,7 +1525,7 @@ AActor* AXBCharacterBase::AssignTargetToSoldier(AXBSoldierCharacter* RequestingS
     // 无存活敌兵则返回敌方主将
     if (AliveEnemySoldiers.Num() == 0)
     {
-        return EnemyLeader;
+        return nullptr;
     }
 
     // 统计己方士兵当前锁定情况
