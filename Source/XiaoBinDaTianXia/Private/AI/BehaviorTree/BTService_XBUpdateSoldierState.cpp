@@ -125,6 +125,7 @@ void UBTService_XBUpdateSoldierState::TickNode(UBehaviorTreeComponent& OwnerComp
    // 🔧 修改: 增加对 IsDead 的强校验
     bool bTargetIsDead = false;
     bool bTargetIsFriendly = false;  // ✨ 新增 - 同主将友军标记
+    bool bTargetCrossLeader = false; // ✨ 新增 - 跨主将标记（目标不属于主将锁敌目标）
     if (CurrentTarget)
     {
         // ✨ 新增 - 同主将友军判定
@@ -148,13 +149,33 @@ void UBTService_XBUpdateSoldierState::TickNode(UBehaviorTreeComponent& OwnerComp
             bTargetIsFriendly = true;
             UE_LOG(LogXBAI, Verbose, TEXT("士兵 %s 的目标与自己同属一个主将，视为友军"), *Soldier->GetName());
         }
+        
+        // 🔧 修复 - 跨主将校验：目标必须属于主将锁定的敌方主将或其士兵
+        // 说明：避免士兵锁定经过的主将C或主将C的士兵，仅允许锁定与主将交战的目标
+        if (MyLeader && !bTargetIsFriendly)
+        {
+            AXBCharacterBase* EnemyLeader = MyLeader->GetLastAttackedEnemyLeader();
+            if (!EnemyLeader || EnemyLeader->IsDead())
+            {
+                // 主将未锁敌，所有目标都无效
+                bTargetCrossLeader = true;
+            }
+            else if (TargetLeader && TargetLeader != EnemyLeader)
+            {
+                // 目标属于其他主将（非交战主将），视为跨主将锁敌
+                bTargetCrossLeader = true;
+                UE_LOG(LogXBAI, Verbose, TEXT("士兵 %s 的目标属于主将 %s，但主将交战目标是 %s，视为跨主将锁敌"),
+                    *Soldier->GetName(), *TargetLeader->GetName(), *EnemyLeader->GetName());
+            }
+        }
     }
 
     bool bTargetValid = (CurrentTarget != nullptr);
     bool bTargetBecameInvalid = false;
     
-    // ✨ 修改 - 仅在目标死亡/友军时清理目标，避免重复分配
-    if (bTargetIsDead || bTargetIsFriendly)
+    // 🔧 修复 - 目标死亡/友军/跨主将时清理目标
+    // 说明：跨主将锁敌视为无效目标，避免士兵攻击非交战主将的单位
+    if (bTargetIsDead || bTargetIsFriendly || bTargetCrossLeader)
     {
         bTargetValid = false;
         bTargetBecameInvalid = true;

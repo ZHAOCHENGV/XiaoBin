@@ -1127,16 +1127,20 @@ void AXBCharacterBase::EnterCombat()
         // 🔧 修改 - 战斗中重新触发时保持战斗定时器逻辑
         CancelNoEnemyDisengage();
         bHasEnemiesInCombat = true;
-        // 🔧 修改 - 战斗中二次触发时同步士兵状态，避免士兵因超距回队后无法再次入战
-        for (AXBSoldierCharacter* Soldier : Soldiers)
+        // 🔧 修复 - 战斗中二次触发时同步士兵状态，但仅在主将已锁敌时才通知士兵进入战斗
+        // 说明：避免玩家释放技能但未命中敌人时士兵错误进入战斗
+        if (LastAttackedEnemyLeader.IsValid() && !LastAttackedEnemyLeader->IsDead())
         {
-            if (Soldier && Soldier->GetSoldierState() != EXBSoldierState::Dead)
+            for (AXBSoldierCharacter* Soldier : Soldiers)
             {
-                if (Soldier->GetSoldierState() != EXBSoldierState::Combat)
+                if (Soldier && Soldier->GetSoldierState() != EXBSoldierState::Dead)
                 {
-                    Soldier->EnterCombat();
-                    UE_LOG(LogXBCombat, Verbose, TEXT("将领 %s 同步士兵 %s 再次进入战斗"),
-                        *GetName(), *Soldier->GetName());
+                    if (Soldier->GetSoldierState() != EXBSoldierState::Combat)
+                    {
+                        Soldier->EnterCombat();
+                        UE_LOG(LogXBCombat, Verbose, TEXT("将领 %s 同步士兵 %s 再次进入战斗"),
+                            *GetName(), *Soldier->GetName());
+                    }
                 }
             }
         }
@@ -1151,11 +1155,16 @@ void AXBCharacterBase::EnterCombat()
     // 🔧 修改 - 进入战斗时取消无敌人脱战计时
     CancelNoEnemyDisengage();
 
-    for (AXBSoldierCharacter* Soldier : Soldiers)
+    // 🔧 修复 - 仅在主将已锁定敌方主将时才通知士兵进入战斗
+    // 说明：避免玩家释放技能但未命中敌人时士兵错误进入战斗模式
+    if (LastAttackedEnemyLeader.IsValid() && !LastAttackedEnemyLeader->IsDead())
     {
-        if (Soldier && Soldier->GetSoldierState() != EXBSoldierState::Dead)
+        for (AXBSoldierCharacter* Soldier : Soldiers)
         {
-            Soldier->EnterCombat();
+            if (Soldier && Soldier->GetSoldierState() != EXBSoldierState::Dead)
+            {
+                Soldier->EnterCombat();
+            }
         }
     }
 
