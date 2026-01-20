@@ -92,6 +92,16 @@ void UAN_XBSpawnSkillActor::Notify(
         SpawnConfig.SocketName);
   }
 
+  // 🔧 修复 - 如果施法者是 XBCharacterBase，应用其缩放到生成的 Actor
+  if (AXBCharacterBase *Character = Cast<AXBCharacterBase>(OwnerActor)) {
+    const FVector OwnerScale = Character->GetActorScale3D();
+    SpawnedActor->SetActorScale3D(OwnerScale);
+
+    UE_LOG(LogXBCombat, Verbose,
+           TEXT("AN_XBSpawnSkillActor: 生成的 %s 应用缩放 %.2f"),
+           *SpawnedActor->GetName(), OwnerScale.X);
+  }
+
   // 计算伤害值
   float Damage = GetDamage(OwnerActor);
 
@@ -112,6 +122,9 @@ void UAN_XBSpawnSkillActor::Notify(
   }
   // 🔧 修复 - 添加对 AXBProjectile 的直接初始化支持
   else if (AXBProjectile *Projectile = Cast<AXBProjectile>(SpawnedActor)) {
+    // 🔧 修复时序问题 - 先禁用碰撞，避免在初始化前触发
+    Projectile->SetActorEnableCollision(false);
+
     // 计算目标位置用于抛射轨迹
     FVector TargetLocation = FVector::ZeroVector;
     if (Target) {
@@ -127,6 +140,9 @@ void UAN_XBSpawnSkillActor::Notify(
         Projectile->bUseArc,     // 使用投射物自身配置的抛射模式
         TargetLocation           // 目标位置
     );
+
+    // 🔧 修复时序问题 - 初始化完成后重新启用碰撞
+    Projectile->SetActorEnableCollision(true);
 
     UE_LOG(
         LogXBCombat, Log,
@@ -223,12 +239,24 @@ bool UAN_XBSpawnSkillActor::CalculateSpawnTransform(
                   "模式但无目标，使用施法者位置"));
       BaseLocation = OwnerActor->GetActorLocation();
     }
-  } break;
+  }
+  }
+
+  // 🔧 修复 - 如果施法者是 XBCharacterBase，根据其缩放调整位置偏移
+  FVector ScaledLocationOffset = SpawnConfig.LocationOffset;
+  if (AXBCharacterBase *Character = Cast<AXBCharacterBase>(OwnerActor)) {
+    const FVector OwnerScale = Character->GetActorScale3D();
+    // 使用 X 轴缩放（假设均匀缩放）来调整位置偏移
+    const float ScaleFactor = OwnerScale.X;
+    ScaledLocationOffset *= ScaleFactor;
+
+    UE_LOG(LogXBCombat, Verbose,
+           TEXT("AN_XBSpawnSkillActor: 施法者 %s 缩放=%.2f，偏移已调整"),
+           *OwnerActor->GetName(), ScaleFactor);
   }
 
   // 应用位置偏移
-  OutLocation =
-      BaseLocation + BaseRotation.RotateVector(SpawnConfig.LocationOffset);
+  OutLocation = BaseLocation + BaseRotation.RotateVector(ScaledLocationOffset);
   // 应用旋转偏移
   OutRotation = SpawnConfig.bInheritOwnerRotation
                     ? BaseRotation + SpawnConfig.RotationOffset
