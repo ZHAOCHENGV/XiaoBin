@@ -138,7 +138,7 @@ EBTNodeResult::Type UBTTask_XBMoveToTarget::ExecuteTask(UBehaviorTreeComponent& 
     // 🔧 修改: 无法寻路到目标时清理目标，触发后续自动寻敌
     BlackboardComp->SetValueAsObject(TargetKey.SelectedKeyName, nullptr);
     BlackboardComp->SetValueAsBool(XBSoldierBBKeys::HasTarget, false);
-    Soldier->CurrentAttackTarget = nullptr;
+    Soldier->HandleTargetBlocked();
     
     return EBTNodeResult::Failed;
 }
@@ -246,7 +246,7 @@ void UBTTask_XBMoveToTarget::TickTask(UBehaviorTreeComponent& OwnerComp, uint8* 
         UE_LOG(LogXBAI, Warning, TEXT("移动任务卡住，切换新目标: %s"), *Soldier->GetName());
         BlackboardComp->SetValueAsObject(TargetKey.SelectedKeyName, nullptr);
         BlackboardComp->SetValueAsBool(XBSoldierBBKeys::HasTarget, false);
-        Soldier->CurrentAttackTarget = nullptr;
+        Soldier->HandleTargetBlocked();
         AIController->StopMovement();
         AIController->ClearFocus(EAIFocusPriority::Gameplay);
         StuckTimer = 0.0f;
