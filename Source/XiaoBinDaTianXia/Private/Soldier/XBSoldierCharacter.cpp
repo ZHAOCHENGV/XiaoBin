@@ -23,6 +23,7 @@
 #include "BehaviorTree/BlackboardComponent.h"
 #include "Character/Components/XBFormationComponent.h"
 #include "Character/XBCharacterBase.h"
+#include "Character/XBPlayerCharacter.h"
 #include "Combat/XBProjectilePoolSubsystem.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -40,7 +41,6 @@
 #include "Soldier/Component/XBSoldierBehaviorInterface.h"
 #include "Soldier/Component/XBSoldierDebugComponent.h"
 #include "Soldier/Component/XBSoldierFollowComponent.h"
-#include "Character/XBPlayerCharacter.h"
 #include "Soldier/Component/XBSoldierPoolSubsystem.h"
 #include "TimerManager.h"
 #include "Utils/XBBlueprintFunctionLibrary.h"
@@ -614,7 +614,8 @@ void AXBSoldierCharacter::OnDropLanded() {
 
   // ✨ Step 3: 延迟处理入列，等物理稳定
   if (bAutoRecruitOnLanding && DropTargetLeader.IsValid()) {
-    const float AutoRecruitDelay = FMath::Max(0.0f, ActiveDropArcConfig.AutoRecruitDelay);
+    const float AutoRecruitDelay =
+        FMath::Max(0.0f, ActiveDropArcConfig.AutoRecruitDelay);
     if (AutoRecruitDelay <= KINDA_SMALL_NUMBER) {
       AutoRecruitToLeader();
     } else {
@@ -1204,15 +1205,15 @@ void AXBSoldierCharacter::ApplyVisualConfig() {
   USkeletalMesh *SoldierMesh = DataAccessor->GetSkeletalMesh();
   if (SoldierMesh) {
     GetMesh()->SetSkeletalMesh(SoldierMesh);
-    
+
     // ✨ 新增 - 自适应胶囊体大小
     // 1. 获取网格体边界
     FBoxSphereBounds MeshBounds = SoldierMesh->GetBounds();
     FVector BoxExtent = MeshBounds.BoxExtent;
-        
-    // 2. 计算新尺寸 
+
+    // 2. 计算新尺寸
     // Radius取X/Y最大值的0.6倍以适配人体圆柱 (避免过宽导致穿模或无法通过)
-    float NewRadius = FMath::Max(BoxExtent.X, BoxExtent.Y) * 0.6f; 
+    float NewRadius = FMath::Max(BoxExtent.X, BoxExtent.Y) * 0.6f;
     // HalfHeight直接取Z轴范围的一半
     float NewHalfHeight = BoxExtent.Z;
 
@@ -1220,15 +1221,16 @@ void AXBSoldierCharacter::ApplyVisualConfig() {
     NewRadius = FMath::Clamp(NewRadius, 15.0f, 60.0f);
     NewHalfHeight = FMath::Max(NewHalfHeight, 30.0f);
 
-    if (UCapsuleComponent* Capsule = GetCapsuleComponent())
-    {
+    if (UCapsuleComponent *Capsule = GetCapsuleComponent()) {
       Capsule->SetCapsuleSize(NewRadius, NewHalfHeight);
-            
+
       // 4. 调整Mesh位置到底部对齐
       // 胶囊体原点在中心，Mesh原点在脚底，所以Z轴偏移为 -HalfHeight
       GetMesh()->SetRelativeLocation(FVector(0.0f, 0.0f, -NewHalfHeight));
-      UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 胶囊体自适应调整: MeshBounds=%.1f, Radius=%.1f, HalfHeight=%.1f"), 
-         *GetName(), BoxExtent.Z * 2.0f, NewRadius, NewHalfHeight);
+      UE_LOG(LogXBSoldier, Log,
+             TEXT("士兵 %s 胶囊体自适应调整: MeshBounds=%.1f, Radius=%.1f, "
+                  "HalfHeight=%.1f"),
+             *GetName(), BoxExtent.Z * 2.0f, NewRadius, NewHalfHeight);
     }
   }
 
@@ -1668,14 +1670,22 @@ void AXBSoldierCharacter::ExitCombat() {
     return;
   }
 
+  // 🔧 修复 - 主将进入草丛时，士兵必须无条件脱战
+  // 说明：移除原有的主将战斗状态检查，因为会阻止草丛脱战
+  bool bLeaderInBush = false;
   if (AXBCharacterBase *Leader = GetLeaderCharacter()) {
-    AXBCharacterBase *TargetLeader = Leader->GetLastAttackedEnemyLeader();
-    if (TargetLeader && !TargetLeader->IsDead()) {
-      UE_LOG(LogXBCombat, Verbose,
-             TEXT("士兵 %s: 主将仍锁定目标主将 %s，保持战斗"),
-             *GetName(), *TargetLeader->GetName());
-      RequestNewTarget();
-      return;
+    if (Leader->IsHiddenInBush()) {
+      bLeaderInBush = true;
+    } else {
+      // 仅在主将未在草丛时，才检查主将战斗状态
+      AXBCharacterBase *TargetLeader = Leader->GetLastAttackedEnemyLeader();
+      if (TargetLeader && !TargetLeader->IsDead()) {
+        UE_LOG(LogXBCombat, Verbose,
+               TEXT("士兵 %s: 主将仍锁定目标主将 %s，保持战斗"), *GetName(),
+               *TargetLeader->GetName());
+        RequestNewTarget();
+        return;
+      }
     }
   }
 
@@ -1828,8 +1838,8 @@ bool AXBSoldierCharacter::PerformAttack(AActor *Target) {
  * @param  AssignedTarget 分配的目标
  * @return 无
  * 功能说明: 缓存目标、绑定死亡回调并同步黑板
- * 详细流程: 校验状态 -> 解绑旧目标事件 -> 绑定新目标事件 -> 写入黑板 -> 记录日志
- * 注意事项: 死亡/休眠/掉落状态不接收目标
+ * 详细流程: 校验状态 -> 解绑旧目标事件 -> 绑定新目标事件 -> 写入黑板 ->
+ * 记录日志 注意事项: 死亡/休眠/掉落状态不接收目标
  */
 void AXBSoldierCharacter::ReceiveAssignedTarget(AActor *AssignedTarget) {
   // 死亡/休眠/掉落态不处理
@@ -1854,9 +1864,9 @@ void AXBSoldierCharacter::ReceiveAssignedTarget(AActor *AssignedTarget) {
   bool bIsTargetLeaderSoldier = false;
   if (AXBSoldierCharacter *TargetSoldier =
           Cast<AXBSoldierCharacter>(AssignedTarget)) {
-    bIsTargetLeaderSoldier = (TargetSoldier->GetLeaderCharacter() == TargetLeader &&
-                              TargetSoldier->GetSoldierState() !=
-                                  EXBSoldierState::Dead);
+    bIsTargetLeaderSoldier =
+        (TargetSoldier->GetLeaderCharacter() == TargetLeader &&
+         TargetSoldier->GetSoldierState() != EXBSoldierState::Dead);
   }
 
   if (!bIsTargetLeader && !bIsTargetLeaderSoldier) {
@@ -1881,8 +1891,8 @@ void AXBSoldierCharacter::ReceiveAssignedTarget(AActor *AssignedTarget) {
 
     if (!bExistingTargetDead) {
       UE_LOG(LogXBCombat, Verbose,
-             TEXT("士兵 %s 已锁定目标 %s，忽略新分配目标 %s"),
-             *GetName(), *ExistingTarget->GetName(),
+             TEXT("士兵 %s 已锁定目标 %s，忽略新分配目标 %s"), *GetName(),
+             *ExistingTarget->GetName(),
              AssignedTarget ? *AssignedTarget->GetName() : TEXT("无"));
       return;
     }
@@ -1906,7 +1916,8 @@ void AXBSoldierCharacter::ReceiveAssignedTarget(AActor *AssignedTarget) {
                                  AssignedTarget->GetActorLocation());
       }
       // 写入目标标记
-      BBComp->SetValueAsBool(XBSoldierBBKeys::HasTarget, AssignedTarget != nullptr);
+      BBComp->SetValueAsBool(XBSoldierBBKeys::HasTarget,
+                             AssignedTarget != nullptr);
     }
   }
 
@@ -1920,8 +1931,8 @@ void AXBSoldierCharacter::ReceiveAssignedTarget(AActor *AssignedTarget) {
  * @param  无
  * @return 无
  * 功能说明: 在目标失效时延迟请求新目标，避免瞬时拥塞
- * 详细流程: 校验状态 -> 获取主将 -> 检查计时器 -> 计算随机延迟 -> 请求分配 -> 接收目标
- * 注意事项: 同一时间仅允许一个申请计时器
+ * 详细流程: 校验状态 -> 获取主将 -> 检查计时器 -> 计算随机延迟 -> 请求分配 ->
+ * 接收目标 注意事项: 同一时间仅允许一个申请计时器
  */
 void AXBSoldierCharacter::RequestNewTarget() {
   // 死亡/休眠/掉落态不处理
@@ -1964,7 +1975,8 @@ void AXBSoldierCharacter::RequestNewTarget() {
   GetWorldTimerManager().SetTimer(
       TargetRequestTimerHandle,
       FTimerDelegate::CreateWeakLambda(
-          this, [this, Leader]() {
+          this,
+          [this, Leader]() {
             // 二次校验自身状态
             if (!IsValid(this) || CurrentState == EXBSoldierState::Dead) {
               return;
@@ -2070,14 +2082,22 @@ void AXBSoldierCharacter::ReturnToFormation() {
   CurrentAttackTarget = nullptr;
   UnbindAssignedTargetEvents();
 
+  // 🔧 修复 - 主将进入草丛时，士兵必须无条件回归编队
+  // 说明：移除原有的主将战斗状态检查，因为会阻止草丛脱战后的回归
+  bool bLeaderInBush = false;
   if (AXBCharacterBase *Leader = GetLeaderCharacter()) {
-    AXBCharacterBase *TargetLeader = Leader->GetLastAttackedEnemyLeader();
-    if (TargetLeader && !TargetLeader->IsDead()) {
-      UE_LOG(LogXBCombat, Verbose,
-             TEXT("士兵 %s: 主将仍锁定目标主将 %s，禁止回归编队"),
-             *GetName(), *TargetLeader->GetName());
-      RequestNewTarget();
-      return;
+    if (Leader->IsHiddenInBush()) {
+      bLeaderInBush = true;
+    } else {
+      // 仅在主将未在草丛时，才检查主将战斗状态
+      AXBCharacterBase *TargetLeader = Leader->GetLastAttackedEnemyLeader();
+      if (TargetLeader && !TargetLeader->IsDead()) {
+        UE_LOG(LogXBCombat, Verbose,
+               TEXT("士兵 %s: 主将仍锁定目标主将 %s，禁止回归编队"), *GetName(),
+               *TargetLeader->GetName());
+        RequestNewTarget();
+        return;
+      }
     }
   }
 
