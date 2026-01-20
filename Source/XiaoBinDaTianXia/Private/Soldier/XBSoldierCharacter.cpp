@@ -40,7 +40,7 @@
 #include "Soldier/Component/XBSoldierBehaviorInterface.h"
 #include "Soldier/Component/XBSoldierDebugComponent.h"
 #include "Soldier/Component/XBSoldierFollowComponent.h"
-#include "XBCollisionChannels.h"
+#include "Character/XBPlayerCharacter.h"
 #include "Soldier/Component/XBSoldierPoolSubsystem.h"
 #include "TimerManager.h"
 #include "Utils/XBBlueprintFunctionLibrary.h"
@@ -614,11 +614,15 @@ void AXBSoldierCharacter::OnDropLanded() {
 
   // ✨ Step 3: 延迟处理入列，等物理稳定
   if (bAutoRecruitOnLanding && DropTargetLeader.IsValid()) {
-    // 延迟 0.1 秒，让角色落地稳定后再开始移动
-    FTimerHandle TimerHandle;
-    GetWorldTimerManager().SetTimer(TimerHandle, this,
-                                    &AXBSoldierCharacter::AutoRecruitToLeader,
-                                    0.1f, false);
+    const float AutoRecruitDelay = FMath::Max(0.0f, ActiveDropArcConfig.AutoRecruitDelay);
+    if (AutoRecruitDelay <= KINDA_SMALL_NUMBER) {
+      AutoRecruitToLeader();
+    } else {
+      FTimerHandle TimerHandle;
+      GetWorldTimerManager().SetTimer(TimerHandle, this,
+                                      &AXBSoldierCharacter::AutoRecruitToLeader,
+                                      AutoRecruitDelay, false);
+    }
   } else {
     SetSoldierState(EXBSoldierState::Idle);
     UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 落地后进入待机态"), *GetName());
@@ -1939,6 +1943,10 @@ void AXBSoldierCharacter::RequestNewTarget() {
 
   AXBCharacterBase *TargetLeader = Leader->GetLastAttackedEnemyLeader();
   if (!TargetLeader || TargetLeader->IsDead()) {
+    if (Cast<AXBPlayerCharacter>(Leader)) {
+      ExitCombat();
+      ReturnToFormation();
+    }
     return;
   }
 
@@ -1965,6 +1973,11 @@ void AXBSoldierCharacter::RequestNewTarget() {
             // 向主将申请新目标
             AActor *NewTarget = Leader->AssignTargetToSoldier(this);
             if (!NewTarget) {
+              if (Cast<AXBPlayerCharacter>(Leader)) {
+                ExitCombat();
+                ReturnToFormation();
+                return;
+              }
               ExitCombat();
               return;
             }
