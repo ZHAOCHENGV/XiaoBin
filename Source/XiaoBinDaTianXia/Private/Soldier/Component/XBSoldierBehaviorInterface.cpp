@@ -121,20 +121,24 @@ void UXBSoldierBehaviorInterface::UpdateAttackCooldown(float DeltaTime)
  */
 bool UXBSoldierBehaviorInterface::SearchForEnemy(AActor*& OutEnemy)
 {
+    // 初始化输出参数
     OutEnemy = nullptr;
 
+    // 获取所属士兵
     AXBSoldierCharacter* Soldier = GetOwnerSoldier();
     if (!Soldier)
     {
         return false;
     }
 
+    // 获取已分配目标
     AActor* AssignedTarget = Soldier->CurrentAttackTarget.Get();
     if (!IsTargetValid(AssignedTarget))
     {
         return false;
     }
 
+    // 输出有效目标
     OutEnemy = AssignedTarget;
     return true;
 }

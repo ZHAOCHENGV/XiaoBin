@@ -1804,61 +1804,94 @@ bool AXBSoldierCharacter::PerformAttack(AActor *Target) {
   return false;
 }
 
+/**
+ * @brief  接收主将分配的目标
+ * @param  AssignedTarget 分配的目标
+ * @return 无
+ * 功能说明: 缓存目标、绑定死亡回调并同步黑板
+ * 详细流程: 校验状态 -> 解绑旧目标事件 -> 绑定新目标事件 -> 写入黑板 -> 记录日志
+ * 注意事项: 死亡/休眠/掉落状态不接收目标
+ */
 void AXBSoldierCharacter::ReceiveAssignedTarget(AActor *AssignedTarget) {
+  // 死亡/休眠/掉落态不处理
   if (CurrentState == EXBSoldierState::Dead ||
       CurrentState == EXBSoldierState::Dormant ||
       CurrentState == EXBSoldierState::Dropping) {
     return;
   }
 
+  // 解绑旧目标事件
   UnbindAssignedTargetEvents();
+  // 更新当前目标
   CurrentAttackTarget = AssignedTarget;
+  // 绑定新目标事件
   BindAssignedTargetEvents(AssignedTarget);
 
+  // 同步黑板数据
   if (AAIController *AICtrl = Cast<AAIController>(GetController())) {
     if (UBlackboardComponent *BBComp = AICtrl->GetBlackboardComponent()) {
+      // 写入当前目标
       BBComp->SetValueAsObject(XBSoldierBBKeys::CurrentTarget, AssignedTarget);
+      // 写入目标位置
       if (AssignedTarget) {
         BBComp->SetValueAsVector(XBSoldierBBKeys::TargetLocation,
                                  AssignedTarget->GetActorLocation());
       }
+      // 写入目标标记
       BBComp->SetValueAsBool(XBSoldierBBKeys::HasTarget, AssignedTarget != nullptr);
     }
   }
 
+  // 打印日志
   UE_LOG(LogXBCombat, Verbose, TEXT("士兵 %s 接收目标: %s"), *GetName(),
          AssignedTarget ? *AssignedTarget->GetName() : TEXT("无"));
 }
 
+/**
+ * @brief  向主将申请新目标
+ * @param  无
+ * @return 无
+ * 功能说明: 在目标失效时延迟请求新目标，避免瞬时拥塞
+ * 详细流程: 校验状态 -> 获取主将 -> 检查计时器 -> 计算随机延迟 -> 请求分配 -> 接收目标
+ * 注意事项: 同一时间仅允许一个申请计时器
+ */
 void AXBSoldierCharacter::RequestNewTarget() {
+  // 死亡/休眠/掉落态不处理
   if (CurrentState == EXBSoldierState::Dead ||
       CurrentState == EXBSoldierState::Dormant ||
       CurrentState == EXBSoldierState::Dropping) {
     return;
   }
 
+  // 获取主将
   AXBCharacterBase *Leader = GetLeaderCharacter();
   if (!Leader) {
     return;
   }
 
+  // 已存在申请计时器则直接返回
   if (GetWorldTimerManager().IsTimerActive(TargetRequestTimerHandle)) {
     return;
   }
 
+  // 计算随机延迟
   const float Delay =
       FMath::Max(0.0f, FMath::FRandRange(TargetRequestDelayRange.X,
                                          TargetRequestDelayRange.Y));
 
+  // 设置延迟计时器并请求目标
   GetWorldTimerManager().SetTimer(
       TargetRequestTimerHandle,
       FTimerDelegate::CreateWeakLambda(
           this, [this, Leader]() {
+            // 二次校验自身状态
             if (!IsValid(this) || CurrentState == EXBSoldierState::Dead) {
               return;
             }
 
+            // 向主将申请新目标
             AActor *NewTarget = Leader->AssignTargetToSoldier(this);
+            // 接收新目标
             ReceiveAssignedTarget(NewTarget);
           }),
       Delay, false);
@@ -2403,37 +2436,73 @@ void AXBSoldierCharacter::HandleFormationUpdated() {
          *GetName(), Delay);
 }
 
+/**
+ * @brief  处理已分配目标士兵死亡
+ * @param  DeadSoldier 死亡士兵
+ * @return 无
+ * 功能说明: 当目标死亡时触发重新申请
+ * 详细流程: 校验对象 -> 比对当前目标 -> 清理绑定 -> 申请新目标
+ * 注意事项: 仅处理当前目标
+ */
 void AXBSoldierCharacter::HandleAssignedTargetSoldierDied(
     AXBSoldierCharacter *DeadSoldier) {
+  // 校验参数
   if (!DeadSoldier) {
     return;
   }
 
+  // 仅处理当前目标
   if (CurrentAttackTarget.Get() == DeadSoldier) {
+    // 解绑旧目标事件
     UnbindAssignedTargetEvents();
+    // 清空当前目标
     CurrentAttackTarget = nullptr;
+    // 申请新目标
     RequestNewTarget();
   }
 }
 
+/**
+ * @brief  处理已分配目标主将死亡
+ * @param  DeadLeader 死亡主将
+ * @return 无
+ * 功能说明: 当目标主将死亡时触发重新申请
+ * 详细流程: 校验对象 -> 比对当前目标 -> 清理绑定 -> 申请新目标
+ * 注意事项: 仅处理当前目标
+ */
 void AXBSoldierCharacter::HandleAssignedTargetLeaderDied(
     AXBCharacterBase *DeadLeader) {
+  // 校验参数
   if (!DeadLeader) {
     return;
   }
 
+  // 仅处理当前目标
   if (CurrentAttackTarget.Get() == DeadLeader) {
+    // 解绑旧目标事件
     UnbindAssignedTargetEvents();
+    // 清空当前目标
     CurrentAttackTarget = nullptr;
+    // 申请新目标
     RequestNewTarget();
   }
 }
 
+/**
+ * @brief  绑定目标死亡事件
+ * @param  AssignedTarget 分配的目标
+ * @return 无
+ * 功能说明: 根据目标类型绑定对应死亡委托
+ * 详细流程: 校验目标 -> 判断士兵/主将 -> 绑定死亡委托
+ * 注意事项: 未传目标直接返回
+ */
 void AXBSoldierCharacter::BindAssignedTargetEvents(AActor *AssignedTarget) {
+  // 无目标直接返回
   if (!AssignedTarget) {
     return;
   }
 
+  // 绑定士兵死亡事件
   if (AXBSoldierCharacter *TargetSoldier =
           Cast<AXBSoldierCharacter>(AssignedTarget)) {
     TargetSoldier->OnSoldierDied.AddDynamic(
@@ -2441,18 +2510,29 @@ void AXBSoldierCharacter::BindAssignedTargetEvents(AActor *AssignedTarget) {
     return;
   }
 
+  // 绑定主将死亡事件
   if (AXBCharacterBase *TargetLeader = Cast<AXBCharacterBase>(AssignedTarget)) {
     TargetLeader->OnCharacterDeath.AddDynamic(
         this, &AXBSoldierCharacter::HandleAssignedTargetLeaderDied);
   }
 }
 
+/**
+ * @brief  解绑目标死亡事件
+ * @param  无
+ * @return 无
+ * 功能说明: 根据当前目标类型解除死亡委托
+ * 详细流程: 获取当前目标 -> 判断士兵/主将 -> 移除死亡委托
+ * 注意事项: 无目标直接返回
+ */
 void AXBSoldierCharacter::UnbindAssignedTargetEvents() {
+  // 获取当前目标
   AActor *AssignedTarget = CurrentAttackTarget.Get();
   if (!AssignedTarget) {
     return;
   }
 
+  // 解绑士兵死亡事件
   if (AXBSoldierCharacter *TargetSoldier =
           Cast<AXBSoldierCharacter>(AssignedTarget)) {
     TargetSoldier->OnSoldierDied.RemoveDynamic(
@@ -2460,6 +2540,7 @@ void AXBSoldierCharacter::UnbindAssignedTargetEvents() {
     return;
   }
 
+  // 解绑主将死亡事件
   if (AXBCharacterBase *TargetLeader = Cast<AXBCharacterBase>(AssignedTarget)) {
     TargetLeader->OnCharacterDeath.RemoveDynamic(
         this, &AXBSoldierCharacter::HandleAssignedTargetLeaderDied);

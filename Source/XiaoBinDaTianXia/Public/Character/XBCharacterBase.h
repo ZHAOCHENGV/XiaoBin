@@ -269,7 +269,10 @@ public:
     /**
      * @brief  为麾下士兵分配敌方目标
      * @param  EnemyLeader 敌方主将
-     * @note   详细流程: 获取敌方士兵数组 -> 根据兵种与距离分配 -> 通知士兵接收目标
+     * @return 无
+     * 功能说明: 依据兵种与距离进行目标分配，并在无敌兵时改为攻击敌方主将
+     * 详细流程: 校验敌方主将 -> 收集存活士兵 -> 收集存活敌兵 -> 负载与距离择优 -> 通知士兵接收
+     * 注意事项: 仅分配存活单位，避免无效目标
      */
     void AssignTargetsToSoldiers(AXBCharacterBase* EnemyLeader);
 
@@ -277,7 +280,9 @@ public:
      * @brief  为单个士兵分配目标（士兵申请时调用）
      * @param  RequestingSoldier 申请目标的士兵
      * @return 分配的目标（可能为空）
-     * @note   带随机延迟的目标分配
+     * 功能说明: 根据负载均衡与距离选择目标
+     * 详细流程: 校验申请者 -> 获取敌方主将 -> 收集敌兵 -> 负载统计 -> 选择目标
+     * 注意事项: 敌方无士兵时返回敌方主将
      */
     AActor* AssignTargetToSoldier(AXBSoldierCharacter* RequestingSoldier);
 

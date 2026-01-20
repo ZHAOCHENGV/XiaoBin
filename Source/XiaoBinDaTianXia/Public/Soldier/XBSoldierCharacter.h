@@ -317,14 +317,20 @@ public:
     /**
      * @brief  接收主将分配的目标
      * @param  AssignedTarget 分配的目标
-     * @note   由主将通过接口调用
+     * @return 无
+     * 功能说明: 缓存目标并同步黑板，绑定目标死亡事件
+     * 详细流程: 校验状态 -> 解绑旧目标 -> 绑定新目标 -> 写入黑板
+     * 注意事项: 死亡/休眠/掉落状态不处理
      */
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier|Combat", meta = (DisplayName = "接收分配目标"))
     void ReceiveAssignedTarget(AActor* AssignedTarget);
 
     /**
      * @brief  向主将申请新目标（带随机延迟）
-     * @note   当前目标死亡时调用
+     * @return 无
+     * 功能说明: 目标失效时延迟向主将申请新目标
+     * 详细流程: 校验状态 -> 获取主将 -> 检查计时器 -> 延迟申请
+     * 注意事项: 同一时间仅允许一次申请
      */
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier|Combat", meta = (DisplayName = "申请新目标"))
     void RequestNewTarget();
