@@ -58,6 +58,7 @@ namespace XBSoldierBBKeys
     const FName ShouldRetreat = TEXT("ShouldRetreat");      // bool
     const FName IsAtFormation = TEXT("IsAtFormation");      // bool
     const FName CanAttack = TEXT("CanAttack");              // bool
+    const FName IsInAttackRange = TEXT("IsInAttackRange");  // bool (✨ 新增 - 是否在攻击范围内)
 }
 
 /**
