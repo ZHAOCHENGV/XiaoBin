@@ -40,6 +40,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCharacterDeath, AXBCharacterBase*
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCombatStateChanged, bool, bInCombat);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnSoldierCountChanged, int32, OldCount, int32, NewCount);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSprintStateChanged, bool, bIsSprinting);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnEnterCombatDelegate, AXBCharacterBase*, Leader);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnAssignTargetDelegate, AXBSoldierCharacter*, Soldier, AActor*, Target);
 
 USTRUCT(BlueprintType)
 struct XIAOBINDATIANXIA_API FXBGrowthConfigCache
@@ -264,6 +266,21 @@ public:
     UFUNCTION(BlueprintPure, Category = "战斗", meta = (DisplayName = "获取最近攻击的敌方主将"))
     AXBCharacterBase* GetLastAttackedEnemyLeader() const { return LastAttackedEnemyLeader.Get(); }
 
+    /**
+     * @brief  为麾下士兵分配敌方目标
+     * @param  EnemyLeader 敌方主将
+     * @note   详细流程: 获取敌方士兵数组 -> 根据兵种与距离分配 -> 通知士兵接收目标
+     */
+    void AssignTargetsToSoldiers(AXBCharacterBase* EnemyLeader);
+
+    /**
+     * @brief  为单个士兵分配目标（士兵申请时调用）
+     * @param  RequestingSoldier 申请目标的士兵
+     * @return 分配的目标（可能为空）
+     * @note   带随机延迟的目标分配
+     */
+    AActor* AssignTargetToSoldier(AXBSoldierCharacter* RequestingSoldier);
+
     // 🔧 修改 - 记录主将最近攻击到的敌方阵营，用于士兵优先选敌
     UFUNCTION(BlueprintPure, Category = "战斗", meta = (DisplayName = "获取最近攻击的敌方阵营"))
     bool GetLastAttackedEnemyFaction(EXBFaction& OutFaction) const;
@@ -319,6 +336,12 @@ public:
 
     UPROPERTY(BlueprintAssignable, Category = "事件", meta = (DisplayName = "冲刺状态变化"))
     FOnSprintStateChanged OnSprintStateChanged;
+
+    UPROPERTY(BlueprintAssignable, Category = "事件", meta = (DisplayName = "主将进入战斗"))
+    FOnEnterCombatDelegate OnEnterCombatDelegate;
+
+    UPROPERTY(BlueprintAssignable, Category = "事件", meta = (DisplayName = "主将分配目标"))
+    FOnAssignTargetDelegate OnAssignTargetDelegate;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "编队组件"))
     TObjectPtr<UXBFormationComponent> FormationComponent;

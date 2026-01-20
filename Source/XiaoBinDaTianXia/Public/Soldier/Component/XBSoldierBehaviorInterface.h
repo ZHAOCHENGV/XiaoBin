@@ -93,11 +93,11 @@ public:
     // ==================== 感知行为 ====================
 
     /**
-     * @brief 搜索最近的敌人
-     * @param OutEnemy 输出找到的敌人
-     * @return 是否找到敌人
+     * @brief 检查已分配目标是否有效
+     * @param OutEnemy 输出当前有效目标
+     * @return 是否有有效目标
      * 
-     * @note 通过 PerceptionSubsystem 执行，支持缓存
+     * @note 仅检查已分配目标，不主动搜索
      */
     UFUNCTION(BlueprintCallable, Category = "XB|Behavior|Perception", meta = (DisplayName = "搜索敌人"))
     bool SearchForEnemy(AActor*& OutEnemy);

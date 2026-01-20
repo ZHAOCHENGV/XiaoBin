@@ -1161,6 +1161,7 @@ void AXBCharacterBase::EnterCombat()
 
 
     OnCombatStateChanged.Broadcast(true);
+    OnEnterCombatDelegate.Broadcast(this);
 }
 
 void AXBCharacterBase::ExitCombat()
@@ -1317,6 +1318,7 @@ void AXBCharacterBase::OnAttackHit(AActor* HitTarget)
         bHasLastAttackedEnemyFaction = true;
         LastAttackedEnemyFaction = TargetLeader->GetFaction();
         // 🔧 修改 - 敌方主将被命中不自动进入战斗，避免其士兵被动参战
+        AssignTargetsToSoldiers(TargetLeader);
 
         UE_LOG(LogXBCombat, Log, TEXT("?? %s ?????? %s??????????????"),
             *GetName(), *TargetLeader->GetName());
@@ -1345,9 +1347,166 @@ void AXBCharacterBase::OnAttackHit(AActor* HitTarget)
         bHasLastAttackedEnemyFaction = true;
         LastAttackedEnemyFaction = TargetSoldier->GetFaction();
 
+        AssignTargetsToSoldiers(LastAttackedEnemyLeader.Get());
+
         UE_LOG(LogXBCombat, Log, TEXT("?? %s ?????? %s?????????????"),
             *GetName(), *TargetSoldier->GetName());
     }
+}
+
+void AXBCharacterBase::AssignTargetsToSoldiers(AXBCharacterBase* EnemyLeader)
+{
+    if (!EnemyLeader || EnemyLeader->IsDead())
+    {
+        return;
+    }
+
+    const TArray<AXBSoldierCharacter*>& EnemySoldiers = EnemyLeader->GetSoldiers();
+
+    TArray<AXBSoldierCharacter*> AliveSoldiers;
+    AliveSoldiers.Reserve(Soldiers.Num());
+    for (AXBSoldierCharacter* Soldier : Soldiers)
+    {
+        if (Soldier && Soldier->GetSoldierState() != EXBSoldierState::Dead)
+        {
+            AliveSoldiers.Add(Soldier);
+        }
+    }
+
+    if (AliveSoldiers.Num() == 0)
+    {
+        return;
+    }
+
+    TArray<AXBSoldierCharacter*> AliveEnemySoldiers;
+    AliveEnemySoldiers.Reserve(EnemySoldiers.Num());
+    for (AXBSoldierCharacter* EnemySoldier : EnemySoldiers)
+    {
+        if (EnemySoldier && EnemySoldier->GetSoldierState() != EXBSoldierState::Dead)
+        {
+            AliveEnemySoldiers.Add(EnemySoldier);
+        }
+    }
+
+    if (AliveEnemySoldiers.Num() == 0)
+    {
+        for (AXBSoldierCharacter* Soldier : AliveSoldiers)
+        {
+            Soldier->ReceiveAssignedTarget(EnemyLeader);
+            OnAssignTargetDelegate.Broadcast(Soldier, EnemyLeader);
+        }
+        return;
+    }
+
+    TMap<AXBSoldierCharacter*, int32> TargetCounts;
+    for (AXBSoldierCharacter* Soldier : AliveSoldiers)
+    {
+        if (!Soldier)
+        {
+            continue;
+        }
+        if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(Soldier->CurrentAttackTarget.Get()))
+        {
+            TargetCounts.FindOrAdd(TargetSoldier)++;
+        }
+    }
+
+    for (AXBSoldierCharacter* Soldier : AliveSoldiers)
+    {
+        AXBSoldierCharacter* BestTarget = nullptr;
+        int32 BestCount = MAX_int32;
+        float BestScore = -MAX_FLT;
+
+        for (AXBSoldierCharacter* EnemySoldier : AliveEnemySoldiers)
+        {
+            if (!EnemySoldier)
+            {
+                continue;
+            }
+
+            const int32 CurrentCount = TargetCounts.FindRef(EnemySoldier);
+            const float Distance = FVector::Dist2D(Soldier->GetActorLocation(), EnemySoldier->GetActorLocation());
+            const bool bIsArcher = (Soldier->GetSoldierType() == EXBSoldierType::Archer);
+            const float Score = bIsArcher ? Distance : -Distance;
+
+            if (CurrentCount < BestCount || (CurrentCount == BestCount && Score > BestScore))
+            {
+                BestTarget = EnemySoldier;
+                BestCount = CurrentCount;
+                BestScore = Score;
+            }
+        }
+
+        if (BestTarget)
+        {
+            TargetCounts.FindOrAdd(BestTarget)++;
+            Soldier->ReceiveAssignedTarget(BestTarget);
+            OnAssignTargetDelegate.Broadcast(Soldier, BestTarget);
+        }
+    }
+}
+
+AActor* AXBCharacterBase::AssignTargetToSoldier(AXBSoldierCharacter* RequestingSoldier)
+{
+    if (!RequestingSoldier)
+    {
+        return nullptr;
+    }
+
+    AXBCharacterBase* EnemyLeader = LastAttackedEnemyLeader.Get();
+    if (!EnemyLeader || EnemyLeader->IsDead())
+    {
+        return nullptr;
+    }
+
+    const TArray<AXBSoldierCharacter*>& EnemySoldiers = EnemyLeader->GetSoldiers();
+    TArray<AXBSoldierCharacter*> AliveEnemySoldiers;
+    AliveEnemySoldiers.Reserve(EnemySoldiers.Num());
+    for (AXBSoldierCharacter* EnemySoldier : EnemySoldiers)
+    {
+        if (EnemySoldier && EnemySoldier->GetSoldierState() != EXBSoldierState::Dead)
+        {
+            AliveEnemySoldiers.Add(EnemySoldier);
+        }
+    }
+
+    if (AliveEnemySoldiers.Num() == 0)
+    {
+        return EnemyLeader;
+    }
+
+    TMap<AXBSoldierCharacter*, int32> TargetCounts;
+    for (AXBSoldierCharacter* Soldier : Soldiers)
+    {
+        if (Soldier && Soldier != RequestingSoldier)
+        {
+            if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(Soldier->CurrentAttackTarget.Get()))
+            {
+                TargetCounts.FindOrAdd(TargetSoldier)++;
+            }
+        }
+    }
+
+    AXBSoldierCharacter* BestTarget = nullptr;
+    int32 BestCount = MAX_int32;
+    float BestScore = -MAX_FLT;
+
+    for (AXBSoldierCharacter* EnemySoldier : AliveEnemySoldiers)
+    {
+        const int32 CurrentCount = TargetCounts.FindRef(EnemySoldier);
+        const float Distance = FVector::Dist2D(RequestingSoldier->GetActorLocation(), EnemySoldier->GetActorLocation());
+        const bool bIsArcher = (RequestingSoldier->GetSoldierType() == EXBSoldierType::Archer);
+        const float Score = bIsArcher ? Distance : -Distance;
+
+        if (CurrentCount < BestCount || (CurrentCount == BestCount && Score > BestScore))
+        {
+            BestTarget = EnemySoldier;
+            BestCount = CurrentCount;
+            BestScore = Score;
+        }
+    }
+
+    return BestTarget ? BestTarget : EnemyLeader;
 }
 
 void AXBCharacterBase::RecallAllSoldiers()
