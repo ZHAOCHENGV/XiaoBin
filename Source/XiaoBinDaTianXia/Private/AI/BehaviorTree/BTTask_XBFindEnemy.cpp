@@ -42,8 +42,8 @@ UBTTask_XBFindEnemy::UBTTask_XBFindEnemy()
  * @param OwnerComp 行为树组件
  * @param NodeMemory 节点内存
  * @return 行为树执行结果
- * 功能说明: 通过行为接口搜索敌人并更新黑板
- * 详细流程: 获取控制器与士兵 -> 获取黑板 -> 调用寻敌接口 -> 写回黑板与缓存
+ * 功能说明: 检查已分配目标并更新黑板
+ * 详细流程: 获取控制器与士兵 -> 获取黑板 -> 校验目标有效性 -> 写回黑板与缓存
  * 注意事项: 死亡状态下直接失败
  */
 EBTNodeResult::Type UBTTask_XBFindEnemy::ExecuteTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory)
@@ -101,10 +101,9 @@ EBTNodeResult::Type UBTTask_XBFindEnemy::ExecuteTask(UBehaviorTreeComponent& Own
         return EBTNodeResult::Failed;
     }
     
-    // 定义输出目标指针
-    AActor* NearestEnemy = nullptr;
-    // 调用行为接口搜索敌人
-    bool bFound = BehaviorInterface->SearchForEnemy(NearestEnemy);
+    // 使用已分配目标
+    AActor* NearestEnemy = Soldier->CurrentAttackTarget.Get();
+    bool bFound = BehaviorInterface->IsTargetValid(NearestEnemy);
     
     // ==================== 更新黑板 ====================
     
@@ -116,7 +115,7 @@ EBTNodeResult::Type UBTTask_XBFindEnemy::ExecuteTask(UBehaviorTreeComponent& Own
     }
     
     // 若找到目标则更新黑板与缓存
-    if (NearestEnemy)
+    if (bFound && NearestEnemy)
     {
         // 同步当前攻击目标
         Soldier->CurrentAttackTarget = NearestEnemy;
@@ -135,6 +134,7 @@ EBTNodeResult::Type UBTTask_XBFindEnemy::ExecuteTask(UBehaviorTreeComponent& Own
     {
         // 未找到目标时清空缓存
         Soldier->CurrentAttackTarget = nullptr;
+        BlackboardComp->ClearValue(XBSoldierBBKeys::TargetLocation);
         // 更新是否有目标标记
         BlackboardComp->SetValueAsBool(XBSoldierBBKeys::HasTarget, false);
         UE_LOG(LogXBAI, Warning, TEXT("寻敌任务: 无法寻找到目标"));
@@ -156,6 +156,6 @@ EBTNodeResult::Type UBTTask_XBFindEnemy::ExecuteTask(UBehaviorTreeComponent& Own
 FString UBTTask_XBFindEnemy::GetStaticDescription() const
 {
     // 返回描述字符串
-    return FString::Printf(TEXT("通过感知系统搜索敌人\n目标键: %s"),
+    return FString::Printf(TEXT("检查已分配目标\n目标键: %s"),
         *TargetKey.SelectedKeyName.ToString());
 }
