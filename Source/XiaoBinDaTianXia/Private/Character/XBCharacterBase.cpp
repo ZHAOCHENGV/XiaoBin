@@ -1969,12 +1969,18 @@ void AXBCharacterBase::SpawnDroppedSoldiers()
 
         FCollisionQueryParams QueryParams;
         QueryParams.AddIgnoredActor(this);
-
+        // 🔧 修复 - 忽略所有Pawn类型Actor（包括主将和士兵的胶囊体）
+        // 说明：确保射线检测只命中地面，不会落到其他角色胶囊体上
+        QueryParams.bTraceComplex = false;
+        
+        // 使用碰撞响应参数，只检测世界静态和世界动态，忽略Pawn
+        FCollisionResponseParams ResponseParams;
+        
         bool bHit = World->LineTraceSingleByChannel(
             HitResult,
             TraceStart,
             TraceEnd,
-            ECC_WorldStatic,
+            ECC_Visibility,  // 🔧 修复 - 使用Visibility通道，默认Pawn不阻挡Visibility
             QueryParams
         );
 
