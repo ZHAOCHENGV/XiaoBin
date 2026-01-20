@@ -20,6 +20,7 @@
 #include "AbilitySystemInterface.h"
 #include "Army/XBSoldierTypes.h"
 #include "Data/XBSoldierDataTable.h"
+#include "TimerManager.h"
 #include "XBSoldierCharacter.generated.h"
 
 // ============================================
@@ -313,6 +314,27 @@ public:
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier", meta = (DisplayName = "执行攻击"))
     bool PerformAttack(AActor* Target);
 
+    /**
+     * @brief  接收主将分配的目标
+     * @param  AssignedTarget 分配的目标
+     * @return 无
+     * 功能说明: 缓存目标并同步黑板，绑定目标死亡事件
+     * 详细流程: 校验状态 -> 解绑旧目标 -> 绑定新目标 -> 写入黑板
+     * 注意事项: 死亡/休眠/掉落状态不处理
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Soldier|Combat", meta = (DisplayName = "接收分配目标"))
+    void ReceiveAssignedTarget(AActor* AssignedTarget);
+
+    /**
+     * @brief  向主将申请新目标（带随机延迟）
+     * @return 无
+     * 功能说明: 目标失效时延迟向主将申请新目标
+     * 详细流程: 校验状态 -> 获取主将 -> 检查计时器 -> 延迟申请
+     * 注意事项: 同一时间仅允许一次申请
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|Soldier|Combat", meta = (DisplayName = "申请新目标"))
+    void RequestNewTarget();
+
 public:
     UFUNCTION(BlueprintPure, Category = "XB|Soldier", meta = (DisplayName = "获取当前血量"))
     float GetCurrentHealth() const { return CurrentHealth; }
@@ -400,6 +422,11 @@ public:
     UPROPERTY(BlueprintReadOnly, Category = "状态", meta = (DisplayName = "当前攻击目标"))
     TWeakObjectPtr<AActor> CurrentAttackTarget;
 
+    /** @brief 申请新目标的随机延迟范围（秒） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Soldier|Combat",
+        meta = (DisplayName = "申请目标延迟范围"))
+    FVector2D TargetRequestDelayRange = FVector2D(0.3f, 1.0f);
+
     // ==================== AI系统友元 ====================
 
     friend class AXBSoldierAIController;
@@ -463,6 +490,8 @@ protected:
      *         性能/架构注意事项: 仅在初始化阶段调用，避免运行时重复授予
      */
     void RefreshMeleeHitAbilityFromData();
+
+    FTimerHandle TargetRequestTimerHandle;
 protected:
 
     // ✨ 新增 - 配置跟随并开始移动
@@ -499,6 +528,15 @@ protected:
      */
     UFUNCTION()
     void HandleFormationUpdated();
+
+    UFUNCTION()
+    void HandleAssignedTargetSoldierDied(AXBSoldierCharacter* DeadSoldier);
+
+    UFUNCTION()
+    void HandleAssignedTargetLeaderDied(AXBCharacterBase* DeadLeader);
+
+    void BindAssignedTargetEvents(AActor* AssignedTarget);
+    void UnbindAssignedTargetEvents();
     
     // ==================== 数据访问器组件 ====================
 

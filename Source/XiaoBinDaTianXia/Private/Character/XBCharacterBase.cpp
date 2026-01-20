@@ -1160,7 +1160,10 @@ void AXBCharacterBase::EnterCombat()
     }
 
 
+    // 🔧 修改 - 广播战斗状态变化
     OnCombatStateChanged.Broadcast(true);
+    // 🔧 修改 - 广播主将进入战斗事件
+    OnEnterCombatDelegate.Broadcast(this);
 }
 
 void AXBCharacterBase::ExitCombat()
@@ -1317,6 +1320,8 @@ void AXBCharacterBase::OnAttackHit(AActor* HitTarget)
         bHasLastAttackedEnemyFaction = true;
         LastAttackedEnemyFaction = TargetLeader->GetFaction();
         // 🔧 修改 - 敌方主将被命中不自动进入战斗，避免其士兵被动参战
+        // 🔧 修改 - 主将命中敌方主将时为士兵分配目标
+        AssignTargetsToSoldiers(TargetLeader);
 
         UE_LOG(LogXBCombat, Log, TEXT("?? %s ?????? %s??????????????"),
             *GetName(), *TargetLeader->GetName());
@@ -1345,9 +1350,219 @@ void AXBCharacterBase::OnAttackHit(AActor* HitTarget)
         bHasLastAttackedEnemyFaction = true;
         LastAttackedEnemyFaction = TargetSoldier->GetFaction();
 
+        // 🔧 修改 - 命中敌方士兵时为士兵分配目标
+        AssignTargetsToSoldiers(LastAttackedEnemyLeader.Get());
+
         UE_LOG(LogXBCombat, Log, TEXT("?? %s ?????? %s?????????????"),
             *GetName(), *TargetSoldier->GetName());
     }
+}
+
+/**
+ * @brief  为麾下士兵分配敌方目标
+ * @param  EnemyLeader 敌方主将
+ * @return 无
+ * 功能说明: 按兵种与距离分配目标，并在无敌兵时改为攻击敌方主将
+ * 详细流程: 校验主将 -> 收集存活士兵 -> 收集存活敌兵 -> 计算负载与距离 -> 分配目标并广播
+ * 注意事项: 仅分配存活目标，避免无效引用
+ */
+void AXBCharacterBase::AssignTargetsToSoldiers(AXBCharacterBase* EnemyLeader)
+{
+    // 校验敌方主将
+    if (!EnemyLeader || EnemyLeader->IsDead())
+    {
+        return;
+    }
+
+    // 获取敌方士兵数组
+    const TArray<AXBSoldierCharacter*>& EnemySoldiers = EnemyLeader->GetSoldiers();
+
+    // 收集存活己方士兵
+    TArray<AXBSoldierCharacter*> AliveSoldiers;
+    AliveSoldiers.Reserve(Soldiers.Num());
+    for (AXBSoldierCharacter* Soldier : Soldiers)
+    {
+        // 过滤无效或死亡士兵
+        if (Soldier && Soldier->GetSoldierState() != EXBSoldierState::Dead)
+        {
+            AliveSoldiers.Add(Soldier);
+        }
+    }
+
+    // 无存活士兵则无需分配
+    if (AliveSoldiers.Num() == 0)
+    {
+        return;
+    }
+
+    // 收集存活敌方士兵
+    TArray<AXBSoldierCharacter*> AliveEnemySoldiers;
+    AliveEnemySoldiers.Reserve(EnemySoldiers.Num());
+    for (AXBSoldierCharacter* EnemySoldier : EnemySoldiers)
+    {
+        // 过滤无效或死亡士兵
+        if (EnemySoldier && EnemySoldier->GetSoldierState() != EXBSoldierState::Dead)
+        {
+            AliveEnemySoldiers.Add(EnemySoldier);
+        }
+    }
+
+    // 若敌方无士兵，改为攻击敌方主将
+    if (AliveEnemySoldiers.Num() == 0)
+    {
+        for (AXBSoldierCharacter* Soldier : AliveSoldiers)
+        {
+            // 分配敌方主将为目标
+            Soldier->ReceiveAssignedTarget(EnemyLeader);
+            // 广播目标分配委托
+            OnAssignTargetDelegate.Broadcast(Soldier, EnemyLeader);
+        }
+        return;
+    }
+
+    // 统计当前目标负载
+    TMap<AXBSoldierCharacter*, int32> TargetCounts;
+    for (AXBSoldierCharacter* Soldier : AliveSoldiers)
+    {
+        // 防御性检查
+        if (!Soldier)
+        {
+            continue;
+        }
+        if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(Soldier->CurrentAttackTarget.Get()))
+        {
+            // 记录该敌兵被锁定次数
+            TargetCounts.FindOrAdd(TargetSoldier)++;
+        }
+    }
+
+    // 为每名士兵选择最佳目标
+    for (AXBSoldierCharacter* Soldier : AliveSoldiers)
+    {
+        // 初始化最优候选
+        AXBSoldierCharacter* BestTarget = nullptr;
+        int32 BestCount = MAX_int32;
+        float BestScore = -MAX_FLT;
+
+        for (AXBSoldierCharacter* EnemySoldier : AliveEnemySoldiers)
+        {
+            // 跳过无效目标
+            if (!EnemySoldier)
+            {
+                continue;
+            }
+
+            // 负载优先：被锁定次数更少
+            const int32 CurrentCount = TargetCounts.FindRef(EnemySoldier);
+            // 距离评分：近战优先近，弓手优先远
+            const float Distance = FVector::Dist2D(Soldier->GetActorLocation(), EnemySoldier->GetActorLocation());
+            const bool bIsArcher = (Soldier->GetSoldierType() == EXBSoldierType::Archer);
+            const float Score = bIsArcher ? Distance : -Distance;
+
+            // 比较负载与距离评分
+            if (CurrentCount < BestCount || (CurrentCount == BestCount && Score > BestScore))
+            {
+                BestTarget = EnemySoldier;
+                BestCount = CurrentCount;
+                BestScore = Score;
+            }
+        }
+
+        // 若找到目标则分配
+        if (BestTarget)
+        {
+            // 更新目标负载
+            TargetCounts.FindOrAdd(BestTarget)++;
+            // 通知士兵接收目标
+            Soldier->ReceiveAssignedTarget(BestTarget);
+            // 广播目标分配委托
+            OnAssignTargetDelegate.Broadcast(Soldier, BestTarget);
+        }
+    }
+}
+
+/**
+ * @brief  为单个士兵分配目标
+ * @param  RequestingSoldier 申请目标的士兵
+ * @return 分配的目标（可能为空）
+ * 功能说明: 以负载均衡为主，结合兵种与距离选择目标
+ * 详细流程: 校验申请者 -> 获取敌方主将 -> 收集存活敌兵 -> 统计负载 -> 选择目标
+ * 注意事项: 敌方无士兵时返回敌方主将
+ */
+AActor* AXBCharacterBase::AssignTargetToSoldier(AXBSoldierCharacter* RequestingSoldier)
+{
+    // 校验申请者
+    if (!RequestingSoldier)
+    {
+        return nullptr;
+    }
+
+    // 获取最近攻击的敌方主将
+    AXBCharacterBase* EnemyLeader = LastAttackedEnemyLeader.Get();
+    if (!EnemyLeader || EnemyLeader->IsDead())
+    {
+        return nullptr;
+    }
+
+    // 获取敌方士兵
+    const TArray<AXBSoldierCharacter*>& EnemySoldiers = EnemyLeader->GetSoldiers();
+    // 收集存活敌兵
+    TArray<AXBSoldierCharacter*> AliveEnemySoldiers;
+    AliveEnemySoldiers.Reserve(EnemySoldiers.Num());
+    for (AXBSoldierCharacter* EnemySoldier : EnemySoldiers)
+    {
+        // 过滤无效或死亡士兵
+        if (EnemySoldier && EnemySoldier->GetSoldierState() != EXBSoldierState::Dead)
+        {
+            AliveEnemySoldiers.Add(EnemySoldier);
+        }
+    }
+
+    // 无敌兵则返回敌方主将
+    if (AliveEnemySoldiers.Num() == 0)
+    {
+        return EnemyLeader;
+    }
+
+    // 统计己方士兵当前锁定情况
+    TMap<AXBSoldierCharacter*, int32> TargetCounts;
+    for (AXBSoldierCharacter* Soldier : Soldiers)
+    {
+        if (Soldier && Soldier != RequestingSoldier)
+        {
+            // 统计目标负载
+            if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(Soldier->CurrentAttackTarget.Get()))
+            {
+                TargetCounts.FindOrAdd(TargetSoldier)++;
+            }
+        }
+    }
+
+    // 选择负载最小、距离最优目标
+    AXBSoldierCharacter* BestTarget = nullptr;
+    int32 BestCount = MAX_int32;
+    float BestScore = -MAX_FLT;
+
+    for (AXBSoldierCharacter* EnemySoldier : AliveEnemySoldiers)
+    {
+        // 计算负载与距离评分
+        const int32 CurrentCount = TargetCounts.FindRef(EnemySoldier);
+        const float Distance = FVector::Dist2D(RequestingSoldier->GetActorLocation(), EnemySoldier->GetActorLocation());
+        const bool bIsArcher = (RequestingSoldier->GetSoldierType() == EXBSoldierType::Archer);
+        const float Score = bIsArcher ? Distance : -Distance;
+
+        // 优先选择负载更低的目标
+        if (CurrentCount < BestCount || (CurrentCount == BestCount && Score > BestScore))
+        {
+            BestTarget = EnemySoldier;
+            BestCount = CurrentCount;
+            BestScore = Score;
+        }
+    }
+
+    // 返回最终目标（保证类型一致）
+    AActor* AssignedTarget = BestTarget ? static_cast<AActor*>(BestTarget) : static_cast<AActor*>(EnemyLeader);
+    return AssignedTarget;
 }
 
 void AXBCharacterBase::RecallAllSoldiers()
