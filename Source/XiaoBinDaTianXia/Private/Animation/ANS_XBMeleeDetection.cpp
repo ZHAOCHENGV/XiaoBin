@@ -207,12 +207,14 @@ TArray<FHitResult> UANS_XBMeleeDetection::PerformCapsuleTrace(USkeletalMeshCompo
     }
 
     TArray<FHitResult> HitResults;
+    // 🔧 修复 - 使用StartLocation和EndLocation进行扫掠检测
+    // 说明：从起始插槽到结束插槽进行扫掠，检测武器挥动轨迹上的碰撞
     bool bHit = UKismetSystemLibrary::CapsuleTraceMultiForObjects(
         MeshComp->GetWorld(),
-        CapsuleCenter,
-        CapsuleCenter,
+        StartLocation,      // 起始点：武器起始插槽位置
+        EndLocation,        // 结束点：武器结束插槽位置
         ScaledRadius,
-        ScaledHalfHeight,
+        ScaledRadius,       // 扫掠检测时半高设为半径，形成球形检测
         AllObjectTypes,
         false,
         IgnoreActors,
@@ -229,15 +231,18 @@ TArray<FHitResult> UANS_XBMeleeDetection::PerformCapsuleTrace(USkeletalMeshCompo
         UWorld* World = MeshComp->GetWorld();
         if (World)
         {
-            DrawDebugSphere(World, StartLocation, 10.0f * OwnerScale, 8, FColor::Blue, false, DetectionConfig.DebugDrawDuration);
-            DrawDebugSphere(World, EndLocation, 10.0f * OwnerScale, 8, FColor::Cyan, false, DetectionConfig.DebugDrawDuration);
-            DrawDebugLine(World, StartLocation, EndLocation, FColor::Yellow, false, DetectionConfig.DebugDrawDuration, 0, 2.0f);
-            
-            DrawDebugCapsule(World, CapsuleCenter, ScaledHalfHeight, ScaledRadius, 
-                CapsuleRotation, bHit ? FColor::Red : FColor::Green, false, DetectionConfig.DebugDrawDuration);
+            // 🔧 修复 - 绘制扫掠检测轨迹
+            // 起始点球体
+            DrawDebugSphere(World, StartLocation, ScaledRadius, 12, FColor::Blue, false, DetectionConfig.DebugDrawDuration);
+            // 结束点球体
+            DrawDebugSphere(World, EndLocation, ScaledRadius, 12, FColor::Cyan, false, DetectionConfig.DebugDrawDuration);
+            // 扫掠轨迹线
+            DrawDebugLine(World, StartLocation, EndLocation, bHit ? FColor::Red : FColor::Green, false, DetectionConfig.DebugDrawDuration, 0, 3.0f);
 
-            DrawDebugString(World, CapsuleCenter + FVector(0, 0, ScaledHalfHeight + 20.0f),
-                FString::Printf(TEXT("缩放: %.2fx, 命中: %d"), OwnerScale, HitResults.Num()),
+            // 绘制调试文本
+            FVector TextLocation = (StartLocation + EndLocation) * 0.5f + FVector(0, 0, ScaledRadius + 20.0f);
+            DrawDebugString(World, TextLocation,
+                FString::Printf(TEXT("扫掠检测 缩放: %.2fx, 命中: %d"), OwnerScale, HitResults.Num()),
                 nullptr, FColor::White, DetectionConfig.DebugDrawDuration);
         }
     }
@@ -335,6 +340,13 @@ bool UANS_XBMeleeDetection::ShouldDamageTarget(AActor* OwnerActor, AActor* Targe
         // 🔧 修改 - 草丛隐身士兵不可被命中
         if (TargetSoldier->IsHiddenInBush())
         {
+            return false;
+        }
+        // 🔧 修复 - 未被招募的士兵（村民）不可被攻击
+        // 说明：没有主将的士兵视为中立村民，不参与战斗
+        if (!TargetSoldier->IsRecruited() || !TargetSoldier->GetLeaderCharacter())
+        {
+            UE_LOG(LogXBCombat, Verbose, TEXT("目标 %s 未被招募，不可攻击"), *TargetActor->GetName());
             return false;
         }
         TargetFaction = TargetSoldier->GetFaction();
