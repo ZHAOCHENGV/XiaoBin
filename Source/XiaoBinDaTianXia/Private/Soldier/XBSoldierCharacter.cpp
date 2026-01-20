@@ -1820,6 +1820,28 @@ void AXBSoldierCharacter::ReceiveAssignedTarget(AActor *AssignedTarget) {
     return;
   }
 
+  AActor *ExistingTarget = CurrentAttackTarget.Get();
+  if (ExistingTarget && ExistingTarget != AssignedTarget) {
+    bool bExistingTargetDead = false;
+    if (AXBSoldierCharacter *ExistingSoldier =
+            Cast<AXBSoldierCharacter>(ExistingTarget)) {
+      bExistingTargetDead =
+          ExistingSoldier->IsDead() ||
+          ExistingSoldier->GetSoldierState() == EXBSoldierState::Dead;
+    } else if (AXBCharacterBase *ExistingLeader =
+                   Cast<AXBCharacterBase>(ExistingTarget)) {
+      bExistingTargetDead = ExistingLeader->IsDead();
+    }
+
+    if (!bExistingTargetDead) {
+      UE_LOG(LogXBCombat, Verbose,
+             TEXT("士兵 %s 已锁定目标 %s，忽略新分配目标 %s"),
+             *GetName(), *ExistingTarget->GetName(),
+             AssignedTarget ? *AssignedTarget->GetName() : TEXT("无"));
+      return;
+    }
+  }
+
   // 解绑旧目标事件
   UnbindAssignedTargetEvents();
   // 更新当前目标
@@ -1863,6 +1885,10 @@ void AXBSoldierCharacter::RequestNewTarget() {
     return;
   }
 
+  if (CurrentAttackTarget.IsValid()) {
+    return;
+  }
+
   // 获取主将
   AXBCharacterBase *Leader = GetLeaderCharacter();
   if (!Leader) {
@@ -1891,10 +1917,28 @@ void AXBSoldierCharacter::RequestNewTarget() {
 
             // 向主将申请新目标
             AActor *NewTarget = Leader->AssignTargetToSoldier(this);
+            if (!NewTarget) {
+              ExitCombat();
+              return;
+            }
+
             // 接收新目标
             ReceiveAssignedTarget(NewTarget);
           }),
       Delay, false);
+}
+
+void AXBSoldierCharacter::HandleTargetBlocked() {
+  // 死亡/休眠/掉落态不处理
+  if (CurrentState == EXBSoldierState::Dead ||
+      CurrentState == EXBSoldierState::Dormant ||
+      CurrentState == EXBSoldierState::Dropping) {
+    return;
+  }
+
+  UnbindAssignedTargetEvents();
+  CurrentAttackTarget = nullptr;
+  RequestNewTarget();
 }
 
 bool AXBSoldierCharacter::PlayAttackMontage() {

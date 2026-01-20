@@ -335,6 +335,15 @@ public:
     UFUNCTION(BlueprintCallable, Category = "XB|Soldier|Combat", meta = (DisplayName = "申请新目标"))
     void RequestNewTarget();
 
+    /**
+     * @brief 目标被阻挡无法到达时触发重新申请
+     * @return 无
+     * 功能说明: 清理当前目标并触发重新分配
+     * 详细流程: 解绑旧目标 -> 清空目标 -> 申请新目标
+     * 注意事项: 仅用于“卡住/不可达”场景
+     */
+    void HandleTargetBlocked();
+
 public:
     UFUNCTION(BlueprintPure, Category = "XB|Soldier", meta = (DisplayName = "获取当前血量"))
     float GetCurrentHealth() const { return CurrentHealth; }

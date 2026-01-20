@@ -150,20 +150,14 @@ void UBTService_XBUpdateSoldierState::TickNode(UBehaviorTreeComponent& OwnerComp
         }
     }
 
-    bool bTargetValid = false;
+    bool bTargetValid = (CurrentTarget != nullptr);
     bool bTargetBecameInvalid = false;
     
-    // ✨ 修改 - 目标为友军时也视为无效
+    // ✨ 修改 - 仅在目标死亡/友军时清理目标，避免重复分配
     if (bTargetIsDead || bTargetIsFriendly)
     {
         bTargetValid = false;
         bTargetBecameInvalid = true;
-    }
-    else if (bCheckTargetValidity && CurrentTarget && BehaviorInterface)
-    {
-        // 只有没死的时候才跑常规校验 (距离/视野等)
-        bTargetValid = BehaviorInterface->IsTargetValid(CurrentTarget);
-        if (!bTargetValid) bTargetBecameInvalid = true;
     }
     
     // 处理目标失效 (死亡或超出范围)
@@ -317,8 +311,8 @@ SkipRetreatLogic:
     
     // ==================== 被动申请目标 ====================
 
-    // 仅在战斗中或目标刚失效时触发申请，不主动索敌
-    if (bAutoFindTarget && !CurrentTarget && (bInCombat || bTargetBecameInvalid))
+    // 仅在目标死亡/友军失效时触发申请，不主动索敌
+    if (bAutoFindTarget && bTargetBecameInvalid)
     {
         Soldier->RequestNewTarget();
     }

@@ -77,7 +77,7 @@ protected:
     // 🔧 新增 - 卡住持续时间阈值
     /** @brief 卡住持续时间阈值 */
     UPROPERTY(EditAnywhere, Category = "配置", meta = (DisplayName = "卡住判定时间", ClampMin = "0.1"))
-    float StuckTimeThreshold = 0.6f;
+    float StuckTimeThreshold = 0.5f;
 
 private:
     // 🔧 修改 - 简单注释: 更新计时器
