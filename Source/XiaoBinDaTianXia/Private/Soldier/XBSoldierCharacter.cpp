@@ -2011,6 +2011,8 @@ void AXBSoldierCharacter::ReturnToFormation() {
   UnbindAssignedTargetEvents();
 
   if (FollowComponent) {
+    // 🔧 修复 - 通过回归编队结束战斗时，确保跟随组件重新启用
+    FollowComponent->SetComponentTickEnabled(true);
     FollowComponent->ExitCombatMode();
   }
 

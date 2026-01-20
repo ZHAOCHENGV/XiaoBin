@@ -1362,7 +1362,7 @@ void AXBCharacterBase::OnAttackHit(AActor* HitTarget)
  * @brief  为麾下士兵分配敌方目标
  * @param  EnemyLeader 敌方主将
  * @return 无
- * 功能说明: 按兵种与距离分配目标，并在无敌兵时改为攻击敌方主将
+ * 功能说明: 按兵种与距离分配目标，仅从敌方主将的士兵数组中挑选目标
  * 详细流程: 校验主将 -> 收集存活士兵 -> 收集存活敌兵 -> 计算负载与距离 -> 分配目标并广播
  * 注意事项: 仅分配存活目标，避免无效引用
  */
@@ -1407,16 +1407,9 @@ void AXBCharacterBase::AssignTargetsToSoldiers(AXBCharacterBase* EnemyLeader)
         }
     }
 
-    // 若敌方无士兵，改为攻击敌方主将
+    // 若敌方无存活士兵则不分配目标
     if (AliveEnemySoldiers.Num() == 0)
     {
-        for (AXBSoldierCharacter* Soldier : AliveSoldiers)
-        {
-            // 分配敌方主将为目标
-            Soldier->ReceiveAssignedTarget(EnemyLeader);
-            // 广播目标分配委托
-            OnAssignTargetDelegate.Broadcast(Soldier, EnemyLeader);
-        }
         return;
     }
 
@@ -1487,7 +1480,7 @@ void AXBCharacterBase::AssignTargetsToSoldiers(AXBCharacterBase* EnemyLeader)
  * @return 分配的目标（可能为空）
  * 功能说明: 以负载均衡为主，结合兵种与距离选择目标
  * 详细流程: 校验申请者 -> 获取敌方主将 -> 收集存活敌兵 -> 统计负载 -> 选择目标
- * 注意事项: 敌方无士兵时返回敌方主将
+ * 注意事项: 仅从敌方主将的士兵数组中选择目标
  */
 AActor* AXBCharacterBase::AssignTargetToSoldier(AXBSoldierCharacter* RequestingSoldier)
 {
@@ -1497,7 +1490,13 @@ AActor* AXBCharacterBase::AssignTargetToSoldier(AXBSoldierCharacter* RequestingS
         return nullptr;
     }
 
-    // 获取最近攻击的敌方主将
+    // 仅允许向自己的主将申请目标
+    if (RequestingSoldier->GetLeaderCharacter() != this)
+    {
+        return nullptr;
+    }
+
+    // 获取当前交战的敌方主将
     AXBCharacterBase* EnemyLeader = LastAttackedEnemyLeader.Get();
     if (!EnemyLeader || EnemyLeader->IsDead())
     {
@@ -1518,10 +1517,10 @@ AActor* AXBCharacterBase::AssignTargetToSoldier(AXBSoldierCharacter* RequestingS
         }
     }
 
-    // 无敌兵则返回敌方主将
+    // 无存活敌兵则不分配目标
     if (AliveEnemySoldiers.Num() == 0)
     {
-        return EnemyLeader;
+        return nullptr;
     }
 
     // 统计己方士兵当前锁定情况
@@ -1560,9 +1559,8 @@ AActor* AXBCharacterBase::AssignTargetToSoldier(AXBSoldierCharacter* RequestingS
         }
     }
 
-    // 返回最终目标（保证类型一致）
-    AActor* AssignedTarget = BestTarget ? static_cast<AActor*>(BestTarget) : static_cast<AActor*>(EnemyLeader);
-    return AssignedTarget;
+    // 返回最终目标（仅允许敌方士兵）
+    return BestTarget ? static_cast<AActor*>(BestTarget) : nullptr;
 }
 
 void AXBCharacterBase::RecallAllSoldiers()
