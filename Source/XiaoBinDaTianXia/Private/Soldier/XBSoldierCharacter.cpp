@@ -2000,10 +2000,15 @@ void AXBSoldierCharacter::ReturnToFormation() {
   TargetBlockedTime = 0.0f;
 
   if (FollowComponent) {
+    FollowComponent->SetComponentTickEnabled(true);
     FollowComponent->ExitCombatMode();
   }
 
-  if (AAIController *AICtrl = Cast<AAIController>(GetController())) {
+  if (AXBSoldierAIController *SoldierAI =
+          Cast<AXBSoldierAIController>(GetController())) {
+    SoldierAI->StopBehaviorTreeLogic();
+    SoldierAI->StopMovement();
+  } else if (AAIController *AICtrl = Cast<AAIController>(GetController())) {
     AICtrl->StopMovement();
   }
 
