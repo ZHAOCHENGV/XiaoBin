@@ -37,15 +37,19 @@ public:
 
   /**
    * 播放 3D 音效（在指定位置）
+   * @param WorldContextObject 世界上下文对象（传入调用者的 GetWorld()）
    * @param SoundTag 音效的 Gameplay Tag
    * @param Location 播放位置
    * @param VolumeMultiplier 额外的音量倍率（可选）
    * @param PitchMultiplier 额外的音调倍率（可选）
    * @return 音频组件（可用于控制音效）
+   * @note 🔧 修复 - 必须传入调用者的 World，避免发射物销毁时音效被中断
    */
   UFUNCTION(BlueprintCallable, Category = "Sound",
-            meta = (DisplayName = "播放3D音效（位置）"))
-  UAudioComponent *PlaySoundAtLocation(FGameplayTag SoundTag, FVector Location,
+            meta = (DisplayName = "播放3D音效（位置）",
+                    WorldContext = "WorldContextObject"))
+  UAudioComponent *PlaySoundAtLocation(const UObject *WorldContextObject,
+                                       FGameplayTag SoundTag, FVector Location,
                                        float VolumeMultiplier = 1.0f,
                                        float PitchMultiplier = 1.0f);
 

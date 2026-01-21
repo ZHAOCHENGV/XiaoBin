@@ -109,7 +109,8 @@ void AXBProjectile::BeginPlay() {
     if (UGameInstance *GameInstance = GetGameInstance()) {
       if (UXBSoundManagerSubsystem *SoundMgr =
               GameInstance->GetSubsystem<UXBSoundManagerSubsystem>()) {
-        SoundMgr->PlaySoundAtLocation(SpawnSoundTag, GetActorLocation());
+        SoundMgr->PlaySoundAtLocation(GetWorld(), SpawnSoundTag,
+                                      GetActorLocation());
       }
     }
   }
@@ -251,63 +252,31 @@ void AXBProjectile::OnProjectileOverlap(
     return;
   }
 
-  // 🔧 新增 - 友军检查（同阵营、同主将士兵）
-  AActor *Source = SourceActor.Get();
-  if (Source) {
-    // 获取来源阵营
-    EXBFaction SourceFaction = EXBFaction::Neutral;
-    AXBCharacterBase *SourceLeader = nullptr;
-
-    if (AXBSoldierCharacter *SourceSoldier =
-            Cast<AXBSoldierCharacter>(Source)) {
-      SourceFaction = SourceSoldier->GetFaction();
-      // TODO: 获取士兵的主将（需要士兵类中有主将引用）
-    } else if (AXBCharacterBase *Leader = Cast<AXBCharacterBase>(Source)) {
-      SourceFaction = Leader->GetFaction();
-      SourceLeader = Leader;
+  // 🔧 修复 - 如果 SourceActor 未设置，尝试从 Owner/Instigator 获取
+  AActor *EffectiveSource = SourceActor.Get();
+  if (!EffectiveSource) {
+    if (GetOwner()) {
+      EffectiveSource = GetOwner();
+      SourceActor = EffectiveSource; // 缓存以供后续使用
+      UE_LOG(LogXBCombat, Verbose,
+             TEXT("投射物 %s: SourceActor 未设置，使用 Owner: %s"), *GetName(),
+             *EffectiveSource->GetName());
+    } else if (GetInstigator()) {
+      EffectiveSource = GetInstigator();
+      SourceActor = EffectiveSource;
+      UE_LOG(LogXBCombat, Verbose,
+             TEXT("投射物 %s: SourceActor 未设置，使用 Instigator: %s"),
+             *GetName(), *EffectiveSource->GetName());
     }
+  }
 
-    // 获取目标阵营
-    EXBFaction TargetFaction = EXBFaction::Neutral;
-
-    if (AXBSoldierCharacter *TargetSoldier =
-            Cast<AXBSoldierCharacter>(OtherActor)) {
-      TargetFaction = TargetSoldier->GetFaction();
-
-      // 🔧 新增 - 休眠无敌士兵检查
-      if (TargetSoldier->bInvulnerableWhenDormant &&
-          !TargetSoldier->IsRecruited() &&
-          TargetSoldier->GetSoldierState() == EXBSoldierState::Dormant) {
-        UE_LOG(LogXBCombat, Verbose, TEXT("投射物穿透休眠无敌士兵: %s -> %s"),
-               *Source->GetName(), *OtherActor->GetName());
-        return; // 休眠无敌，直接忽略
-      }
-
-      // 同阵营友军检查（除了各自为英）
-      if (SourceFaction != EXBFaction::Neutral &&
-          TargetFaction != EXBFaction::Neutral &&
-          SourceFaction == TargetFaction) {
-        UE_LOG(LogXBCombat, Verbose,
-               TEXT("投射物穿透友军士兵: %s -> %s (同阵营)"),
-               *Source->GetName(), *OtherActor->GetName());
-        return; // 友军，直接忽略
-      }
-
-      // TODO: 同主将士兵检查（需要士兵类中有主将引用）
-    } else if (AXBCharacterBase *TargetLeader =
-                   Cast<AXBCharacterBase>(OtherActor)) {
-      TargetFaction = TargetLeader->GetFaction();
-
-      // 同阵营友军检查（除了各自为英）
-      if (SourceFaction != EXBFaction::Neutral &&
-          TargetFaction != EXBFaction::Neutral &&
-          SourceFaction == TargetFaction) {
-        UE_LOG(LogXBCombat, Verbose,
-               TEXT("投射物穿透友军主将: %s -> %s (同阵营)"),
-               *Source->GetName(), *OtherActor->GetName());
-        return; // 友军，直接忽略
-      }
-    }
+  // 🔧 修改 - 统一友军判定（包含同阵营、同主将、休眠无敌士兵检查）
+  if (UXBBlueprintFunctionLibrary::IsFriendlyTarget(EffectiveSource,
+                                                    OtherActor)) {
+    UE_LOG(LogXBCombat, Verbose, TEXT("投射物穿透友军或无敌单位: %s -> %s"),
+           EffectiveSource ? *EffectiveSource->GetName() : TEXT("None"),
+           *OtherActor->GetName());
+    return; // 友军或无敌士兵，穿透
   }
 
   FVector HitLocation = GetActorLocation();
@@ -329,11 +298,13 @@ void AXBProjectile::OnProjectileOverlap(
         if (UGameInstance *GameInstance = GetGameInstance()) {
           if (UXBSoundManagerSubsystem *SoundMgr =
                   GameInstance->GetSubsystem<UXBSoundManagerSubsystem>()) {
-            SoundMgr->PlaySoundAtLocation(HitSoundTag, HitLocation);
+            SoundMgr->PlaySoundAtLocation(GetWorld(), HitSoundTag, HitLocation);
           }
         }
       } else if (HitSound) {
-        UGameplayStatics::PlaySoundAtLocation(this, HitSound, HitLocation);
+        // 🔧 修复 - 使用 GetWorld() 而不是 this，避免发射物销毁时音效被中断
+        UGameplayStatics::PlaySoundAtLocation(GetWorld(), HitSound,
+                                              HitLocation);
       }
 
       if (HitEffect) {
@@ -546,7 +517,9 @@ void AXBProjectile::OnProjectileHit(UPrimitiveComponent *HitComponent,
 
   // 播放命中音效
   if (HitSound) {
-    UGameplayStatics::PlaySoundAtLocation(this, HitSound, Hit.ImpactPoint);
+    // 🔧 修复 - 使用 GetWorld() 而不是 this，避免发射物销毁时音效被中断
+    UGameplayStatics::PlaySoundAtLocation(GetWorld(), HitSound,
+                                          Hit.ImpactPoint);
   }
 
   // 播放命中特效
@@ -600,11 +573,13 @@ void AXBProjectile::PerformExplosionDamage(const FVector &ExplosionLocation) {
     if (UGameInstance *GameInstance = GetGameInstance()) {
       if (UXBSoundManagerSubsystem *SoundMgr =
               GameInstance->GetSubsystem<UXBSoundManagerSubsystem>()) {
-        SoundMgr->PlaySoundAtLocation(ExplosionSoundTag, ExplosionLocation);
+        SoundMgr->PlaySoundAtLocation(GetWorld(), ExplosionSoundTag,
+                                      ExplosionLocation);
       }
     }
   } else if (ExplosionSound) {
-    UGameplayStatics::PlaySoundAtLocation(this, ExplosionSound,
+    // 🔧 修复 - 使用 GetWorld() 而不是 this，避免发射物销毁时音效被中断
+    UGameplayStatics::PlaySoundAtLocation(GetWorld(), ExplosionSound,
                                           ExplosionLocation);
   }
 

@@ -112,8 +112,8 @@ UAudioComponent *UXBSoundManagerSubsystem::PlaySound2D(FGameplayTag SoundTag,
 }
 
 UAudioComponent *UXBSoundManagerSubsystem::PlaySoundAtLocation(
-    FGameplayTag SoundTag, FVector Location, float VolumeMultiplier,
-    float PitchMultiplier) {
+    const UObject *WorldContextObject, FGameplayTag SoundTag, FVector Location,
+    float VolumeMultiplier, float PitchMultiplier) {
   if (!SoundDatabase) {
     UE_LOG(LogXBSound, Error,
            TEXT("[XBSoundManager] PlaySoundAtLocation 失败：音效数据库未设置"));
@@ -136,10 +136,13 @@ UAudioComponent *UXBSoundManagerSubsystem::PlaySoundAtLocation(
   const float FinalVolume = Entry.Volume * VolumeMultiplier;
   const float FinalPitch = Entry.Pitch * PitchMultiplier;
 
-  // 🔧 修改 - 使用官方
-  // UGameplayStatics::PlaySoundAtLocation（与官方行为完全一致）
+  // 🔧 修复 - 使用传入的 WorldContextObject 获取 World
+  // 这样音效不会因为调用者（如发射物）销毁而中断
+  UWorld *World =
+      WorldContextObject ? WorldContextObject->GetWorld() : GetWorld();
+
   UGameplayStatics::PlaySoundAtLocation(
-      GetWorld(), Entry.Sound, Location, FinalVolume, FinalPitch,
+      World, Entry.Sound, Location, FinalVolume, FinalPitch,
       0.0f, // StartTime
       Entry.bEnableAttenuation ? Entry.Attenuation : nullptr, Entry.Concurrency,
       nullptr // InitialParams

@@ -533,6 +533,15 @@ public:
             meta = (DisplayName = "申请目标延迟范围"))
   FVector2D TargetRequestDelayRange = FVector2D(0.3f, 1.0f);
 
+ // 🔧 新增 - 休眠无敌状态控制
+  /**
+   * @brief 休眠状态下是否无敌（未招募的休眠士兵不受伤害）
+   * @note 用于保护未被招募的休眠态士兵，防止被误伤
+   */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "状态",
+            meta = (DisplayName = "休眠态无敌"))
+  bool bInvulnerableWhenDormant = true;
+
   // ==================== AI系统友元 ====================
 
   friend class AXBSoldierAIController;
@@ -783,14 +792,6 @@ protected:
             meta = (DisplayName = "是否已死亡"))
   bool bIsDead = false;
 
-  // 🔧 新增 - 休眠无敌状态控制
-  /**
-   * @brief 休眠状态下是否无敌（未招募的休眠士兵不受伤害）
-   * @note 用于保护未被招募的休眠态士兵，防止被误伤
-   */
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "状态",
-            meta = (DisplayName = "休眠态无敌"))
-  bool bInvulnerableWhenDormant = true;
 
   // ==================== 草丛隐身 ====================
 
