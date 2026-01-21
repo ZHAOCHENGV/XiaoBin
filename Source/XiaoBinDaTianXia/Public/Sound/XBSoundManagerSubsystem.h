@@ -14,7 +14,7 @@ class UAudioComponent;
  * 音效管理子系统（简化版原型）
  * 提供统一的音效播放接口
  */
-UCLASS(Config = Game, meta = (DisplayName = "小兵系统音效管理器"))
+UCLASS(Config = Game, meta = (DisplayName = "小兵音效管理器"))
 class XIAOBINDATIANXIA_API UXBSoundManagerSubsystem
     : public UGameInstanceSubsystem {
   GENERATED_BODY()
