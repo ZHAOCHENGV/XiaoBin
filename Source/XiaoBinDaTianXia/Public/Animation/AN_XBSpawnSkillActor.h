@@ -113,6 +113,12 @@ struct XIAOBINDATIANXIA_API FXBSkillSpawnConfig {
                     EditCondition = "SpawnCount > 1"))
   float SpreadAngle = 45.0f;
 
+  /** 生成距离（扇形生成时，距离角色中心的距离） */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "多生成配置",
+            meta = (DisplayName = "生成距离", ClampMin = "0.0",
+                    EditCondition = "SpawnCount > 1"))
+  float SpreadRadius = 100.0f;
+
   /** GAS - 触发的 Gameplay Ability 类（可选） */
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GAS配置",
             meta = (DisplayName = "触发的GA"))

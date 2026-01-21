@@ -94,22 +94,44 @@ void UAN_XBSpawnSkillActor::Notify(
   // 如果只生成1个，则在正前方；多个时在Yaw角度范围内均匀分布
   const float HalfSpreadAngle = SpawnConfig.SpreadAngle * 0.5f;
   
+  // 获取角色前方向量和右方向量（用于扇形位置计算）
+  const FVector OwnerForward = OwnerActor->GetActorForwardVector();
+  const FVector OwnerRight = OwnerActor->GetActorRightVector();
+  const FVector OwnerLocation = OwnerActor->GetActorLocation();
+  
   // 循环生成多个 Actor
   for (int32 i = 0; i < ActualSpawnCount; ++i) {
-    // 所有Actor在同一基础位置生成
+    // 初始化为基础位置和旋转
     FVector FinalSpawnLocation = BaseSpawnLocation;
     FRotator FinalSpawnRotation = BaseSpawnRotation;
+    FVector SpawnDirection = BaseSpawnRotation.Vector();
     
-    // 如果生成数量大于1，根据角度计算旋转偏移
+    // 如果生成数量大于1，计算扇形分布的位置和旋转
     if (ActualSpawnCount > 1) {
       // 计算当前索引对应的角度偏移
       // 角度从 -HalfSpreadAngle 到 +HalfSpreadAngle 均匀分布
       float AngleRatio = static_cast<float>(i) / static_cast<float>(ActualSpawnCount - 1);
       const float CurrentAngle = -HalfSpreadAngle + (SpawnConfig.SpreadAngle * AngleRatio);
       
-      // 在基础旋转上叠加 Yaw 角度偏移
-      FinalSpawnRotation = BaseSpawnRotation;
-      FinalSpawnRotation.Yaw += CurrentAngle;
+      // 将角度转换为弧度
+      const float AngleRad = FMath::DegreesToRadians(CurrentAngle);
+      
+      // 计算偏移方向（基于角色前方和右方的2D旋转）
+      // 新方向 = Forward * cos(angle) + Right * sin(angle)
+      const FVector OffsetDirection = (OwnerForward * FMath::Cos(AngleRad) + OwnerRight * FMath::Sin(AngleRad)).GetSafeNormal();
+      
+      // 计算扇形位置：从角色位置沿偏移方向移动 SpreadRadius 距离
+      const float ScaledRadius = SpawnConfig.SpreadRadius * OwnerScaleFactor;
+      FinalSpawnLocation = OwnerLocation + OffsetDirection * ScaledRadius;
+      
+      // 保持Z轴高度（使用基础生成位置的高度）
+      FinalSpawnLocation.Z = BaseSpawnLocation.Z;
+      
+      // 旋转朝向偏移方向
+      FinalSpawnRotation = OffsetDirection.Rotation();
+      
+      // 发射方向与偏移方向一致
+      SpawnDirection = OffsetDirection;
     }
 
     // 生成Actor
@@ -138,12 +160,16 @@ void UAN_XBSpawnSkillActor::Notify(
              *SpawnedActor->GetName(), OwnerScaleFactor);
     }
 
-    // 计算该Actor的发射方向
-    FVector SpawnDirection = CalculateSpawnDirection(OwnerActor, FinalSpawnLocation);
-    
-    // 如果是多生成且不使用目标方向，则使用偏移方向作为发射方向
-    if (ActualSpawnCount > 1 && !SpawnConfig.bUseTargetDirection) {
-      SpawnDirection = FinalSpawnRotation.Vector();
+    // 如果使用目标方向且只有单个生成，则重新计算发射方向
+    if (ActualSpawnCount == 1 || SpawnConfig.bUseTargetDirection) {
+      FVector TargetBasedDirection = CalculateSpawnDirection(OwnerActor, FinalSpawnLocation);
+      if (ActualSpawnCount == 1) {
+        SpawnDirection = TargetBasedDirection;
+      }
+      // 多生成时如果启用目标方向，也使用目标方向
+      else if (SpawnConfig.bUseTargetDirection && Target) {
+        SpawnDirection = TargetBasedDirection;
+      }
     }
 
     // 如果Actor实现了技能接口，则初始化
@@ -191,19 +217,33 @@ void UAN_XBSpawnSkillActor::Notify(
              *SpawnedActor->GetName());
     }
 
-    // 调试绘制
+    // 调试绘制 - 位置和旋转同步显示
     if (SpawnConfig.bEnableDebugDraw) {
-      // 使用不同颜色区分不同索引
+      // 使用不同颜色区分不同索引（红到绿渐变）
       const FColor SphereColor = FColor::MakeRedToGreenColorFromScalar(
           static_cast<float>(i) / FMath::Max(1.0f, static_cast<float>(ActualSpawnCount - 1)));
       
+      // 绘制生成位置球体
       DrawDebugSphere(World, FinalSpawnLocation, 20.0f, 12, SphereColor, false,
                       SpawnConfig.DebugDrawDuration);
+      
+      // 绘制发射方向箭头（与Actor旋转一致）
       DrawDebugDirectionalArrow(
-          World, FinalSpawnLocation, FinalSpawnLocation + SpawnDirection * 100.0f, 20.0f,
-          FColor::Red, false, SpawnConfig.DebugDrawDuration, 0, 2.0f);
-      DrawDebugString(World, FinalSpawnLocation + FVector(0, 0, 30.0f),
-                      FString::Printf(TEXT("索引: %d, 伤害: %.1f"), i, Damage), nullptr,
+          World, FinalSpawnLocation, FinalSpawnLocation + SpawnDirection * 150.0f, 25.0f,
+          FColor::Cyan, false, SpawnConfig.DebugDrawDuration, 0, 3.0f);
+      
+      // 绘制从角色中心到生成点的连线（显示扇形结构）
+      if (ActualSpawnCount > 1) {
+        DrawDebugLine(World, OwnerLocation, FinalSpawnLocation, FColor::Yellow, 
+                      false, SpawnConfig.DebugDrawDuration, 0, 1.5f);
+      }
+      
+      // 显示索引和角度信息
+      const float DisplayAngle = (ActualSpawnCount > 1) 
+          ? (-HalfSpreadAngle + SpawnConfig.SpreadAngle * (static_cast<float>(i) / static_cast<float>(ActualSpawnCount - 1)))
+          : 0.0f;
+      DrawDebugString(World, FinalSpawnLocation + FVector(0, 0, 40.0f),
+                      FString::Printf(TEXT("[%d] 角度:%.1f°"), i, DisplayAngle), nullptr,
                       FColor::White, SpawnConfig.DebugDrawDuration);
     }
   }
