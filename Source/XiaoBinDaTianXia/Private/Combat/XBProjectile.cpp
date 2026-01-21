@@ -222,7 +222,11 @@ void AXBProjectile::OnProjectileOverlap(UPrimitiveComponent* OverlappedComponent
     // 命中敌方且造成伤害时播放效果
     if (bDidApplyDamage)
     {
-        const FVector HitLocation = SweepResult.ImpactPoint.IsZero() ? GetActorLocation() : SweepResult.ImpactPoint;
+        FVector HitLocation = GetActorLocation();
+        if (!SweepResult.ImpactPoint.IsZero())
+        {
+            HitLocation = FVector(SweepResult.ImpactPoint);
+        }
         
         // 播放命中音效
         if (HitSound)

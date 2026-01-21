@@ -213,13 +213,16 @@ void UAN_XBSpawnSkillActor::Notify(
         TargetLocation = Target->GetActorLocation();
       }
 
+      // 根据投射物的发射模式判断是否使用抛物线
+      const bool bUseArcMode = (Projectile->LaunchMode == EXBProjectileLaunchMode::Arc);
+
       // 直接调用投射物的初始化方法
       Projectile->InitializeProjectileWithTarget(
           OwnerActor,              // 来源Actor（士兵或主将）
           Damage,                  // 伤害值
           SpawnDirection,          // 发射方向
           Projectile->LinearSpeed, // 使用投射物自身配置的速度
-          Projectile->bUseArc,     // 使用投射物自身配置的抛射模式
+          bUseArcMode,             // 使用投射物自身配置的发射模式
           TargetLocation           // 目标位置
       );
 

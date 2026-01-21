@@ -132,13 +132,12 @@ void UAN_XBSpawnAbility::Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceB
 
                 if (Projectile)
                 {
-                    // 🔧 修改 - 先写入配置，再初始化投射物运动参数
-                    // 🔧 修改 - 投射物伤害使用弓手基础伤害，避免额外数值配置
+                    // 先写入配置，再初始化投射物运动参数
                     Projectile->Damage = Soldier->GetBaseDamage();
                     Projectile->LinearSpeed = ProjectileConfig.Speed;
-                    Projectile->ArcLaunchSpeed = ProjectileConfig.ArcLaunchSpeed;
+                    Projectile->ArcSpeed = ProjectileConfig.ArcLaunchSpeed;
                     Projectile->ArcGravityScale = ProjectileConfig.ArcGravityScale;
-                    Projectile->bUseArc = ProjectileConfig.bUseArc;
+                    Projectile->LaunchMode = ProjectileConfig.bUseArc ? EXBProjectileLaunchMode::Arc : EXBProjectileLaunchMode::Linear;
                     Projectile->LifeSeconds = ProjectileConfig.LifeSeconds;
                     Projectile->DamageEffectClass = ProjectileConfig.DamageEffectClass;
 
