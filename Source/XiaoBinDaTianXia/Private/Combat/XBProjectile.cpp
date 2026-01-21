@@ -24,6 +24,7 @@
 #include "Utils/XBLogCategories.h"
 #include "XBCollisionChannels.h"
 #include "Components/BoxComponent.h"
+#include "NiagaraComponent.h"
 
 AXBProjectile::AXBProjectile()
 {
@@ -47,6 +48,11 @@ AXBProjectile::AXBProjectile()
     BoxCollision->SetupAttachment(MeshComponent);
     BoxCollision->SetVisibility(false);
 
+    // 创建拖尾 Niagara 组件
+    TrailNiagaraComponent = CreateDefaultSubobject<UNiagaraComponent>(TEXT("TrailNiagaraComponent"));
+    TrailNiagaraComponent->SetupAttachment(MeshComponent);
+    TrailNiagaraComponent->bAutoActivate = false;
+
     ProjectileMovementComponent = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileMovementComponent"));
     ProjectileMovementComponent->InitialSpeed = LinearSpeed;
     ProjectileMovementComponent->MaxSpeed = LinearSpeed;
@@ -63,14 +69,22 @@ void AXBProjectile::BeginPlay()
     // 根据碰撞体类型更新组件状态
     UpdateCollisionType();
 
-    // 绑定碰撞事件
+    // 绑定碰撞事件（Overlap 用于角色命中）
     if (CapsuleCollision)
     {
         CapsuleCollision->OnComponentBeginOverlap.AddDynamic(this, &AXBProjectile::OnProjectileOverlap);
+        if (bHitWorldStatic)
+        {
+            CapsuleCollision->OnComponentHit.AddDynamic(this, &AXBProjectile::OnProjectileHit);
+        }
     }
     if (BoxCollision)
     {
         BoxCollision->OnComponentBeginOverlap.AddDynamic(this, &AXBProjectile::OnProjectileOverlap);
+        if (bHitWorldStatic)
+        {
+            BoxCollision->OnComponentHit.AddDynamic(this, &AXBProjectile::OnProjectileHit);
+        }
     }
 
     // 应用网格缩放
@@ -82,6 +96,12 @@ void AXBProjectile::BeginPlay()
         {
             UE_LOG(LogXBCombat, Warning, TEXT("投射物 %s 未配置StaticMesh，可能导致不可见"), *GetName());
         }
+    }
+
+    // 启动拖尾特效（如果组件上已配置 Niagara 系统）
+    if (TrailNiagaraComponent && TrailNiagaraComponent->GetAsset())
+    {
+        TrailNiagaraComponent->Activate(true);
     }
 }
 
@@ -263,6 +283,9 @@ void AXBProjectile::OnProjectileOverlap(UPrimitiveComponent* OverlappedComponent
     // 仅命中敌方且造成伤害时才允许销毁/回收
     if (bDestroyOnHit)
     {
+        // 停用拖尾特效
+        DeactivateTrailEffect();
+
         if (bUsePooling)
         {
             if (UWorld* World = GetWorld())
@@ -447,3 +470,57 @@ void AXBProjectile::PostEditChangeProperty(FPropertyChangedEvent& PropertyChange
     }
 }
 #endif
+
+void AXBProjectile::DeactivateTrailEffect()
+{
+    if (TrailNiagaraComponent && TrailNiagaraComponent->IsActive())
+    {
+        TrailNiagaraComponent->Deactivate();
+    }
+}
+
+void AXBProjectile::OnProjectileHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, 
+    UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
+{
+    // 忽略自身和来源
+    if (OtherActor == this || OtherActor == SourceActor.Get())
+    {
+        return;
+    }
+
+    // 播放命中音效
+    if (HitSound)
+    {
+        UGameplayStatics::PlaySoundAtLocation(this, HitSound, Hit.ImpactPoint);
+    }
+
+    // 播放命中特效
+    if (HitEffect)
+    {
+        UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+            this, HitEffect, Hit.ImpactPoint,
+            Hit.ImpactNormal.Rotation(), FVector(HitEffectScale),
+            true, true, ENCPoolMethod::None, true);
+    }
+
+    UE_LOG(LogXBCombat, Verbose, TEXT("投射物 %s 命中场景: %s"), *GetName(), *OtherActor->GetName());
+
+    if (bDestroyOnHit)
+    {
+        DeactivateTrailEffect();
+
+        if (bUsePooling)
+        {
+            if (UWorld* World = GetWorld())
+            {
+                if (UXBProjectilePoolSubsystem* PoolSubsystem = World->GetSubsystem<UXBProjectilePoolSubsystem>())
+                {
+                    PoolSubsystem->ReleaseProjectile(this);
+                    return;
+                }
+            }
+        }
+
+        Destroy();
+    }
+}

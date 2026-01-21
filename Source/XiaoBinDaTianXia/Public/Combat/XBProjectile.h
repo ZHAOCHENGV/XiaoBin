@@ -194,6 +194,10 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置|命中效果", meta = (DisplayName = "命中特效缩放", ClampMin = "0.1"))
     float HitEffectScale = 1.0f;
 
+    /** 是否对场景(地面/墙壁)产生命中 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置|命中效果", meta = (DisplayName = "对场景命中"))
+    bool bHitWorldStatic = false;
+
 protected:
     virtual void BeginPlay() override;
 
@@ -220,9 +224,21 @@ private:
     UPROPERTY(VisibleAnywhere, Category = "组件", meta = (DisplayName = "投射物运动"))
     TObjectPtr<UProjectileMovementComponent> ProjectileMovementComponent;
 
+    /** 拖尾 Niagara 组件（直接在组件上配置 Niagara 系统） */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "拖尾特效组件"))
+    TObjectPtr<UNiagaraComponent> TrailNiagaraComponent;
+
     TWeakObjectPtr<AActor> SourceActor;
 
     FGameplayTag DamageTag;
 
     FTimerHandle LifeTimerHandle;
+
+    /** 停用拖尾特效 */
+    void DeactivateTrailEffect();
+
+    /** 处理场景碰撞 */
+    UFUNCTION()
+    void OnProjectileHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, 
+        UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 };
