@@ -4,719 +4,694 @@
 /**
  * @file XBProjectile.cpp
  * @brief 远程投射物基类实现 - 支持直线与抛射模式
- * 
+ *
  * @note ✨ 新增文件
  */
 
 #include "Combat/XBProjectile.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
+#include "Character/XBCharacterBase.h"
+#include "Combat/XBProjectilePoolSubsystem.h"
+#include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "DrawDebugHelpers.h"
+#include "Engine/OverlapResult.h"
+#include "GAS/XBAttributeSet.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "NiagaraComponent.h"
 #include "NiagaraFunctionLibrary.h"
-#include "Combat/XBProjectilePoolSubsystem.h"
-#include "GAS/XBAttributeSet.h"
 #include "Soldier/XBSoldierCharacter.h"
-#include "Character/XBCharacterBase.h"
+#include "Sound/XBSoundManagerSubsystem.h"
 #include "Utils/XBBlueprintFunctionLibrary.h"
 #include "Utils/XBLogCategories.h"
-#include "Components/BoxComponent.h"
-#include "NiagaraComponent.h"
-#include "Engine/OverlapResult.h"
-#include "DrawDebugHelpers.h"
 
-AXBProjectile::AXBProjectile()
-{
-    PrimaryActorTick.bCanEverTick = false;
 
-    // 以静态网格作为根组件，便于朝向与视觉对齐
-    MeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MeshComponent"));
-    MeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-    RootComponent = MeshComponent;
+AXBProjectile::AXBProjectile() {
+  PrimaryActorTick.bCanEverTick = false;
 
-    // 创建胶囊碰撞体（碰撞预设在蓝图中配置）
-    CapsuleCollision = CreateDefaultSubobject<UCapsuleComponent>(TEXT("CapsuleCollision"));
-    CapsuleCollision->InitCapsuleSize(CapsuleRadius, CapsuleHalfHeight);
-    CapsuleCollision->SetGenerateOverlapEvents(true);
-    CapsuleCollision->SetupAttachment(MeshComponent);
+  // 以静态网格作为根组件，便于朝向与视觉对齐
+  MeshComponent =
+      CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MeshComponent"));
+  MeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+  RootComponent = MeshComponent;
 
-    // 创建盒体碰撞体（碰撞预设在蓝图中配置）
-    BoxCollision = CreateDefaultSubobject<UBoxComponent>(TEXT("BoxCollision"));
-    BoxCollision->SetBoxExtent(BoxExtent);
-    BoxCollision->SetGenerateOverlapEvents(true);
-    BoxCollision->SetupAttachment(MeshComponent);
-    BoxCollision->SetVisibility(false);
+  // 创建胶囊碰撞体（碰撞预设在蓝图中配置）
+  CapsuleCollision =
+      CreateDefaultSubobject<UCapsuleComponent>(TEXT("CapsuleCollision"));
+  CapsuleCollision->InitCapsuleSize(CapsuleRadius, CapsuleHalfHeight);
+  CapsuleCollision->SetGenerateOverlapEvents(true);
+  CapsuleCollision->SetupAttachment(MeshComponent);
 
-    // 创建拖尾 Niagara 组件
-    TrailNiagaraComponent = CreateDefaultSubobject<UNiagaraComponent>(TEXT("TrailNiagaraComponent"));
-    TrailNiagaraComponent->SetupAttachment(MeshComponent);
-    TrailNiagaraComponent->bAutoActivate = false;
+  // 创建盒体碰撞体（碰撞预设在蓝图中配置）
+  BoxCollision = CreateDefaultSubobject<UBoxComponent>(TEXT("BoxCollision"));
+  BoxCollision->SetBoxExtent(BoxExtent);
+  BoxCollision->SetGenerateOverlapEvents(true);
+  BoxCollision->SetupAttachment(MeshComponent);
+  BoxCollision->SetVisibility(false);
 
-    ProjectileMovementComponent = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileMovementComponent"));
-    ProjectileMovementComponent->InitialSpeed = LinearSpeed;
-    ProjectileMovementComponent->MaxSpeed = LinearSpeed;
-    ProjectileMovementComponent->bRotationFollowsVelocity = true;
+  // 创建拖尾 Niagara 组件
+  TrailNiagaraComponent =
+      CreateDefaultSubobject<UNiagaraComponent>(TEXT("TrailNiagaraComponent"));
+  TrailNiagaraComponent->SetupAttachment(MeshComponent);
+  TrailNiagaraComponent->bAutoActivate = false;
+
+  ProjectileMovementComponent =
+      CreateDefaultSubobject<UProjectileMovementComponent>(
+          TEXT("ProjectileMovementComponent"));
+  ProjectileMovementComponent->InitialSpeed = LinearSpeed;
+  ProjectileMovementComponent->MaxSpeed = LinearSpeed;
+  ProjectileMovementComponent->bRotationFollowsVelocity = true;
+  ProjectileMovementComponent->ProjectileGravityScale = 0.0f;
+
+  DamageTag = FGameplayTag::RequestGameplayTag(FName("Data.Damage"), false);
+}
+
+void AXBProjectile::BeginPlay() {
+  Super::BeginPlay();
+
+  // 根据碰撞体类型更新组件状态
+  UpdateCollisionType();
+
+  // 绑定碰撞事件（Overlap 用于角色命中，Hit 用于场景碰撞）
+  // 注：场景碰撞由碰撞体的碰撞通道配置决定，无需额外参数控制
+  if (CapsuleCollision) {
+    CapsuleCollision->OnComponentBeginOverlap.AddDynamic(
+        this, &AXBProjectile::OnProjectileOverlap);
+    CapsuleCollision->OnComponentHit.AddDynamic(
+        this, &AXBProjectile::OnProjectileHit);
+  }
+  if (BoxCollision) {
+    BoxCollision->OnComponentBeginOverlap.AddDynamic(
+        this, &AXBProjectile::OnProjectileOverlap);
+    BoxCollision->OnComponentHit.AddDynamic(this,
+                                            &AXBProjectile::OnProjectileHit);
+  }
+
+  // 应用网格缩放
+  if (MeshComponent) {
+    MeshComponent->SetWorldScale3D(MeshScale);
+
+    if (!MeshComponent->GetStaticMesh()) {
+      UE_LOG(LogXBCombat, Warning,
+             TEXT("投射物 %s 未配置StaticMesh，可能导致不可见"), *GetName());
+    }
+  }
+
+  // 启动拖尾特效（如果组件上已配置 Niagara 系统）
+  if (TrailNiagaraComponent && TrailNiagaraComponent->GetAsset()) {
+    TrailNiagaraComponent->Activate(true);
+  }
+
+  // 播放生成音效
+  if (SpawnSoundTag.IsValid()) {
+    if (UGameInstance *GameInstance = GetGameInstance()) {
+      if (UXBSoundManagerSubsystem *SoundMgr =
+              GameInstance->GetSubsystem<UXBSoundManagerSubsystem>()) {
+        SoundMgr->PlaySoundAtLocation(SpawnSoundTag, GetActorLocation());
+      }
+    }
+  }
+}
+
+void AXBProjectile::InitializeProjectile(AActor *InSourceActor, float InDamage,
+                                         const FVector &ShootDirection,
+                                         float InSpeed, bool bInUseArc) {
+  // 🔧 修改 - 兼容蓝图调用的初始化入口
+  InitializeProjectileWithTarget(InSourceActor, InDamage, ShootDirection,
+                                 InSpeed, bInUseArc, FVector::ZeroVector);
+}
+
+void AXBProjectile::InitializeProjectileWithTarget(
+    AActor *InSourceActor, float InDamage, const FVector &ShootDirection,
+    float InSpeed, bool bInUseArc, const FVector &TargetLocation) {
+  SourceActor = InSourceActor;
+  Damage = InDamage;
+
+  // 判断发射模式
+  const bool bIsArcMode =
+      (LaunchMode == EXBProjectileLaunchMode::Arc) || bInUseArc;
+
+  // 根据模式选择速度
+  float FinalSpeed = 0.0f;
+  if (bIsArcMode) {
+    FinalSpeed = InSpeed > 0.0f ? InSpeed : ArcSpeed;
+  } else {
+    FinalSpeed = InSpeed > 0.0f ? InSpeed : LinearSpeed;
+  }
+
+  ProjectileMovementComponent->InitialSpeed = FinalSpeed;
+  ProjectileMovementComponent->MaxSpeed = FinalSpeed;
+
+  FVector Velocity = ShootDirection.GetSafeNormal() * FinalSpeed;
+
+  if (bIsArcMode) {
+    // 抛物线模式
+    ProjectileMovementComponent->ProjectileGravityScale = ArcGravityScale;
+
+    // 优先使用目标位置计算抛物线速度
+    FVector ActualTarget = TargetLocation;
+    if (ActualTarget.IsZero() && ArcDistance > 0.0f) {
+      // 没有目标位置时，根据飞行距离计算目标点
+      ActualTarget =
+          GetActorLocation() + ShootDirection.GetSafeNormal() * ArcDistance;
+    }
+
+    if (!ActualTarget.IsZero()) {
+      FVector SuggestedVelocity = FVector::ZeroVector;
+      const FVector StartLocation = GetActorLocation();
+      const float OverrideGravityZ =
+          GetWorld() ? GetWorld()->GetGravityZ() * ArcGravityScale : 0.0f;
+
+      const bool bHasSolution = UGameplayStatics::SuggestProjectileVelocity(
+          this, SuggestedVelocity, StartLocation, ActualTarget, FinalSpeed,
+          false, 0.0f, OverrideGravityZ,
+          ESuggestProjVelocityTraceOption::DoNotTrace);
+
+      if (bHasSolution) {
+        Velocity = SuggestedVelocity;
+      } else {
+        // 无解时使用默认上抛角度
+        Velocity = ShootDirection.GetSafeNormal() * FinalSpeed * 0.707f;
+        Velocity.Z = FinalSpeed * 0.707f;
+      }
+    } else {
+      // 无目标时默认45度上抛
+      Velocity = ShootDirection.GetSafeNormal() * FinalSpeed * 0.707f;
+      Velocity.Z = FinalSpeed * 0.707f;
+    }
+  } else {
+    // 直线模式
     ProjectileMovementComponent->ProjectileGravityScale = 0.0f;
+  }
 
-    DamageTag = FGameplayTag::RequestGameplayTag(FName("Data.Damage"), false);
-}
+  ProjectileMovementComponent->Velocity = Velocity;
 
-void AXBProjectile::BeginPlay()
-{
-    Super::BeginPlay();
+  // 以飞行方向更新Actor旋转
+  SetActorRotation(Velocity.Rotation());
 
-    // 根据碰撞体类型更新组件状态
-    UpdateCollisionType();
-
-    // 绑定碰撞事件（Overlap 用于角色命中，Hit 用于场景碰撞）
-    // 注：场景碰撞由碰撞体的碰撞通道配置决定，无需额外参数控制
-    if (CapsuleCollision)
-    {
-        CapsuleCollision->OnComponentBeginOverlap.AddDynamic(this, &AXBProjectile::OnProjectileOverlap);
-        CapsuleCollision->OnComponentHit.AddDynamic(this, &AXBProjectile::OnProjectileHit);
-    }
-    if (BoxCollision)
-    {
-        BoxCollision->OnComponentBeginOverlap.AddDynamic(this, &AXBProjectile::OnProjectileOverlap);
-        BoxCollision->OnComponentHit.AddDynamic(this, &AXBProjectile::OnProjectileHit);
-    }
-
-    // 应用网格缩放
-    if (MeshComponent)
-    {
-        MeshComponent->SetWorldScale3D(MeshScale);
-        
-        if (!MeshComponent->GetStaticMesh())
-        {
-            UE_LOG(LogXBCombat, Warning, TEXT("投射物 %s 未配置StaticMesh，可能导致不可见"), *GetName());
-        }
-    }
-
-    // 启动拖尾特效（如果组件上已配置 Niagara 系统）
-    if (TrailNiagaraComponent && TrailNiagaraComponent->GetAsset())
-    {
-        TrailNiagaraComponent->Activate(true);
-    }
-}
-
-void AXBProjectile::InitializeProjectile(AActor* InSourceActor, float InDamage, const FVector& ShootDirection, float InSpeed, bool bInUseArc)
-{
-    // 🔧 修改 - 兼容蓝图调用的初始化入口
-    InitializeProjectileWithTarget(InSourceActor, InDamage, ShootDirection, InSpeed, bInUseArc, FVector::ZeroVector);
-}
-
-void AXBProjectile::InitializeProjectileWithTarget(AActor* InSourceActor, float InDamage, const FVector& ShootDirection, float InSpeed, bool bInUseArc, const FVector& TargetLocation)
-{
-    SourceActor = InSourceActor;
-    Damage = InDamage;
-    
-    // 判断发射模式
-    const bool bIsArcMode = (LaunchMode == EXBProjectileLaunchMode::Arc) || bInUseArc;
-    
-    // 根据模式选择速度
-    float FinalSpeed = 0.0f;
-    if (bIsArcMode) {
-        FinalSpeed = InSpeed > 0.0f ? InSpeed : ArcSpeed;
-    } else {
-        FinalSpeed = InSpeed > 0.0f ? InSpeed : LinearSpeed;
-    }
-    
-    ProjectileMovementComponent->InitialSpeed = FinalSpeed;
-    ProjectileMovementComponent->MaxSpeed = FinalSpeed;
-
-    FVector Velocity = ShootDirection.GetSafeNormal() * FinalSpeed;
-    
-    if (bIsArcMode) {
-        // 抛物线模式
-        ProjectileMovementComponent->ProjectileGravityScale = ArcGravityScale;
-
-        // 优先使用目标位置计算抛物线速度
-        FVector ActualTarget = TargetLocation;
-        if (ActualTarget.IsZero() && ArcDistance > 0.0f) {
-            // 没有目标位置时，根据飞行距离计算目标点
-            ActualTarget = GetActorLocation() + ShootDirection.GetSafeNormal() * ArcDistance;
-        }
-
-        if (!ActualTarget.IsZero()) {
-            FVector SuggestedVelocity = FVector::ZeroVector;
-            const FVector StartLocation = GetActorLocation();
-            const float OverrideGravityZ = GetWorld() ? GetWorld()->GetGravityZ() * ArcGravityScale : 0.0f;
-
-            const bool bHasSolution = UGameplayStatics::SuggestProjectileVelocity(
-                this,
-                SuggestedVelocity,
-                StartLocation,
-                ActualTarget,
-                FinalSpeed,
-                false,
-                0.0f,
-                OverrideGravityZ,
-                ESuggestProjVelocityTraceOption::DoNotTrace
-            );
-
-            if (bHasSolution) {
-                Velocity = SuggestedVelocity;
-            } else {
-                // 无解时使用默认上抛角度
-                Velocity = ShootDirection.GetSafeNormal() * FinalSpeed * 0.707f;
-                Velocity.Z = FinalSpeed * 0.707f;
-            }
-        } else {
-            // 无目标时默认45度上抛
-            Velocity = ShootDirection.GetSafeNormal() * FinalSpeed * 0.707f;
-            Velocity.Z = FinalSpeed * 0.707f;
-        }
-    } else {
-        // 直线模式
-        ProjectileMovementComponent->ProjectileGravityScale = 0.0f;
-    }
-
-    ProjectileMovementComponent->Velocity = Velocity;
-
-    // 以飞行方向更新Actor旋转
-    SetActorRotation(Velocity.Rotation());
-
-    // 启动存活计时
-    if (LifeSeconds > 0.0f) {
-        GetWorldTimerManager().ClearTimer(LifeTimerHandle);
-        GetWorldTimerManager().SetTimer(
-            LifeTimerHandle,
-            this,
-            &AXBProjectile::ResetForPooling,
-            LifeSeconds,
-            false
-        );
-    }
-
-    UE_LOG(LogXBCombat, Log, TEXT("投射物初始化: 来源=%s 伤害=%.1f 模式=%s 速度=%.1f"),
-        InSourceActor ? *InSourceActor->GetName() : TEXT("无"),
-        Damage,
-        bIsArcMode ? TEXT("抛物线") : TEXT("直线"),
-        FinalSpeed);
-}
-
-void AXBProjectile::ActivateFromPool(const FVector& SpawnLocation, const FRotator& SpawnRotation)
-{
-    SetActorHiddenInGame(false);
-    SetActorEnableCollision(true);
-    SetActorLocation(SpawnLocation);
-    SetActorRotation(SpawnRotation);
-
-    if (ProjectileMovementComponent)
-    {
-        ProjectileMovementComponent->StopMovementImmediately();
-    }
-}
-
-void AXBProjectile::ResetForPooling()
-{
-    if (ProjectileMovementComponent)
-    {
-        ProjectileMovementComponent->StopMovementImmediately();
-    }
-
+  // 启动存活计时
+  if (LifeSeconds > 0.0f) {
     GetWorldTimerManager().ClearTimer(LifeTimerHandle);
+    GetWorldTimerManager().SetTimer(LifeTimerHandle, this,
+                                    &AXBProjectile::ResetForPooling,
+                                    LifeSeconds, false);
+  }
 
-    // 🔧 修改 - 若启用对象池则回收，否则允许直接销毁
-    if (bUsePooling)
-    {
-        SetActorEnableCollision(false);
-        SetActorHiddenInGame(true);
-    }
-    else
-    {
-        Destroy();
-        return;
-    }
-
-    SourceActor = nullptr;
-
-    UE_LOG(LogXBCombat, Verbose, TEXT("投射物 %s 已重置并进入池化休眠"), *GetName());
+  UE_LOG(LogXBCombat, Log,
+         TEXT("投射物初始化: 来源=%s 伤害=%.1f 模式=%s 速度=%.1f"),
+         InSourceActor ? *InSourceActor->GetName() : TEXT("无"), Damage,
+         bIsArcMode ? TEXT("抛物线") : TEXT("直线"), FinalSpeed);
 }
 
-void AXBProjectile::OnProjectileOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
-    UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
-{
-    if (!OtherActor || OtherActor == this)
-    {
-        return;
-    }
+void AXBProjectile::ActivateFromPool(const FVector &SpawnLocation,
+                                     const FRotator &SpawnRotation) {
+  SetActorHiddenInGame(false);
+  SetActorEnableCollision(true);
+  SetActorLocation(SpawnLocation);
+  SetActorRotation(SpawnRotation);
 
-    if (SourceActor.IsValid() && OtherActor == SourceActor.Get())
-    {
-        return;
-    }
-
-    FVector HitLocation = GetActorLocation();
-    if (!SweepResult.ImpactPoint.IsZero())
-    {
-        HitLocation = FVector(SweepResult.ImpactPoint);
-    }
-
-    bool bDidApplyFlightDamage = false;
-
-    // 飞行伤害（仅 FlightOnly 或 Both 模式）
-    if (DamageType == EXBProjectileDamageType::FlightOnly || 
-        DamageType == EXBProjectileDamageType::Both)
-    {
-        bDidApplyFlightDamage = ApplyDamageToTarget(OtherActor, SweepResult);
-        
-        // 播放命中效果
-        if (bDidApplyFlightDamage)
-        {
-            if (HitSound)
-            {
-                UGameplayStatics::PlaySoundAtLocation(this, HitSound, HitLocation);
-            }
-            
-            if (HitEffect)
-            {
-                UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-                    this, HitEffect, HitLocation,
-                    FRotator::ZeroRotator, FVector(HitEffectScale),
-                    true, true, ENCPoolMethod::None, true);
-            }
-        }
-    }
-
-    // 爆炸伤害（仅 ExplosionOnly 或 Both 模式）
-    if (DamageType == EXBProjectileDamageType::ExplosionOnly || 
-        DamageType == EXBProjectileDamageType::Both)
-    {
-        PerformExplosionDamage(HitLocation);
-    }
-
-    // 命中后销毁/回收
-    if (bDestroyOnHit)
-    {
-        DeactivateTrailEffect();
-
-        if (bUsePooling)
-        {
-            if (UWorld* World = GetWorld())
-            {
-                if (UXBProjectilePoolSubsystem* PoolSubsystem = World->GetSubsystem<UXBProjectilePoolSubsystem>())
-                {
-                    PoolSubsystem->ReleaseProjectile(this);
-                    return;
-                }
-            }
-        }
-
-        Destroy();
-    }
+  if (ProjectileMovementComponent) {
+    ProjectileMovementComponent->StopMovementImmediately();
+  }
 }
 
-bool AXBProjectile::ApplyDamageToTarget(AActor* TargetActor, const FHitResult& HitResult)
-{
-    if (!TargetActor)
-    {
-        return false;
-    }
+void AXBProjectile::ResetForPooling() {
+  if (ProjectileMovementComponent) {
+    ProjectileMovementComponent->StopMovementImmediately();
+  }
 
-    AActor* Source = SourceActor.Get();
-    if (!Source)
-    {
-        UE_LOG(LogXBCombat, Warning, TEXT("投射物命中 %s，但没有有效的来源"), *TargetActor->GetName());
-        return false;
-    }
+  GetWorldTimerManager().ClearTimer(LifeTimerHandle);
 
-    EXBFaction SourceFaction = EXBFaction::Neutral;
-    if (AXBSoldierCharacter* SourceSoldier = Cast<AXBSoldierCharacter>(Source))
-    {
-        SourceFaction = SourceSoldier->GetFaction();
-    }
-    else if (AXBCharacterBase* SourceLeader = Cast<AXBCharacterBase>(Source))
-    {
-        SourceFaction = SourceLeader->GetFaction();
-    }
+  // 🔧 修改 - 若启用对象池则回收，否则允许直接销毁
+  if (bUsePooling) {
+    SetActorEnableCollision(false);
+    SetActorHiddenInGame(true);
+  } else {
+    Destroy();
+    return;
+  }
 
-    EXBFaction TargetFaction = EXBFaction::Neutral;
-    if (!GetTargetFaction(TargetActor, TargetFaction))
-    {
-        return false;
-    }
+  SourceActor = nullptr;
 
-    if (!UXBBlueprintFunctionLibrary::AreFactionsHostile(SourceFaction, TargetFaction))
-    {
-        // 🔧 修改 - 只对敌人生效，友军直接忽略
-        UE_LOG(LogXBCombat, Verbose, TEXT("投射物忽略友军: %s -> %s"), *Source->GetName(), *TargetActor->GetName());
-        return false;
-    }
-
-    if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(TargetActor))
-    {
-        // 🔧 修改 - 草丛隐身士兵不可被命中
-        if (TargetSoldier->IsHiddenInBush())
-        {
-            return false;
-        }
-        float ActualDamage = TargetSoldier->TakeSoldierDamage(Damage, Source);
-        UE_LOG(LogXBCombat, Log, TEXT("投射物命中士兵: %s, 伤害: %.1f, 实际: %.1f"),
-            *TargetActor->GetName(), Damage, ActualDamage);
-        return true;
-    }
-
-    AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(TargetActor);
-    if (!TargetLeader)
-    {
-        return false;
-    }
-    // 🔧 修改 - 草丛隐身主将不可被命中
-    if (TargetLeader->IsHiddenInBush())
-    {
-        return false;
-    }
-
-    if (AXBCharacterBase* SourceLeader = Cast<AXBCharacterBase>(Source))
-    {
-        SourceLeader->OnAttackHit(TargetLeader);
-    }
-
-    UAbilitySystemComponent* SourceASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Source);
-    UAbilitySystemComponent* TargetASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(TargetActor);
-
-    if (!TargetASC)
-    {
-        UE_LOG(LogXBCombat, Warning, TEXT("投射物命中 %s，但目标没有ASC"), *TargetActor->GetName());
-        return false;
-    }
-
-    if (DamageEffectClass && SourceASC)
-    {
-        FGameplayEffectContextHandle ContextHandle = SourceASC->MakeEffectContext();
-        ContextHandle.AddSourceObject(Source);
-        ContextHandle.AddHitResult(HitResult);
-
-        FGameplayEffectSpecHandle SpecHandle = SourceASC->MakeOutgoingSpec(DamageEffectClass, 1.0f, ContextHandle);
-        if (SpecHandle.IsValid())
-        {
-            if (DamageTag.IsValid())
-            {
-                SpecHandle.Data->SetSetByCallerMagnitude(DamageTag, Damage);
-            }
-            else
-            {
-                UE_LOG(LogXBCombat, Warning, TEXT("投射物伤害Tag无效(Data.Damage)，目标=%s"), *TargetActor->GetName());
-            }
-
-            SourceASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data, TargetASC);
-
-            UE_LOG(LogXBCombat, Log, TEXT("投射物命中将领: %s, 伤害: %.1f (GAS)"),
-                *TargetActor->GetName(), Damage);
-        }
-    }
-    else
-    {
-        TargetASC->SetNumericAttributeBase(UXBAttributeSet::GetIncomingDamageAttribute(), Damage);
-        UE_LOG(LogXBCombat, Log, TEXT("投射物命中将领: %s, 伤害: %.1f (直接属性)"),
-            *TargetActor->GetName(), Damage);
-    }
-
-    return true;
+  UE_LOG(LogXBCombat, Verbose, TEXT("投射物 %s 已重置并进入池化休眠"),
+         *GetName());
 }
 
-bool AXBProjectile::GetTargetFaction(AActor* TargetActor, EXBFaction& OutFaction) const
-{
-    if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(TargetActor))
-    {
-        OutFaction = TargetSoldier->GetFaction();
-        return true;
+void AXBProjectile::OnProjectileOverlap(
+    UPrimitiveComponent *OverlappedComponent, AActor *OtherActor,
+    UPrimitiveComponent *OtherComp, int32 OtherBodyIndex, bool bFromSweep,
+    const FHitResult &SweepResult) {
+  if (!OtherActor || OtherActor == this) {
+    return;
+  }
+
+  if (SourceActor.IsValid() && OtherActor == SourceActor.Get()) {
+    return;
+  }
+
+  FVector HitLocation = GetActorLocation();
+  if (!SweepResult.ImpactPoint.IsZero()) {
+    HitLocation = FVector(SweepResult.ImpactPoint);
+  }
+
+  bool bDidApplyFlightDamage = false;
+
+  // 飞行伤害（仅 FlightOnly 或 Both 模式）
+  if (DamageType == EXBProjectileDamageType::FlightOnly ||
+      DamageType == EXBProjectileDamageType::Both) {
+    bDidApplyFlightDamage = ApplyDamageToTarget(OtherActor, SweepResult);
+
+    // 播放命中效果
+    if (bDidApplyFlightDamage) {
+      // 优先使用 Tag 音效
+      if (HitSoundTag.IsValid()) {
+        if (UGameInstance *GameInstance = GetGameInstance()) {
+          if (UXBSoundManagerSubsystem *SoundMgr =
+                  GameInstance->GetSubsystem<UXBSoundManagerSubsystem>()) {
+            SoundMgr->PlaySoundAtLocation(HitSoundTag, HitLocation);
+          }
+        }
+      } else if (HitSound) {
+        UGameplayStatics::PlaySoundAtLocation(this, HitSound, HitLocation);
+      }
+
+      if (HitEffect) {
+        UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+            this, HitEffect, HitLocation, FRotator::ZeroRotator,
+            FVector(HitEffectScale), true, true, ENCPoolMethod::None, true);
+      }
+    }
+  }
+
+  // 爆炸伤害（仅 ExplosionOnly 或 Both 模式）
+  if (DamageType == EXBProjectileDamageType::ExplosionOnly ||
+      DamageType == EXBProjectileDamageType::Both) {
+    PerformExplosionDamage(HitLocation);
+  }
+
+  // 命中后销毁/回收
+  if (bDestroyOnHit) {
+    DeactivateTrailEffect();
+
+    if (bUsePooling) {
+      if (UWorld *World = GetWorld()) {
+        if (UXBProjectilePoolSubsystem *PoolSubsystem =
+                World->GetSubsystem<UXBProjectilePoolSubsystem>()) {
+          PoolSubsystem->ReleaseProjectile(this);
+          return;
+        }
+      }
     }
 
-    if (AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(TargetActor))
-    {
-        OutFaction = TargetLeader->GetFaction();
-        return true;
-    }
+    Destroy();
+  }
+}
 
+bool AXBProjectile::ApplyDamageToTarget(AActor *TargetActor,
+                                        const FHitResult &HitResult) {
+  if (!TargetActor) {
     return false;
+  }
+
+  AActor *Source = SourceActor.Get();
+  if (!Source) {
+    UE_LOG(LogXBCombat, Warning, TEXT("投射物命中 %s，但没有有效的来源"),
+           *TargetActor->GetName());
+    return false;
+  }
+
+  EXBFaction SourceFaction = EXBFaction::Neutral;
+  if (AXBSoldierCharacter *SourceSoldier = Cast<AXBSoldierCharacter>(Source)) {
+    SourceFaction = SourceSoldier->GetFaction();
+  } else if (AXBCharacterBase *SourceLeader = Cast<AXBCharacterBase>(Source)) {
+    SourceFaction = SourceLeader->GetFaction();
+  }
+
+  EXBFaction TargetFaction = EXBFaction::Neutral;
+  if (!GetTargetFaction(TargetActor, TargetFaction)) {
+    return false;
+  }
+
+  if (!UXBBlueprintFunctionLibrary::AreFactionsHostile(SourceFaction,
+                                                       TargetFaction)) {
+    // 🔧 修改 - 只对敌人生效，友军直接忽略
+    UE_LOG(LogXBCombat, Verbose, TEXT("投射物忽略友军: %s -> %s"),
+           *Source->GetName(), *TargetActor->GetName());
+    return false;
+  }
+
+  if (AXBSoldierCharacter *TargetSoldier =
+          Cast<AXBSoldierCharacter>(TargetActor)) {
+    // 🔧 修改 - 草丛隐身士兵不可被命中
+    if (TargetSoldier->IsHiddenInBush()) {
+      return false;
+    }
+    float ActualDamage = TargetSoldier->TakeSoldierDamage(Damage, Source);
+    UE_LOG(LogXBCombat, Log, TEXT("投射物命中士兵: %s, 伤害: %.1f, 实际: %.1f"),
+           *TargetActor->GetName(), Damage, ActualDamage);
+    return true;
+  }
+
+  AXBCharacterBase *TargetLeader = Cast<AXBCharacterBase>(TargetActor);
+  if (!TargetLeader) {
+    return false;
+  }
+  // 🔧 修改 - 草丛隐身主将不可被命中
+  if (TargetLeader->IsHiddenInBush()) {
+    return false;
+  }
+
+  if (AXBCharacterBase *SourceLeader = Cast<AXBCharacterBase>(Source)) {
+    SourceLeader->OnAttackHit(TargetLeader);
+  }
+
+  UAbilitySystemComponent *SourceASC =
+      UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Source);
+  UAbilitySystemComponent *TargetASC =
+      UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(TargetActor);
+
+  if (!TargetASC) {
+    UE_LOG(LogXBCombat, Warning, TEXT("投射物命中 %s，但目标没有ASC"),
+           *TargetActor->GetName());
+    return false;
+  }
+
+  if (DamageEffectClass && SourceASC) {
+    FGameplayEffectContextHandle ContextHandle = SourceASC->MakeEffectContext();
+    ContextHandle.AddSourceObject(Source);
+    ContextHandle.AddHitResult(HitResult);
+
+    FGameplayEffectSpecHandle SpecHandle =
+        SourceASC->MakeOutgoingSpec(DamageEffectClass, 1.0f, ContextHandle);
+    if (SpecHandle.IsValid()) {
+      if (DamageTag.IsValid()) {
+        SpecHandle.Data->SetSetByCallerMagnitude(DamageTag, Damage);
+      } else {
+        UE_LOG(LogXBCombat, Warning,
+               TEXT("投射物伤害Tag无效(Data.Damage)，目标=%s"),
+               *TargetActor->GetName());
+      }
+
+      SourceASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data, TargetASC);
+
+      UE_LOG(LogXBCombat, Log, TEXT("投射物命中将领: %s, 伤害: %.1f (GAS)"),
+             *TargetActor->GetName(), Damage);
+    }
+  } else {
+    TargetASC->SetNumericAttributeBase(
+        UXBAttributeSet::GetIncomingDamageAttribute(), Damage);
+    UE_LOG(LogXBCombat, Log, TEXT("投射物命中将领: %s, 伤害: %.1f (直接属性)"),
+           *TargetActor->GetName(), Damage);
+  }
+
+  return true;
 }
 
-void AXBProjectile::UpdateCollisionType()
-{
-    const bool bUseCapsule = (CollisionType == EXBProjectileCollisionType::Capsule);
-    
-    if (CapsuleCollision)
-    {
-        CapsuleCollision->SetCollisionEnabled(bUseCapsule ? ECollisionEnabled::QueryOnly : ECollisionEnabled::NoCollision);
-        CapsuleCollision->SetVisibility(bUseCapsule);
-        CapsuleCollision->SetCapsuleSize(CapsuleRadius, CapsuleHalfHeight);
-    }
-    
-    if (BoxCollision)
-    {
-        BoxCollision->SetCollisionEnabled(bUseCapsule ? ECollisionEnabled::NoCollision : ECollisionEnabled::QueryOnly);
-        BoxCollision->SetVisibility(!bUseCapsule);
-        BoxCollision->SetBoxExtent(BoxExtent);
-    }
-    
-    if (MeshComponent)
-    {
-        MeshComponent->SetWorldScale3D(MeshScale);
-    }
+bool AXBProjectile::GetTargetFaction(AActor *TargetActor,
+                                     EXBFaction &OutFaction) const {
+  if (AXBSoldierCharacter *TargetSoldier =
+          Cast<AXBSoldierCharacter>(TargetActor)) {
+    OutFaction = TargetSoldier->GetFaction();
+    return true;
+  }
+
+  if (AXBCharacterBase *TargetLeader = Cast<AXBCharacterBase>(TargetActor)) {
+    OutFaction = TargetLeader->GetFaction();
+    return true;
+  }
+
+  return false;
+}
+
+void AXBProjectile::UpdateCollisionType() {
+  const bool bUseCapsule =
+      (CollisionType == EXBProjectileCollisionType::Capsule);
+
+  if (CapsuleCollision) {
+    CapsuleCollision->SetCollisionEnabled(bUseCapsule
+                                              ? ECollisionEnabled::QueryOnly
+                                              : ECollisionEnabled::NoCollision);
+    CapsuleCollision->SetVisibility(bUseCapsule);
+    CapsuleCollision->SetCapsuleSize(CapsuleRadius, CapsuleHalfHeight);
+  }
+
+  if (BoxCollision) {
+    BoxCollision->SetCollisionEnabled(bUseCapsule
+                                          ? ECollisionEnabled::NoCollision
+                                          : ECollisionEnabled::QueryOnly);
+    BoxCollision->SetVisibility(!bUseCapsule);
+    BoxCollision->SetBoxExtent(BoxExtent);
+  }
+
+  if (MeshComponent) {
+    MeshComponent->SetWorldScale3D(MeshScale);
+  }
 }
 
 #if WITH_EDITOR
-void AXBProjectile::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
-{
-    Super::PostEditChangeProperty(PropertyChangedEvent);
-    
-    const FName PropertyName = PropertyChangedEvent.GetPropertyName();
-    
-    // 碰撞体类型或尺寸变更时更新组件
-    if (PropertyName == GET_MEMBER_NAME_CHECKED(AXBProjectile, CollisionType) ||
-        PropertyName == GET_MEMBER_NAME_CHECKED(AXBProjectile, CapsuleRadius) ||
-        PropertyName == GET_MEMBER_NAME_CHECKED(AXBProjectile, CapsuleHalfHeight) ||
-        PropertyName == GET_MEMBER_NAME_CHECKED(AXBProjectile, BoxExtent) ||
-        PropertyName == GET_MEMBER_NAME_CHECKED(AXBProjectile, MeshScale))
-    {
-        UpdateCollisionType();
-    }
+void AXBProjectile::PostEditChangeProperty(
+    FPropertyChangedEvent &PropertyChangedEvent) {
+  Super::PostEditChangeProperty(PropertyChangedEvent);
+
+  const FName PropertyName = PropertyChangedEvent.GetPropertyName();
+
+  // 碰撞体类型或尺寸变更时更新组件
+  if (PropertyName == GET_MEMBER_NAME_CHECKED(AXBProjectile, CollisionType) ||
+      PropertyName == GET_MEMBER_NAME_CHECKED(AXBProjectile, CapsuleRadius) ||
+      PropertyName ==
+          GET_MEMBER_NAME_CHECKED(AXBProjectile, CapsuleHalfHeight) ||
+      PropertyName == GET_MEMBER_NAME_CHECKED(AXBProjectile, BoxExtent) ||
+      PropertyName == GET_MEMBER_NAME_CHECKED(AXBProjectile, MeshScale)) {
+    UpdateCollisionType();
+  }
 }
 #endif
 
-void AXBProjectile::DeactivateTrailEffect()
-{
-    if (TrailNiagaraComponent && TrailNiagaraComponent->IsActive())
-    {
-        TrailNiagaraComponent->Deactivate();
-    }
+void AXBProjectile::DeactivateTrailEffect() {
+  if (TrailNiagaraComponent && TrailNiagaraComponent->IsActive()) {
+    TrailNiagaraComponent->Deactivate();
+  }
 }
 
-void AXBProjectile::OnProjectileHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, 
-    UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
-{
-    // 忽略自身和来源
-    if (OtherActor == this || OtherActor == SourceActor.Get())
-    {
-        return;
-    }
+void AXBProjectile::OnProjectileHit(UPrimitiveComponent *HitComponent,
+                                    AActor *OtherActor,
+                                    UPrimitiveComponent *OtherComp,
+                                    FVector NormalImpulse,
+                                    const FHitResult &Hit) {
+  // 忽略自身和来源
+  if (OtherActor == this || OtherActor == SourceActor.Get()) {
+    return;
+  }
 
-    // 播放命中音效
-    if (HitSound)
-    {
-        UGameplayStatics::PlaySoundAtLocation(this, HitSound, Hit.ImpactPoint);
-    }
+  // 播放命中音效
+  if (HitSound) {
+    UGameplayStatics::PlaySoundAtLocation(this, HitSound, Hit.ImpactPoint);
+  }
 
-    // 播放命中特效
-    if (HitEffect)
-    {
-        UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-            this, HitEffect, Hit.ImpactPoint,
-            Hit.ImpactNormal.Rotation(), FVector(HitEffectScale),
-            true, true, ENCPoolMethod::None, true);
-    }
+  // 播放命中特效
+  if (HitEffect) {
+    UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+        this, HitEffect, Hit.ImpactPoint, Hit.ImpactNormal.Rotation(),
+        FVector(HitEffectScale), true, true, ENCPoolMethod::None, true);
+  }
 
-    // 命中场景时触发爆炸伤害（仅 ExplosionOnly 或 Both 模式）
-    if (DamageType == EXBProjectileDamageType::ExplosionOnly || 
-        DamageType == EXBProjectileDamageType::Both)
-    {
-        PerformExplosionDamage(Hit.ImpactPoint);
-    }
+  // 命中场景时触发爆炸伤害（仅 ExplosionOnly 或 Both 模式）
+  if (DamageType == EXBProjectileDamageType::ExplosionOnly ||
+      DamageType == EXBProjectileDamageType::Both) {
+    PerformExplosionDamage(Hit.ImpactPoint);
+  }
 
-    UE_LOG(LogXBCombat, Verbose, TEXT("投射物 %s 命中场景: %s"), *GetName(), *OtherActor->GetName());
+  UE_LOG(LogXBCombat, Verbose, TEXT("投射物 %s 命中场景: %s"), *GetName(),
+         *OtherActor->GetName());
 
-    if (bDestroyOnHit)
-    {
-        DeactivateTrailEffect();
+  if (bDestroyOnHit) {
+    DeactivateTrailEffect();
 
-        if (bUsePooling)
-        {
-            if (UWorld* World = GetWorld())
-            {
-                if (UXBProjectilePoolSubsystem* PoolSubsystem = World->GetSubsystem<UXBProjectilePoolSubsystem>())
-                {
-                    PoolSubsystem->ReleaseProjectile(this);
-                    return;
-                }
-            }
+    if (bUsePooling) {
+      if (UWorld *World = GetWorld()) {
+        if (UXBProjectilePoolSubsystem *PoolSubsystem =
+                World->GetSubsystem<UXBProjectilePoolSubsystem>()) {
+          PoolSubsystem->ReleaseProjectile(this);
+          return;
         }
-
-        Destroy();
+      }
     }
+
+    Destroy();
+  }
 }
 
-void AXBProjectile::PerformExplosionDamage(const FVector& ExplosionLocation)
-{
-    UWorld* World = GetWorld();
-    if (!World)
-    {
-        return;
+void AXBProjectile::PerformExplosionDamage(const FVector &ExplosionLocation) {
+  UWorld *World = GetWorld();
+  if (!World) {
+    return;
+  }
+
+  // 播放爆炸特效
+  if (ExplosionEffect) {
+    UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+        this, ExplosionEffect, ExplosionLocation, FRotator::ZeroRotator,
+        FVector(ExplosionEffectScale), true, true, ENCPoolMethod::None, true);
+  }
+
+  // 播放爆炸音效(优先使用Tag)
+  if (ExplosionSoundTag.IsValid()) {
+    if (UGameInstance *GameInstance = GetGameInstance()) {
+      if (UXBSoundManagerSubsystem *SoundMgr =
+              GameInstance->GetSubsystem<UXBSoundManagerSubsystem>()) {
+        SoundMgr->PlaySoundAtLocation(ExplosionSoundTag, ExplosionLocation);
+      }
+    }
+  } else if (ExplosionSound) {
+    UGameplayStatics::PlaySoundAtLocation(this, ExplosionSound,
+                                          ExplosionLocation);
+  }
+
+  // 调试可视化：绘制爆炸半径球体
+  if (bDebugExplosionRadius) {
+    DrawDebugSphere(World, ExplosionLocation, ExplosionRadius, 16, FColor::Red,
+                    false, 2.0f, 0, 2.0f);
+  }
+
+  // 获取来源阵营
+  AActor *Source = SourceActor.Get();
+  if (!Source) {
+    UE_LOG(LogXBCombat, Warning, TEXT("爆炸伤害执行失败：无有效来源Actor"));
+    return;
+  }
+
+  EXBFaction SourceFaction = EXBFaction::Neutral;
+  if (AXBSoldierCharacter *SourceSoldier = Cast<AXBSoldierCharacter>(Source)) {
+    SourceFaction = SourceSoldier->GetFaction();
+  } else if (AXBCharacterBase *SourceLeader = Cast<AXBCharacterBase>(Source)) {
+    SourceFaction = SourceLeader->GetFaction();
+  }
+
+  // 确定实际爆炸伤害（若未设置则使用基础伤害）
+  const float ActualExplosionDamage =
+      (ExplosionDamage > 0.0f) ? ExplosionDamage : Damage;
+
+  // 球形范围检测
+  TArray<FOverlapResult> OverlapResults;
+  FCollisionQueryParams QueryParams;
+  QueryParams.AddIgnoredActor(this);
+  if (Source) {
+    QueryParams.AddIgnoredActor(Source);
+  }
+
+  // 使用 Pawn 通道进行检测
+  const bool bHasOverlaps = World->OverlapMultiByChannel(
+      OverlapResults, ExplosionLocation, FQuat::Identity, ECC_Pawn,
+      FCollisionShape::MakeSphere(ExplosionRadius), QueryParams);
+
+  if (!bHasOverlaps) {
+    UE_LOG(LogXBCombat, Verbose, TEXT("爆炸范围内无目标: 位置=%s 半径=%.1f"),
+           *ExplosionLocation.ToString(), ExplosionRadius);
+    return;
+  }
+
+  // 记录已处理的Actor，避免重复伤害
+  TSet<AActor *> ProcessedActors;
+  int32 HitCount = 0;
+
+  for (const FOverlapResult &Result : OverlapResults) {
+    AActor *HitActor = Result.GetActor();
+    if (!HitActor || ProcessedActors.Contains(HitActor)) {
+      continue;
+    }
+    ProcessedActors.Add(HitActor);
+
+    // 获取目标阵营
+    EXBFaction TargetFaction = EXBFaction::Neutral;
+    if (!GetTargetFaction(HitActor, TargetFaction)) {
+      continue;
     }
 
-    // 播放爆炸特效
-    if (ExplosionEffect)
-    {
-        UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-            this, ExplosionEffect, ExplosionLocation,
-            FRotator::ZeroRotator, FVector(ExplosionEffectScale),
-            true, true, ENCPoolMethod::None, true);
+    // 阵营敌对检查
+    if (!UXBBlueprintFunctionLibrary::AreFactionsHostile(SourceFaction,
+                                                         TargetFaction)) {
+      continue;
     }
 
-    // 播放爆炸音效
-    if (ExplosionSound)
-    {
-        UGameplayStatics::PlaySoundAtLocation(this, ExplosionSound, ExplosionLocation);
+    // 对士兵造成伤害
+    if (AXBSoldierCharacter *TargetSoldier =
+            Cast<AXBSoldierCharacter>(HitActor)) {
+      // 草丛隐身检查
+      if (TargetSoldier->IsHiddenInBush()) {
+        continue;
+      }
+
+      float ActualDamage =
+          TargetSoldier->TakeSoldierDamage(ActualExplosionDamage, Source);
+      HitCount++;
+
+      UE_LOG(LogXBCombat, Log,
+             TEXT("爆炸伤害命中士兵: %s, 伤害: %.1f, 实际: %.1f"),
+             *HitActor->GetName(), ActualExplosionDamage, ActualDamage);
+      continue;
     }
 
-    // 调试可视化：绘制爆炸半径球体
-    if (bDebugExplosionRadius)
-    {
-        DrawDebugSphere(World, ExplosionLocation, ExplosionRadius, 16, FColor::Red, false, 2.0f, 0, 2.0f);
+    // 对将领造成伤害
+    AXBCharacterBase *TargetLeader = Cast<AXBCharacterBase>(HitActor);
+    if (!TargetLeader) {
+      continue;
     }
 
-    // 获取来源阵营
-    AActor* Source = SourceActor.Get();
-    if (!Source)
-    {
-        UE_LOG(LogXBCombat, Warning, TEXT("爆炸伤害执行失败：无有效来源Actor"));
-        return;
+    // 草丛隐身检查
+    if (TargetLeader->IsHiddenInBush()) {
+      continue;
     }
 
-    EXBFaction SourceFaction = EXBFaction::Neutral;
-    if (AXBSoldierCharacter* SourceSoldier = Cast<AXBSoldierCharacter>(Source))
-    {
-        SourceFaction = SourceSoldier->GetFaction();
-    }
-    else if (AXBCharacterBase* SourceLeader = Cast<AXBCharacterBase>(Source))
-    {
-        SourceFaction = SourceLeader->GetFaction();
+    // 通知攻击命中
+    if (AXBCharacterBase *SourceLeader = Cast<AXBCharacterBase>(Source)) {
+      SourceLeader->OnAttackHit(TargetLeader);
     }
 
-    // 确定实际爆炸伤害（若未设置则使用基础伤害）
-    const float ActualExplosionDamage = (ExplosionDamage > 0.0f) ? ExplosionDamage : Damage;
+    // 使用GAS应用伤害
+    UAbilitySystemComponent *SourceASC =
+        UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Source);
+    UAbilitySystemComponent *TargetASC =
+        UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(HitActor);
 
-    // 球形范围检测
-    TArray<FOverlapResult> OverlapResults;
-    FCollisionQueryParams QueryParams;
-    QueryParams.AddIgnoredActor(this);
-    if (Source)
-    {
-        QueryParams.AddIgnoredActor(Source);
+    if (!TargetASC) {
+      UE_LOG(LogXBCombat, Warning, TEXT("爆炸伤害目标 %s 无ASC"),
+             *HitActor->GetName());
+      continue;
     }
 
-    // 使用 Pawn 通道进行检测
-    const bool bHasOverlaps = World->OverlapMultiByChannel(
-        OverlapResults,
-        ExplosionLocation,
-        FQuat::Identity,
-        ECC_Pawn,
-        FCollisionShape::MakeSphere(ExplosionRadius),
-        QueryParams
-    );
+    if (DamageEffectClass && SourceASC) {
+      FGameplayEffectContextHandle ContextHandle =
+          SourceASC->MakeEffectContext();
+      ContextHandle.AddSourceObject(Source);
 
-    if (!bHasOverlaps)
-    {
-        UE_LOG(LogXBCombat, Verbose, TEXT("爆炸范围内无目标: 位置=%s 半径=%.1f"),
-            *ExplosionLocation.ToString(), ExplosionRadius);
-        return;
+      FGameplayEffectSpecHandle SpecHandle =
+          SourceASC->MakeOutgoingSpec(DamageEffectClass, 1.0f, ContextHandle);
+      if (SpecHandle.IsValid()) {
+        if (DamageTag.IsValid()) {
+          SpecHandle.Data->SetSetByCallerMagnitude(DamageTag,
+                                                   ActualExplosionDamage);
+        }
+
+        SourceASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data, TargetASC);
+        HitCount++;
+
+        UE_LOG(LogXBCombat, Log, TEXT("爆炸伤害命中将领: %s, 伤害: %.1f (GAS)"),
+               *HitActor->GetName(), ActualExplosionDamage);
+      }
+    } else {
+      TargetASC->SetNumericAttributeBase(
+          UXBAttributeSet::GetIncomingDamageAttribute(), ActualExplosionDamage);
+      HitCount++;
+
+      UE_LOG(LogXBCombat, Log,
+             TEXT("爆炸伤害命中将领: %s, 伤害: %.1f (直接属性)"),
+             *HitActor->GetName(), ActualExplosionDamage);
     }
+  }
 
-    // 记录已处理的Actor，避免重复伤害
-    TSet<AActor*> ProcessedActors;
-    int32 HitCount = 0;
-
-    for (const FOverlapResult& Result : OverlapResults)
-    {
-        AActor* HitActor = Result.GetActor();
-        if (!HitActor || ProcessedActors.Contains(HitActor))
-        {
-            continue;
-        }
-        ProcessedActors.Add(HitActor);
-
-        // 获取目标阵营
-        EXBFaction TargetFaction = EXBFaction::Neutral;
-        if (!GetTargetFaction(HitActor, TargetFaction))
-        {
-            continue;
-        }
-
-        // 阵营敌对检查
-        if (!UXBBlueprintFunctionLibrary::AreFactionsHostile(SourceFaction, TargetFaction))
-        {
-            continue;
-        }
-
-        // 对士兵造成伤害
-        if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(HitActor))
-        {
-            // 草丛隐身检查
-            if (TargetSoldier->IsHiddenInBush())
-            {
-                continue;
-            }
-            
-            float ActualDamage = TargetSoldier->TakeSoldierDamage(ActualExplosionDamage, Source);
-            HitCount++;
-            
-            UE_LOG(LogXBCombat, Log, TEXT("爆炸伤害命中士兵: %s, 伤害: %.1f, 实际: %.1f"),
-                *HitActor->GetName(), ActualExplosionDamage, ActualDamage);
-            continue;
-        }
-
-        // 对将领造成伤害
-        AXBCharacterBase* TargetLeader = Cast<AXBCharacterBase>(HitActor);
-        if (!TargetLeader)
-        {
-            continue;
-        }
-
-        // 草丛隐身检查
-        if (TargetLeader->IsHiddenInBush())
-        {
-            continue;
-        }
-
-        // 通知攻击命中
-        if (AXBCharacterBase* SourceLeader = Cast<AXBCharacterBase>(Source))
-        {
-            SourceLeader->OnAttackHit(TargetLeader);
-        }
-
-        // 使用GAS应用伤害
-        UAbilitySystemComponent* SourceASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Source);
-        UAbilitySystemComponent* TargetASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(HitActor);
-
-        if (!TargetASC)
-        {
-            UE_LOG(LogXBCombat, Warning, TEXT("爆炸伤害目标 %s 无ASC"), *HitActor->GetName());
-            continue;
-        }
-
-        if (DamageEffectClass && SourceASC)
-        {
-            FGameplayEffectContextHandle ContextHandle = SourceASC->MakeEffectContext();
-            ContextHandle.AddSourceObject(Source);
-
-            FGameplayEffectSpecHandle SpecHandle = SourceASC->MakeOutgoingSpec(DamageEffectClass, 1.0f, ContextHandle);
-            if (SpecHandle.IsValid())
-            {
-                if (DamageTag.IsValid())
-                {
-                    SpecHandle.Data->SetSetByCallerMagnitude(DamageTag, ActualExplosionDamage);
-                }
-
-                SourceASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data, TargetASC);
-                HitCount++;
-
-                UE_LOG(LogXBCombat, Log, TEXT("爆炸伤害命中将领: %s, 伤害: %.1f (GAS)"),
-                    *HitActor->GetName(), ActualExplosionDamage);
-            }
-        }
-        else
-        {
-            TargetASC->SetNumericAttributeBase(UXBAttributeSet::GetIncomingDamageAttribute(), ActualExplosionDamage);
-            HitCount++;
-            
-            UE_LOG(LogXBCombat, Log, TEXT("爆炸伤害命中将领: %s, 伤害: %.1f (直接属性)"),
-                *HitActor->GetName(), ActualExplosionDamage);
-        }
-    }
-
-    UE_LOG(LogXBCombat, Log, TEXT("爆炸伤害完成: 位置=%s 半径=%.1f 命中=%d"),
-        *ExplosionLocation.ToString(), ExplosionRadius, HitCount);
+  UE_LOG(LogXBCombat, Log, TEXT("爆炸伤害完成: 位置=%s 半径=%.1f 命中=%d"),
+         *ExplosionLocation.ToString(), ExplosionRadius, HitCount);
 }

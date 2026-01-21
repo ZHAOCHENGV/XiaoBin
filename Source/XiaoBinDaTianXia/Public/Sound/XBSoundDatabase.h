@@ -19,7 +19,7 @@ class XIAOBINDATIANXIA_API UXBSoundDatabase : public UPrimaryDataAsset {
 public:
   /** 音效映射表（Tag → Sound Entry） */
   UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Sound Database",
-            meta = (DisplayName = "音效配置表"))
+            meta = (DisplayName = "音效配置表", ForceInlineRow))
   TMap<FGameplayTag, FXBSoundEntry> SoundMap;
 
   /**

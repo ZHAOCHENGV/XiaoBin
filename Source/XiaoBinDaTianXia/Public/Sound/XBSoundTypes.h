@@ -9,7 +9,6 @@
 #include "Sound/SoundConcurrency.h"
 #include "XBSoundTypes.generated.h"
 
-
 /**
  * 音效配置条目
  * 每个音效可以单独配置其属性
@@ -17,6 +16,11 @@
 USTRUCT(BlueprintType)
 struct FXBSoundEntry {
   GENERATED_BODY()
+
+  /** 音效名称（用于调试和识别） */
+  UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Sound",
+            meta = (DisplayName = "音效名称"))
+  FString SoundName;
 
   /** 音效资源（支持 MetaSound 或普通 Sound） */
   UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Sound",
