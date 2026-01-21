@@ -56,16 +56,7 @@ class XIAOBINDATIANXIA_API AXBProjectile : public AActor
 public:
     AXBProjectile();
 
-    /**
-     * @brief  初始化投射物
-     * @param  InSourceActor 来源Actor
-     * @param  InDamage 伤害数值
-     * @param  ShootDirection 发射方向
-     * @param  InSpeed 发射速度
-     * @param  bInUseArc 是否使用抛射
-     * @note   详细流程分析: 写入来源/伤害/速度 -> 设置投射物速度 -> 根据抛射参数修正Z轴速度
-     *         性能/架构注意事项: 该接口仅负责运动与基础伤害，不负责对象池状态切换
-     */
+
     /**
      * @brief  初始化投射物
      * @param  InSourceActor 来源Actor
@@ -99,7 +90,7 @@ public:
      * @note   详细流程分析: 恢复显示与碰撞 -> 清理运动状态 -> 更新Transform
      *         性能/架构注意事项: 与对象池配合使用，避免频繁Spawn/Destroy
      */
-    UFUNCTION(BlueprintCallable, Category = "投射物", meta = (DisplayName = "从对象池激活"))
+    UFUNCTION(BlueprintCallable, Category = "发射物配置", meta = (DisplayName = "从对象池激活"))
     void ActivateFromPool(const FVector& SpawnLocation, const FRotator& SpawnRotation);
 
     /**
@@ -107,82 +98,82 @@ public:
      * @note   详细流程分析: 停止运动 -> 关闭碰撞 -> 隐藏Actor -> 清理来源引用
      *         性能/架构注意事项: 由对象池统一回收，避免残留引用
      */
-    UFUNCTION(BlueprintCallable, Category = "投射物", meta = (DisplayName = "重置到对象池"))
+    UFUNCTION(BlueprintCallable, Category = "发射物配置", meta = (DisplayName = "重置到对象池"))
     void ResetForPooling();
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", meta = (DisplayName = "基础伤害", ClampMin = "0.0"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置", meta = (DisplayName = "基础伤害", ClampMin = "0.0"))
     float Damage = 10.0f;
 
     /** 发射模式 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", meta = (DisplayName = "发射模式"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置", meta = (DisplayName = "发射模式"))
     EXBProjectileLaunchMode LaunchMode = EXBProjectileLaunchMode::Linear;
 
     /** 直线速度（仅直线模式生效） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置", 
               meta = (DisplayName = "直线速度", ClampMin = "0.0",
                       EditCondition = "LaunchMode == EXBProjectileLaunchMode::Linear"))
     float LinearSpeed = 1200.0f;
 
     /** 抛物线初速度（仅抛物线模式生效） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置", 
               meta = (DisplayName = "抛物线初速度", ClampMin = "0.0",
                       EditCondition = "LaunchMode == EXBProjectileLaunchMode::Arc"))
     float ArcSpeed = 800.0f;
 
     /** 抛物线飞行距离（水平距离，仅抛物线模式生效） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置", 
               meta = (DisplayName = "抛物线飞行距离", ClampMin = "0.0",
                       EditCondition = "LaunchMode == EXBProjectileLaunchMode::Arc"))
     float ArcDistance = 500.0f;
 
     /** 抛物线重力缩放（仅抛物线模式生效） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置", 
               meta = (DisplayName = "抛物线重力缩放", ClampMin = "0.0",
                       EditCondition = "LaunchMode == EXBProjectileLaunchMode::Arc"))
     float ArcGravityScale = 1.0f;
 
     /** 最大存活时间 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", meta = (DisplayName = "最大存活时间", ClampMin = "0.0"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置", meta = (DisplayName = "最大存活时间", ClampMin = "0.0"))
     float LifeSeconds = 3.0f;
 
     /** 启用对象池 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", meta = (DisplayName = "启用对象池"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置", meta = (DisplayName = "启用对象池"))
     bool bUsePooling = true;
 
     /** 命中后销毁 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", meta = (DisplayName = "命中后销毁"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置", meta = (DisplayName = "命中后销毁"))
     bool bDestroyOnHit = true;
 
     /** 伤害效果（GAS） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "伤害", meta = (DisplayName = "伤害效果"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置|伤害", meta = (DisplayName = "伤害效果"))
     TSubclassOf<UGameplayEffect> DamageEffectClass;
 
     // ========== 碰撞体配置 ==========
 
     /** 碰撞体类型 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "碰撞体", meta = (DisplayName = "碰撞体类型"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置|碰撞体", meta = (DisplayName = "碰撞体类型"))
     EXBProjectileCollisionType CollisionType = EXBProjectileCollisionType::Capsule;
 
     /** 胶囊体半径（仅胶囊体生效） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "碰撞体", 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置|碰撞体", 
               meta = (DisplayName = "胶囊体半径", ClampMin = "1.0",
                       EditCondition = "CollisionType == EXBProjectileCollisionType::Capsule", EditConditionHides))
     float CapsuleRadius = 12.0f;
 
     /** 胶囊体半高（仅胶囊体生效） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "碰撞体", 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置|碰撞体", 
               meta = (DisplayName = "胶囊体半高", ClampMin = "1.0",
                       EditCondition = "CollisionType == EXBProjectileCollisionType::Capsule", EditConditionHides))
     float CapsuleHalfHeight = 24.0f;
 
     /** 方体尺寸（仅方体生效） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "碰撞体", 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置|碰撞体", 
               meta = (DisplayName = "方体尺寸",
                       EditCondition = "CollisionType == EXBProjectileCollisionType::Box", EditConditionHides))
     FVector BoxExtent = FVector(24.0f, 24.0f, 24.0f);
 
     /** 网格缩放 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "碰撞体", meta = (DisplayName = "网格缩放", ClampMin = "0.01"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置|碰撞体", meta = (DisplayName = "网格缩放", ClampMin = "0.01"))
     FVector MeshScale = FVector(1.0f, 1.0f, 1.0f);
 
 #if WITH_EDITOR
@@ -192,15 +183,15 @@ public:
     // ========== 命中效果 ==========
 
     /** 命中音效 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "命中效果", meta = (DisplayName = "命中音效"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置|命中效果", meta = (DisplayName = "命中音效"))
     TObjectPtr<USoundBase> HitSound;
 
     /** 命中特效（Niagara） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "命中效果", meta = (DisplayName = "命中特效"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置|命中效果", meta = (DisplayName = "命中特效"))
     TObjectPtr<UNiagaraSystem> HitEffect;
 
     /** 命中特效缩放 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "命中效果", meta = (DisplayName = "命中特效缩放", ClampMin = "0.1"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置|命中效果", meta = (DisplayName = "命中特效缩放", ClampMin = "0.1"))
     float HitEffectScale = 1.0f;
 
 protected:

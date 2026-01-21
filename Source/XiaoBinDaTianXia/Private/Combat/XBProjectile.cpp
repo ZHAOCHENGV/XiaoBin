@@ -34,25 +34,15 @@ AXBProjectile::AXBProjectile()
     MeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     RootComponent = MeshComponent;
 
-    // 创建胶囊碰撞体
+    // 创建胶囊碰撞体（碰撞预设在蓝图中配置）
     CapsuleCollision = CreateDefaultSubobject<UCapsuleComponent>(TEXT("CapsuleCollision"));
     CapsuleCollision->InitCapsuleSize(CapsuleRadius, CapsuleHalfHeight);
-    CapsuleCollision->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-    CapsuleCollision->SetCollisionObjectType(ECC_WorldDynamic);
-    CapsuleCollision->SetCollisionResponseToAllChannels(ECR_Ignore);
-    CapsuleCollision->SetCollisionResponseToChannel(XBCollision::Soldier, ECR_Overlap);
-    CapsuleCollision->SetCollisionResponseToChannel(XBCollision::Leader, ECR_Overlap);
     CapsuleCollision->SetGenerateOverlapEvents(true);
     CapsuleCollision->SetupAttachment(MeshComponent);
 
-    // 创建盒体碰撞体
+    // 创建盒体碰撞体（碰撞预设在蓝图中配置）
     BoxCollision = CreateDefaultSubobject<UBoxComponent>(TEXT("BoxCollision"));
     BoxCollision->SetBoxExtent(BoxExtent);
-    BoxCollision->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-    BoxCollision->SetCollisionObjectType(ECC_WorldDynamic);
-    BoxCollision->SetCollisionResponseToAllChannels(ECR_Ignore);
-    BoxCollision->SetCollisionResponseToChannel(XBCollision::Soldier, ECR_Overlap);
-    BoxCollision->SetCollisionResponseToChannel(XBCollision::Leader, ECR_Overlap);
     BoxCollision->SetGenerateOverlapEvents(true);
     BoxCollision->SetupAttachment(MeshComponent);
     BoxCollision->SetVisibility(false);
@@ -271,7 +261,7 @@ void AXBProjectile::OnProjectileOverlap(UPrimitiveComponent* OverlappedComponent
     }
 
     // 仅命中敌方且造成伤害时才允许销毁/回收
-    if (bDestroyOnHit && bDidApplyDamage)
+    if (bDestroyOnHit)
     {
         if (bUsePooling)
         {
