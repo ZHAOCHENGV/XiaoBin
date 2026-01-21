@@ -1,6 +1,8 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Sound/XBSoundManagerSubsystem.h"
+
+#include "AudioDevice.h"
 #include "Components/AudioComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Sound/XBSoundDatabase.h"
@@ -134,22 +136,22 @@ UAudioComponent *UXBSoundManagerSubsystem::PlaySoundAtLocation(
   const float FinalVolume = Entry.Volume * VolumeMultiplier;
   const float FinalPitch = Entry.Pitch * PitchMultiplier;
 
-  // 播放3D音效
-  UAudioComponent *AudioComp = UGameplayStatics::SpawnSoundAtLocation(
-      GetWorld(), Entry.Sound, Location, FRotator::ZeroRotator, FinalVolume,
-      FinalPitch,
+  // 🔧 修改 - 使用官方
+  // UGameplayStatics::PlaySoundAtLocation（与官方行为完全一致）
+  UGameplayStatics::PlaySoundAtLocation(
+      GetWorld(), Entry.Sound, Location, FinalVolume, FinalPitch,
       0.0f, // StartTime
       Entry.bEnableAttenuation ? Entry.Attenuation : nullptr, Entry.Concurrency,
-      true // bAutoDestroy
+      nullptr // InitialParams
   );
 
-  if (AudioComp) {
-    UE_LOG(LogXBSound, Verbose,
-           TEXT("[XBSoundManager] 播放3D音效：%s at (%.1f, %.1f, %.1f)"),
-           *SoundTag.ToString(), Location.X, Location.Y, Location.Z);
-  }
+  UE_LOG(LogXBSound, Verbose,
+         TEXT("[XBSoundManager] 播放3D音效：%s at (%.1f, %.1f, %.1f)"),
+         *SoundTag.ToString(), Location.X, Location.Y, Location.Z);
 
-  return AudioComp;
+  // 注意：UGameplayStatics::PlaySoundAtLocation 不返回 UAudioComponent
+  // 如果需要控制音效，请使用 SpawnSoundAtLocation
+  return nullptr;
 }
 
 UAudioComponent *UXBSoundManagerSubsystem::PlaySoundAttached(

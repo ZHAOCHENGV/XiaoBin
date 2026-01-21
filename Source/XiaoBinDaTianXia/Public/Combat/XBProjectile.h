@@ -189,7 +189,8 @@ public:
   /** 爆炸半径 */
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置|爆炸效果",
             meta = (DisplayName = "爆炸半径", ClampMin = "10.0",
-                    EditCondition ="DamageType == EXBProjectileDamageType::ExplosionOnly || DamageType == EXBProjectileDamageType::Both",
+                    EditCondition =
+                        "DamageType == EXBProjectileDamageType::ExplosionOnly || DamageType == EXBProjectileDamageType::Both",
                     EditConditionHides))
   float ExplosionRadius = 200.0f;
 

@@ -28,7 +28,6 @@
 #include "Utils/XBBlueprintFunctionLibrary.h"
 #include "Utils/XBLogCategories.h"
 
-
 AXBProjectile::AXBProjectile() {
   PrimaryActorTick.bCanEverTick = false;
 
@@ -250,6 +249,65 @@ void AXBProjectile::OnProjectileOverlap(
 
   if (SourceActor.IsValid() && OtherActor == SourceActor.Get()) {
     return;
+  }
+
+  // 🔧 新增 - 友军检查（同阵营、同主将士兵）
+  AActor *Source = SourceActor.Get();
+  if (Source) {
+    // 获取来源阵营
+    EXBFaction SourceFaction = EXBFaction::Neutral;
+    AXBCharacterBase *SourceLeader = nullptr;
+
+    if (AXBSoldierCharacter *SourceSoldier =
+            Cast<AXBSoldierCharacter>(Source)) {
+      SourceFaction = SourceSoldier->GetFaction();
+      // TODO: 获取士兵的主将（需要士兵类中有主将引用）
+    } else if (AXBCharacterBase *Leader = Cast<AXBCharacterBase>(Source)) {
+      SourceFaction = Leader->GetFaction();
+      SourceLeader = Leader;
+    }
+
+    // 获取目标阵营
+    EXBFaction TargetFaction = EXBFaction::Neutral;
+
+    if (AXBSoldierCharacter *TargetSoldier =
+            Cast<AXBSoldierCharacter>(OtherActor)) {
+      TargetFaction = TargetSoldier->GetFaction();
+
+      // 🔧 新增 - 休眠无敌士兵检查
+      if (TargetSoldier->bInvulnerableWhenDormant &&
+          !TargetSoldier->IsRecruited() &&
+          TargetSoldier->GetSoldierState() == EXBSoldierState::Dormant) {
+        UE_LOG(LogXBCombat, Verbose, TEXT("投射物穿透休眠无敌士兵: %s -> %s"),
+               *Source->GetName(), *OtherActor->GetName());
+        return; // 休眠无敌，直接忽略
+      }
+
+      // 同阵营友军检查（除了各自为英）
+      if (SourceFaction != EXBFaction::Neutral &&
+          TargetFaction != EXBFaction::Neutral &&
+          SourceFaction == TargetFaction) {
+        UE_LOG(LogXBCombat, Verbose,
+               TEXT("投射物穿透友军士兵: %s -> %s (同阵营)"),
+               *Source->GetName(), *OtherActor->GetName());
+        return; // 友军，直接忽略
+      }
+
+      // TODO: 同主将士兵检查（需要士兵类中有主将引用）
+    } else if (AXBCharacterBase *TargetLeader =
+                   Cast<AXBCharacterBase>(OtherActor)) {
+      TargetFaction = TargetLeader->GetFaction();
+
+      // 同阵营友军检查（除了各自为英）
+      if (SourceFaction != EXBFaction::Neutral &&
+          TargetFaction != EXBFaction::Neutral &&
+          SourceFaction == TargetFaction) {
+        UE_LOG(LogXBCombat, Verbose,
+               TEXT("投射物穿透友军主将: %s -> %s (同阵营)"),
+               *Source->GetName(), *OtherActor->GetName());
+        return; // 友军，直接忽略
+      }
+    }
   }
 
   FVector HitLocation = GetActorLocation();

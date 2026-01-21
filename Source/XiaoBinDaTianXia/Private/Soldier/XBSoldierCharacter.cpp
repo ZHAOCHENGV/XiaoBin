@@ -1719,6 +1719,14 @@ void AXBSoldierCharacter::ExitCombat() {
 
 float AXBSoldierCharacter::TakeSoldierDamage(float DamageAmount,
                                              AActor *DamageSource) {
+  // 🔧 新增 - 休眠无敌状态检查（未招募且休眠状态下不受伤）
+  if (bInvulnerableWhenDormant && !bIsRecruited &&
+      CurrentState == EXBSoldierState::Dormant) {
+    UE_LOG(LogXBCombat, Verbose, TEXT("士兵 %s: 休眠无敌状态，免疫伤害"),
+           *GetName());
+    return 0.0f;
+  }
+
   // ✨ 新增 - 友军伤害硬拦截（C++层级绝对防御）
   if (DamageSource) {
     AXBCharacterBase *MyLeader = GetLeaderCharacter();
@@ -2635,12 +2643,14 @@ void AXBSoldierCharacter::HandleAssignedTargetLeaderDied(
  */
 void AXBSoldierCharacter::BindAssignedTargetEvents(AActor *AssignedTarget) {
   // 无目标或无效目标直接返回
-  if (!AssignedTarget || !IsValid(AssignedTarget) || AssignedTarget->IsPendingKillPending()) {
+  if (!AssignedTarget || !IsValid(AssignedTarget) ||
+      AssignedTarget->IsPendingKillPending()) {
     return;
   }
 
   // 绑定士兵死亡事件
-  if (AXBSoldierCharacter *TargetSoldier = Cast<AXBSoldierCharacter>(AssignedTarget)) {
+  if (AXBSoldierCharacter *TargetSoldier =
+          Cast<AXBSoldierCharacter>(AssignedTarget)) {
     if (IsValid(TargetSoldier)) {
       TargetSoldier->OnSoldierDied.AddDynamic(
           this, &AXBSoldierCharacter::HandleAssignedTargetSoldierDied);
