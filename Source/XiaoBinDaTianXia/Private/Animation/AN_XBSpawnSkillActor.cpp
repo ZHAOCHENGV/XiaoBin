@@ -53,6 +53,14 @@ void UAN_XBSpawnSkillActor::Notify(
     return;
   }
 
+  // 死亡检测 - 主将死亡后不生成
+  if (AXBCharacterBase *Character = Cast<AXBCharacterBase>(OwnerActor)) {
+    if (Character->IsDead()) {
+      UE_LOG(LogXBCombat, Verbose, TEXT("AN_XBSpawnSkillActor: 施法者已死亡，跳过生成"));
+      return;
+    }
+  }
+
   // 获取世界
   UWorld *World = MeshComp->GetWorld();
   if (!World) {

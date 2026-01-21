@@ -21,7 +21,20 @@ class UPrimitiveComponent;
 class UStaticMeshComponent;
 class UProjectileMovementComponent;
 class UGameplayEffect;
+class USoundBase;
+class UNiagaraSystem;
 struct FHitResult;
+
+/**
+ * @brief 投射物发射模式
+ */
+UENUM(BlueprintType)
+enum class EXBProjectileLaunchMode : uint8 {
+  /** 直线飞行，不受重力影响 */
+  Linear UMETA(DisplayName = "直线"),
+  /** 抛物线飞行，受重力影响 */
+  Arc UMETA(DisplayName = "抛物线")
+};
 
 UCLASS()
 class XIAOBINDATIANXIA_API AXBProjectile : public AActor
@@ -88,29 +101,63 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", meta = (DisplayName = "基础伤害", ClampMin = "0.0"))
     float Damage = 10.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", meta = (DisplayName = "直线速度", ClampMin = "0.0"))
+    /** 发射模式 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", meta = (DisplayName = "发射模式"))
+    EXBProjectileLaunchMode LaunchMode = EXBProjectileLaunchMode::Linear;
+
+    /** 直线速度（仅直线模式生效） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", 
+              meta = (DisplayName = "直线速度", ClampMin = "0.0",
+                      EditCondition = "LaunchMode == EXBProjectileLaunchMode::Linear"))
     float LinearSpeed = 1200.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", meta = (DisplayName = "抛射模式"))
-    bool bUseArc = false;
+    /** 抛物线初速度（仅抛物线模式生效） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", 
+              meta = (DisplayName = "抛物线初速度", ClampMin = "0.0",
+                      EditCondition = "LaunchMode == EXBProjectileLaunchMode::Arc"))
+    float ArcSpeed = 800.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", meta = (DisplayName = "抛射上抛速度"))
-    float ArcLaunchSpeed = 600.0f;
+    /** 抛物线飞行距离（水平距离，仅抛物线模式生效） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", 
+              meta = (DisplayName = "抛物线飞行距离", ClampMin = "0.0",
+                      EditCondition = "LaunchMode == EXBProjectileLaunchMode::Arc"))
+    float ArcDistance = 500.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", meta = (DisplayName = "抛射重力缩放"))
+    /** 抛物线重力缩放（仅抛物线模式生效） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", 
+              meta = (DisplayName = "抛物线重力缩放", ClampMin = "0.0",
+                      EditCondition = "LaunchMode == EXBProjectileLaunchMode::Arc"))
     float ArcGravityScale = 1.0f;
 
+    /** 最大存活时间 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", meta = (DisplayName = "最大存活时间", ClampMin = "0.0"))
     float LifeSeconds = 3.0f;
 
+    /** 启用对象池 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", meta = (DisplayName = "启用对象池"))
     bool bUsePooling = true;
 
+    /** 命中后销毁 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "投射物", meta = (DisplayName = "命中后销毁"))
     bool bDestroyOnHit = true;
 
+    /** 伤害效果（GAS） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "伤害", meta = (DisplayName = "伤害效果"))
     TSubclassOf<UGameplayEffect> DamageEffectClass;
+
+    // ========== 命中效果 ==========
+
+    /** 命中音效 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "命中效果", meta = (DisplayName = "命中音效"))
+    TObjectPtr<USoundBase> HitSound;
+
+    /** 命中特效（Niagara） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "命中效果", meta = (DisplayName = "命中特效"))
+    TObjectPtr<UNiagaraSystem> HitEffect;
+
+    /** 命中特效缩放 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "命中效果", meta = (DisplayName = "命中特效缩放", ClampMin = "0.1"))
+    float HitEffectScale = 1.0f;
 
 protected:
     virtual void BeginPlay() override;

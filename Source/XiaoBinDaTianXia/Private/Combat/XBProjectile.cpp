@@ -15,6 +15,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "NiagaraFunctionLibrary.h"
 #include "Combat/XBProjectilePoolSubsystem.h"
 #include "GAS/XBAttributeSet.h"
 #include "Soldier/XBSoldierCharacter.h"
@@ -78,20 +79,35 @@ void AXBProjectile::InitializeProjectileWithTarget(AActor* InSourceActor, float 
 {
     SourceActor = InSourceActor;
     Damage = InDamage;
-    bUseArc = bInUseArc;
-
-    const float FinalSpeed = InSpeed > 0.0f ? InSpeed : LinearSpeed;
+    
+    // 判断发射模式
+    const bool bIsArcMode = (LaunchMode == EXBProjectileLaunchMode::Arc) || bInUseArc;
+    
+    // 根据模式选择速度
+    float FinalSpeed = 0.0f;
+    if (bIsArcMode) {
+        FinalSpeed = InSpeed > 0.0f ? InSpeed : ArcSpeed;
+    } else {
+        FinalSpeed = InSpeed > 0.0f ? InSpeed : LinearSpeed;
+    }
+    
     ProjectileMovementComponent->InitialSpeed = FinalSpeed;
     ProjectileMovementComponent->MaxSpeed = FinalSpeed;
 
-    // 🔧 修改 - 抛射模式优先使用目标位置计算抛物线速度
     FVector Velocity = ShootDirection.GetSafeNormal() * FinalSpeed;
-    if (bUseArc)
-    {
+    
+    if (bIsArcMode) {
+        // 抛物线模式
         ProjectileMovementComponent->ProjectileGravityScale = ArcGravityScale;
 
-        if (!TargetLocation.IsZero())
-        {
+        // 优先使用目标位置计算抛物线速度
+        FVector ActualTarget = TargetLocation;
+        if (ActualTarget.IsZero() && ArcDistance > 0.0f) {
+            // 没有目标位置时，根据飞行距离计算目标点
+            ActualTarget = GetActorLocation() + ShootDirection.GetSafeNormal() * ArcDistance;
+        }
+
+        if (!ActualTarget.IsZero()) {
             FVector SuggestedVelocity = FVector::ZeroVector;
             const FVector StartLocation = GetActorLocation();
             const float OverrideGravityZ = GetWorld() ? GetWorld()->GetGravityZ() * ArcGravityScale : 0.0f;
@@ -100,7 +116,7 @@ void AXBProjectile::InitializeProjectileWithTarget(AActor* InSourceActor, float 
                 this,
                 SuggestedVelocity,
                 StartLocation,
-                TargetLocation,
+                ActualTarget,
                 FinalSpeed,
                 false,
                 0.0f,
@@ -108,35 +124,30 @@ void AXBProjectile::InitializeProjectileWithTarget(AActor* InSourceActor, float 
                 ESuggestProjVelocityTraceOption::DoNotTrace
             );
 
-            if (bHasSolution)
-            {
-                // 🔧 修改 - 在解算基础上增加上抛速度，确保可调节抛物线高度
+            if (bHasSolution) {
                 Velocity = SuggestedVelocity;
-                Velocity.Z += ArcLaunchSpeed;
+            } else {
+                // 无解时使用默认上抛角度
+                Velocity = ShootDirection.GetSafeNormal() * FinalSpeed * 0.707f;
+                Velocity.Z = FinalSpeed * 0.707f;
             }
-            else
-            {
-                Velocity.Z += ArcLaunchSpeed;
-            }
+        } else {
+            // 无目标时默认45度上抛
+            Velocity = ShootDirection.GetSafeNormal() * FinalSpeed * 0.707f;
+            Velocity.Z = FinalSpeed * 0.707f;
         }
-        else
-        {
-            Velocity.Z += ArcLaunchSpeed;
-        }
-    }
-    else
-    {
+    } else {
+        // 直线模式
         ProjectileMovementComponent->ProjectileGravityScale = 0.0f;
     }
 
     ProjectileMovementComponent->Velocity = Velocity;
 
-    // 🔧 修改 - 以飞行方向更新Actor旋转，避免胶囊体与速度方向不一致
+    // 以飞行方向更新Actor旋转
     SetActorRotation(Velocity.Rotation());
 
-    // 🔧 修改 - 启动存活计时，超时自动回收
-    if (LifeSeconds > 0.0f)
-    {
+    // 启动存活计时
+    if (LifeSeconds > 0.0f) {
         GetWorldTimerManager().ClearTimer(LifeTimerHandle);
         GetWorldTimerManager().SetTimer(
             LifeTimerHandle,
@@ -150,7 +161,7 @@ void AXBProjectile::InitializeProjectileWithTarget(AActor* InSourceActor, float 
     UE_LOG(LogXBCombat, Log, TEXT("投射物初始化: 来源=%s 伤害=%.1f 模式=%s 速度=%.1f"),
         InSourceActor ? *InSourceActor->GetName() : TEXT("无"),
         Damage,
-        bUseArc ? TEXT("抛射") : TEXT("直线"),
+        bIsArcMode ? TEXT("抛物线") : TEXT("直线"),
         FinalSpeed);
 }
 
@@ -208,7 +219,28 @@ void AXBProjectile::OnProjectileOverlap(UPrimitiveComponent* OverlappedComponent
 
     const bool bDidApplyDamage = ApplyDamageToTarget(OtherActor, SweepResult);
 
-    // 🔧 修改 - 仅命中敌方且造成伤害时才允许销毁/回收
+    // 命中敌方且造成伤害时播放效果
+    if (bDidApplyDamage)
+    {
+        const FVector HitLocation = SweepResult.ImpactPoint.IsZero() ? GetActorLocation() : SweepResult.ImpactPoint;
+        
+        // 播放命中音效
+        if (HitSound)
+        {
+            UGameplayStatics::PlaySoundAtLocation(this, HitSound, HitLocation);
+        }
+        
+        // 播放命中特效（Niagara）
+        if (HitEffect)
+        {
+            UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+                this, HitEffect, HitLocation,
+                FRotator::ZeroRotator, FVector(HitEffectScale),
+                true, true, ENCPoolMethod::None, true);
+        }
+    }
+
+    // 仅命中敌方且造成伤害时才允许销毁/回收
     if (bDestroyOnHit && bDidApplyDamage)
     {
         if (bUsePooling)
