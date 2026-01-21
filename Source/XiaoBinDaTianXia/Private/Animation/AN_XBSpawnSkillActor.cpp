@@ -59,6 +59,20 @@ void UAN_XBSpawnSkillActor::Notify(
     return;
   }
 
+  // ========== 指定范围模式特殊处理 ==========
+  if (SpawnConfig.SpawnMode == EXBSkillSpawnMode::DesignatedArea) {
+    // 计算伤害值
+    float Damage = GetDamage(OwnerActor);
+    // 获取当前目标
+    AActor *Target = GetCurrentTarget(OwnerActor);
+    // 计算区域中心
+    FVector AreaCenter = CalculateDesignatedAreaCenter(OwnerActor);
+    
+    // 启动延迟生成
+    StartDesignatedAreaSpawn(World, OwnerActor, AreaCenter, Damage, Target);
+    return;
+  }
+
   // 计算基础生成位置和旋转
   FVector BaseSpawnLocation;
   FRotator BaseSpawnRotation;
@@ -420,4 +434,242 @@ FVector UAN_XBSpawnSkillActor::CalculateSpawnDirection(
 
   // 默认使用施法者朝向
   return OwnerActor->GetActorForwardVector();
+}
+
+/**
+ * @brief 计算指定范围区域中心位置
+ * @param OwnerActor 施法者
+ * @return 区域中心位置
+ */
+FVector UAN_XBSpawnSkillActor::CalculateDesignatedAreaCenter(AActor *OwnerActor) const {
+  if (!OwnerActor) {
+    return FVector::ZeroVector;
+  }
+
+  FVector CenterLocation = OwnerActor->GetActorLocation();
+
+  switch (SpawnConfig.DesignatedAreaTarget) {
+  case EXBDesignatedAreaTarget::EnemyTarget: {
+    // 以敌方目标位置为中心
+    AActor *Target = GetCurrentTarget(OwnerActor);
+    if (Target) {
+      CenterLocation = Target->GetActorLocation();
+    } else {
+      // 无目标时回退到前方偏移
+      CenterLocation = OwnerActor->GetActorLocation() +
+                       OwnerActor->GetActorForwardVector() * SpawnConfig.AreaForwardDistance;
+    }
+  } break;
+
+  case EXBDesignatedAreaTarget::ForwardOffset: {
+    // 以施法者前方偏移位置为中心
+    CenterLocation = OwnerActor->GetActorLocation() +
+                     OwnerActor->GetActorForwardVector() * SpawnConfig.AreaForwardDistance;
+  } break;
+
+  case EXBDesignatedAreaTarget::Self: {
+    // 以施法者自身位置为中心
+    CenterLocation = OwnerActor->GetActorLocation();
+  } break;
+  }
+
+  return CenterLocation;
+}
+
+/**
+ * @brief 启动指定范围延迟生成
+ * @param World 世界对象
+ * @param OwnerActor 施法者
+ * @param AreaCenter 区域中心
+ * @param Damage 伤害值
+ * @param Target 目标Actor
+ */
+void UAN_XBSpawnSkillActor::StartDesignatedAreaSpawn(UWorld *World, AActor *OwnerActor,
+                                                      const FVector &AreaCenter, float Damage,
+                                                      AActor *Target) const {
+  if (!World || !OwnerActor) {
+    return;
+  }
+
+  const int32 TotalCount = FMath::Max(1, SpawnConfig.SpawnCount);
+  const float Interval = SpawnConfig.SpawnInterval;
+  const FString ShapeName = (SpawnConfig.DesignatedAreaShape == EXBDesignatedAreaShape::Circle) ? TEXT("圆形") : TEXT("正方形");
+
+  UE_LOG(LogXBCombat, Log,
+         TEXT("AN_XBSpawnSkillActor [指定范围]: 开始生成 %d 个投射物，形状=%s，区域中心=%s，大小=%.1f，高度=%.1f"),
+         TotalCount, *ShapeName, *AreaCenter.ToString(), SpawnConfig.AreaRadius, SpawnConfig.SpawnHeight);
+
+  // 调试绘制区域范围
+  if (SpawnConfig.bEnableDebugDraw) {
+    // 绘制区域中心
+    DrawDebugSphere(World, AreaCenter, 30.0f, 16, FColor::Green, false,
+                    SpawnConfig.DebugDrawDuration);
+    
+    if (SpawnConfig.DesignatedAreaShape == EXBDesignatedAreaShape::Circle) {
+      // 绘制圆形区域边界
+      DrawDebugCircle(World, AreaCenter + FVector(0, 0, 10.0f), SpawnConfig.AreaRadius, 32,
+                      FColor::Yellow, false, SpawnConfig.DebugDrawDuration, 0, 3.0f,
+                      FVector::RightVector, FVector::ForwardVector, false);
+      // 绘制高空生成区域边界
+      if (SpawnConfig.SpawnHeight > 0.0f) {
+        DrawDebugCircle(World, AreaCenter + FVector(0, 0, SpawnConfig.SpawnHeight),
+                        SpawnConfig.AreaRadius, 32, FColor::Cyan, false,
+                        SpawnConfig.DebugDrawDuration, 0, 2.0f, FVector::RightVector,
+                        FVector::ForwardVector, false);
+      }
+    } else {
+      // 绘制正方形区域边界
+      const float HalfSize = SpawnConfig.AreaRadius;
+      FVector Corners[4] = {
+        AreaCenter + FVector(-HalfSize, -HalfSize, 10.0f),
+        AreaCenter + FVector(HalfSize, -HalfSize, 10.0f),
+        AreaCenter + FVector(HalfSize, HalfSize, 10.0f),
+        AreaCenter + FVector(-HalfSize, HalfSize, 10.0f)
+      };
+      for (int32 i = 0; i < 4; ++i) {
+        DrawDebugLine(World, Corners[i], Corners[(i + 1) % 4], FColor::Yellow, false,
+                      SpawnConfig.DebugDrawDuration, 0, 3.0f);
+      }
+      // 绘制高空生成区域边界
+      if (SpawnConfig.SpawnHeight > 0.0f) {
+        for (int32 i = 0; i < 4; ++i) {
+          FVector HighCorner = Corners[i];
+          HighCorner.Z = AreaCenter.Z + SpawnConfig.SpawnHeight;
+          FVector NextHighCorner = Corners[(i + 1) % 4];
+          NextHighCorner.Z = AreaCenter.Z + SpawnConfig.SpawnHeight;
+          DrawDebugLine(World, HighCorner, NextHighCorner, FColor::Cyan, false,
+                        SpawnConfig.DebugDrawDuration, 0, 2.0f);
+        }
+      }
+    }
+  }
+
+  // 使用 Timer 延迟生成每个投射物
+  for (int32 i = 0; i < TotalCount; ++i) {
+    // 第一个在0秒时生成，其余依次延迟
+    const float Delay = (i == 0) ? 0.01f : (Interval * i);
+
+    // 使用 FTimerDelegate 捕获所有参数
+    FTimerHandle TimerHandle;
+    FTimerDelegate TimerDelegate;
+
+    // 捕获当前索引和所有必要参数
+    TimerDelegate.BindLambda([this, World, OwnerActor, AreaCenter, Damage, Target, i]() {
+      // 校验 World 和 Owner 仍然有效
+      if (!IsValid(OwnerActor) || !World) {
+        return;
+      }
+      SpawnDesignatedAreaProjectile(World, OwnerActor, AreaCenter, Damage, Target, i);
+    });
+
+    World->GetTimerManager().SetTimer(TimerHandle, TimerDelegate, Delay, false);
+  }
+}
+
+/**
+ * @brief 在指定范围内生成单个投射物
+ * @param World 世界对象
+ * @param OwnerActor 施法者
+ * @param AreaCenter 区域中心
+ * @param Damage 伤害值
+ * @param Target 目标Actor
+ * @param Index 当前索引（用于调试）
+ */
+void UAN_XBSpawnSkillActor::SpawnDesignatedAreaProjectile(UWorld *World, AActor *OwnerActor,
+                                                           const FVector &AreaCenter, float Damage,
+                                                           AActor *Target, int32 Index) const {
+  if (!World || !OwnerActor || !SpawnConfig.ActorClass) {
+    return;
+  }
+
+  // 计算随机位置
+  FVector SpawnLocation = AreaCenter;
+  
+  if (SpawnConfig.DesignatedAreaShape == EXBDesignatedAreaShape::Circle) {
+    // 圆形区域内随机位置（使用平方根分布保证均匀）
+    const float RandomAngle = FMath::RandRange(0.0f, 360.0f);
+    const float RandomRadius = FMath::Sqrt(FMath::FRand()) * SpawnConfig.AreaRadius;
+    const float AngleRad = FMath::DegreesToRadians(RandomAngle);
+    SpawnLocation.X += RandomRadius * FMath::Cos(AngleRad);
+    SpawnLocation.Y += RandomRadius * FMath::Sin(AngleRad);
+  } else {
+    // 正方形区域内随机位置
+    const float HalfSize = SpawnConfig.AreaRadius;
+    SpawnLocation.X += FMath::RandRange(-HalfSize, HalfSize);
+    SpawnLocation.Y += FMath::RandRange(-HalfSize, HalfSize);
+  }
+  
+  // 添加高度
+  SpawnLocation.Z += SpawnConfig.SpawnHeight;
+
+  // 计算旋转（俯仰角随机范围内）
+  const float RandomPitch = FMath::RandRange(SpawnConfig.ArrowPitchRange.X, SpawnConfig.ArrowPitchRange.Y);
+  const float RandomYaw = FMath::RandRange(0.0f, 360.0f);
+  FRotator SpawnRotation = FRotator(RandomPitch, RandomYaw, 0.0f);
+
+  // 发射方向：基于俯仰角
+  FVector SpawnDirection = SpawnRotation.Vector();
+
+  // 配置生成参数
+  FActorSpawnParameters SpawnParams;
+  SpawnParams.Owner = OwnerActor;
+  SpawnParams.Instigator = Cast<APawn>(OwnerActor);
+  SpawnParams.SpawnCollisionHandlingOverride =
+      ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+  // 生成Actor
+  AActor *SpawnedActor = World->SpawnActor<AActor>(
+      SpawnConfig.ActorClass, SpawnLocation, SpawnRotation, SpawnParams);
+
+  if (!SpawnedActor) {
+    UE_LOG(LogXBCombat, Warning, TEXT("AN_XBSpawnSkillActor [指定范围]: 生成失败 (索引=%d)"), Index);
+    return;
+  }
+
+  // 获取施法者缩放并应用
+  float OwnerScaleFactor = 1.0f;
+  if (AXBCharacterBase *Character = Cast<AXBCharacterBase>(OwnerActor)) {
+    OwnerScaleFactor = Character->GetActorScale3D().X;
+    if (OwnerScaleFactor != 1.0f) {
+      SpawnedActor->SetActorScale3D(FVector(OwnerScaleFactor));
+    }
+  }
+
+  // 初始化投射物
+  if (AXBProjectile *Projectile = Cast<AXBProjectile>(SpawnedActor)) {
+    // 先禁用碰撞
+    Projectile->SetActorEnableCollision(false);
+
+    // 计算落点位置（当前位置正下方地面）
+    FVector TargetLocation = SpawnLocation;
+    TargetLocation.Z = AreaCenter.Z;
+
+    // 使用直线模式飞行
+    Projectile->InitializeProjectileWithTarget(
+        OwnerActor, Damage, SpawnDirection,
+        Projectile->LinearSpeed,
+        false,  // 不使用抛物线
+        TargetLocation);
+
+    // 启用碰撞
+    Projectile->SetActorEnableCollision(true);
+
+    UE_LOG(LogXBCombat, Verbose,
+           TEXT("AN_XBSpawnSkillActor [指定范围]: 生成投射物 (索引=%d)，位置=%s"),
+           Index, *SpawnLocation.ToString());
+  }
+  // 如果是技能接口Actor
+  else if (IXBSkillActorInterface *SkillInterface = Cast<IXBSkillActorInterface>(SpawnedActor)) {
+    SkillInterface->InitializeSkillActor(OwnerActor, Damage, SpawnDirection, Target);
+  }
+
+  // 调试绘制
+  if (SpawnConfig.bEnableDebugDraw) {
+    // 绘制生成位置
+    DrawDebugSphere(World, SpawnLocation, 15.0f, 8, FColor::Red, false,
+                    SpawnConfig.DebugDrawDuration);
+    // 绘制飞行轨迹
+    DrawDebugLine(World, SpawnLocation, SpawnLocation + SpawnDirection * 100.0f,
+                  FColor::Orange, false, SpawnConfig.DebugDrawDuration, 0, 2.0f);
+  }
 }

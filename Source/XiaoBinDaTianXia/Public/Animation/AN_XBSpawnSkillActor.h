@@ -33,7 +33,33 @@ enum class EXBSkillSpawnMode : uint8 {
   /** 从角色前方偏移生成（相对于角色朝向） */
   ForwardOffset UMETA(DisplayName = "前方偏移"),
   /** 从当前目标位置生成 */
-  TargetBased UMETA(DisplayName = "目标位置")
+  TargetBased UMETA(DisplayName = "目标位置"),
+  /** 指定范围内生成（在指定区域内延迟生成多个投射物，如箭雨） */
+  DesignatedArea UMETA(DisplayName = "指定范围")
+};
+
+/**
+ * @brief 指定范围目标位置来源
+ */
+UENUM(BlueprintType)
+enum class EXBDesignatedAreaTarget : uint8 {
+  /** 以当前锁定的敌方目标位置为中心（无目标时回退到前方偏移） */
+  EnemyTarget UMETA(DisplayName = "敌方目标"),
+  /** 以施法者前方偏移位置为中心 */
+  ForwardOffset UMETA(DisplayName = "前方偏移"),
+  /** 以施法者自身位置为中心 */
+  Self UMETA(DisplayName = "自身位置")
+};
+
+/**
+ * @brief 指定范围形状
+ */
+UENUM(BlueprintType)
+enum class EXBDesignatedAreaShape : uint8 {
+  /** 圆形区域 */
+  Circle UMETA(DisplayName = "圆形"),
+  /** 正方形区域 */
+  Square UMETA(DisplayName = "正方形")
 };
 
 /**
@@ -118,6 +144,57 @@ struct XIAOBINDATIANXIA_API FXBSkillSpawnConfig {
             meta = (DisplayName = "生成距离", ClampMin = "0.0",
                     EditCondition = "SpawnCount > 1"))
   float SpreadRadius = 100.0f;
+
+  // ========== 指定范围配置 ==========
+
+  /** 指定范围目标位置来源 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "指定范围配置",
+            meta = (DisplayName = "区域中心",
+                    EditCondition = "SpawnMode == EXBSkillSpawnMode::DesignatedArea",
+                    EditConditionHides))
+  EXBDesignatedAreaTarget DesignatedAreaTarget = EXBDesignatedAreaTarget::EnemyTarget;
+
+  /** 指定范围形状 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "指定范围配置",
+            meta = (DisplayName = "区域形状",
+                    EditCondition = "SpawnMode == EXBSkillSpawnMode::DesignatedArea",
+                    EditConditionHides))
+  EXBDesignatedAreaShape DesignatedAreaShape = EXBDesignatedAreaShape::Circle;
+
+  /** 区域半径（圆形时为半径，正方形时为边长的一半） */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "指定范围配置",
+            meta = (DisplayName = "区域大小", ClampMin = "50.0", ClampMax = "1000.0",
+                    EditCondition = "SpawnMode == EXBSkillSpawnMode::DesignatedArea",
+                    EditConditionHides))
+  float AreaRadius = 300.0f;
+
+  /** 生成高度（距离地面的高度，0表示不使用高度偏移） */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "指定范围配置",
+            meta = (DisplayName = "生成高度", ClampMin = "0.0", ClampMax = "2000.0",
+                    EditCondition = "SpawnMode == EXBSkillSpawnMode::DesignatedArea",
+                    EditConditionHides))
+  float SpawnHeight = 500.0f;
+
+  /** 生成间隔（秒），控制延迟生成的速度 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "指定范围配置",
+            meta = (DisplayName = "生成间隔", ClampMin = "0.01", ClampMax = "0.5",
+                    EditCondition = "SpawnMode == EXBSkillSpawnMode::DesignatedArea",
+                    EditConditionHides))
+  float SpawnInterval = 0.02f;
+
+  /** 投射物俯仰角范围（负值表示向下，0表示水平） */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "指定范围配置",
+            meta = (DisplayName = "俯仰角范围",
+                    EditCondition = "SpawnMode == EXBSkillSpawnMode::DesignatedArea",
+                    EditConditionHides))
+  FVector2D ArrowPitchRange = FVector2D(-85.0f, -95.0f);
+
+  /** 前方偏移距离（当区域中心为前方偏移或自身位置时使用） */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "指定范围配置",
+            meta = (DisplayName = "前方偏移距离", ClampMin = "0.0",
+                    EditCondition = "SpawnMode == EXBSkillSpawnMode::DesignatedArea && DesignatedAreaTarget != EXBDesignatedAreaTarget::EnemyTarget",
+                    EditConditionHides))
+  float AreaForwardDistance = 500.0f;
 
   /** GAS - 触发的 Gameplay Ability 类（可选） */
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GAS配置",
@@ -206,4 +283,36 @@ protected:
    */
   FVector CalculateSpawnDirection(AActor *OwnerActor,
                                   const FVector &SpawnLocation) const;
+
+  /**
+   * @brief 计算指定范围区域中心位置
+   * @param OwnerActor 施法者
+   * @return 区域中心位置
+   */
+  FVector CalculateDesignatedAreaCenter(AActor *OwnerActor) const;
+
+  /**
+   * @brief 启动指定范围延迟生成
+   * @param World 世界对象
+   * @param OwnerActor 施法者
+   * @param AreaCenter 区域中心
+   * @param Damage 伤害值
+   * @param Target 目标Actor
+   */
+  void StartDesignatedAreaSpawn(UWorld *World, AActor *OwnerActor,
+                                const FVector &AreaCenter, float Damage,
+                                AActor *Target) const;
+
+  /**
+   * @brief 在指定范围内生成单个投射物
+   * @param World 世界对象
+   * @param OwnerActor 施法者
+   * @param AreaCenter 区域中心
+   * @param Damage 伤害值
+   * @param Target 目标Actor
+   * @param Index 当前索引（用于调试）
+   */
+  void SpawnDesignatedAreaProjectile(UWorld *World, AActor *OwnerActor,
+                                     const FVector &AreaCenter, float Damage,
+                                     AActor *Target, int32 Index) const;
 };
