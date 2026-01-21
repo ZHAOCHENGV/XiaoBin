@@ -130,7 +130,7 @@ struct XIAOBINDATIANXIA_API FXBSkillSpawnConfig {
 
   /** 生成Actor的数量 */
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "多生成配置",
-            meta = (DisplayName = "生成数量", ClampMin = "1", ClampMax = "20"))
+            meta = (DisplayName = "生成数量", ClampMin = "1", ClampMax = "999"))
   int32 SpawnCount = 1;
 
   /** 分布角度（所有生成点在角色前方该角度范围内均匀分布） */

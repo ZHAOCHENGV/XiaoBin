@@ -174,17 +174,16 @@ void UAN_XBSpawnSkillActor::Notify(
              *SpawnedActor->GetName(), OwnerScaleFactor);
     }
 
-    // 如果使用目标方向且只有单个生成，则重新计算发射方向
-    if (ActualSpawnCount == 1 || SpawnConfig.bUseTargetDirection) {
-      FVector TargetBasedDirection = CalculateSpawnDirection(OwnerActor, FinalSpawnLocation);
-      if (ActualSpawnCount == 1) {
-        SpawnDirection = TargetBasedDirection;
-      }
-      // 多生成时如果启用目标方向，也使用目标方向
-      else if (SpawnConfig.bUseTargetDirection && Target) {
-        SpawnDirection = TargetBasedDirection;
+    // 计算发射方向
+    // 单个生成时：如果启用目标方向则指向目标，否则使用角色朝向
+    // 多个生成时（扇形）：保持各自的扇形方向，不被目标方向覆盖
+    if (ActualSpawnCount == 1) {
+      // 单个生成时，根据配置决定是否使用目标方向
+      if (SpawnConfig.bUseTargetDirection) {
+        SpawnDirection = CalculateSpawnDirection(OwnerActor, FinalSpawnLocation);
       }
     }
+    // 多个生成时，SpawnDirection 已经在扇形计算中设置为各自的偏移方向，保持不变
 
     // 如果Actor实现了技能接口，则初始化
     if (IXBSkillActorInterface *SkillInterface =
