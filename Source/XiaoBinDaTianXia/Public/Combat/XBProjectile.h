@@ -49,6 +49,19 @@ enum class EXBProjectileLaunchMode : uint8 {
   Arc UMETA(DisplayName = "抛物线")
 };
 
+/**
+ * @brief 投射物伤害类型
+ */
+UENUM(BlueprintType)
+enum class EXBProjectileDamageType : uint8 {
+  /** 仅飞行伤害（碰撞目标时造成伤害） */
+  FlightOnly UMETA(DisplayName = "仅飞行伤害"),
+  /** 仅爆炸伤害（命中时范围爆炸） */
+  ExplosionOnly UMETA(DisplayName = "仅爆炸伤害"),
+  /** 飞行+爆炸伤害（两者都能造成伤害） */
+  Both UMETA(DisplayName = "飞行+爆炸伤害")
+};
+
 UCLASS()
 class XIAOBINDATIANXIA_API AXBProjectile : public AActor
 {
@@ -149,6 +162,48 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置|伤害", meta = (DisplayName = "伤害效果"))
     TSubclassOf<UGameplayEffect> DamageEffectClass;
 
+    /** 伤害类型 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置|伤害", meta = (DisplayName = "伤害类型"))
+    EXBProjectileDamageType DamageType = EXBProjectileDamageType::FlightOnly;
+
+    // ========== 爆炸效果配置（ExplosionOnly 或 Both 时显示） ==========
+
+    /** 爆炸半径 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置|爆炸效果", 
+              meta = (DisplayName = "爆炸半径", ClampMin = "10.0",
+                      EditCondition = "DamageType == EXBProjectileDamageType::ExplosionOnly || DamageType == EXBProjectileDamageType::Both", EditConditionHides))
+    float ExplosionRadius = 200.0f;
+
+    /** 爆炸伤害（0表示使用基础伤害） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置|爆炸效果", 
+              meta = (DisplayName = "爆炸伤害", ClampMin = "0.0",
+                      EditCondition = "DamageType == EXBProjectileDamageType::ExplosionOnly || DamageType == EXBProjectileDamageType::Both", EditConditionHides))
+    float ExplosionDamage = 0.0f;
+
+    /** 爆炸特效（Niagara） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置|爆炸效果", 
+              meta = (DisplayName = "爆炸特效",
+                      EditCondition = "DamageType == EXBProjectileDamageType::ExplosionOnly || DamageType == EXBProjectileDamageType::Both", EditConditionHides))
+    TObjectPtr<UNiagaraSystem> ExplosionEffect;
+
+    /** 爆炸特效缩放 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置|爆炸效果", 
+              meta = (DisplayName = "爆炸特效缩放", ClampMin = "0.1",
+                      EditCondition = "DamageType == EXBProjectileDamageType::ExplosionOnly || DamageType == EXBProjectileDamageType::Both", EditConditionHides))
+    float ExplosionEffectScale = 1.0f;
+
+    /** 爆炸音效 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置|爆炸效果", 
+              meta = (DisplayName = "爆炸音效",
+                      EditCondition = "DamageType == EXBProjectileDamageType::ExplosionOnly || DamageType == EXBProjectileDamageType::Both", EditConditionHides))
+    TObjectPtr<USoundBase> ExplosionSound;
+
+    /** 启用爆炸半径调试可视化（运行时绘制爆炸范围球体） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置|爆炸效果", 
+              meta = (DisplayName = "调试爆炸半径",
+                      EditCondition = "DamageType == EXBProjectileDamageType::ExplosionOnly || DamageType == EXBProjectileDamageType::Both", EditConditionHides))
+    bool bDebugExplosionRadius = false;
+
     // ========== 碰撞体配置 ==========
 
     /** 碰撞体类型 */
@@ -181,23 +236,25 @@ public:
     virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 #endif
 
-    // ========== 命中效果 ==========
+    // ========== 飞行命中效果配置（FlightOnly 或 Both 时显示） ==========
 
-    /** 命中音效 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置|命中效果", meta = (DisplayName = "命中音效"))
+    /** 飞行命中音效 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置|飞行命中效果", 
+              meta = (DisplayName = "飞行命中音效",
+                      EditCondition = "DamageType == EXBProjectileDamageType::FlightOnly || DamageType == EXBProjectileDamageType::Both", EditConditionHides))
     TObjectPtr<USoundBase> HitSound;
 
-    /** 命中特效（Niagara） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置|命中效果", meta = (DisplayName = "命中特效"))
+    /** 飞行命中特效（Niagara） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置|飞行命中效果", 
+              meta = (DisplayName = "飞行命中特效",
+                      EditCondition = "DamageType == EXBProjectileDamageType::FlightOnly || DamageType == EXBProjectileDamageType::Both", EditConditionHides))
     TObjectPtr<UNiagaraSystem> HitEffect;
 
-    /** 命中特效缩放 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置|命中效果", meta = (DisplayName = "命中特效缩放", ClampMin = "0.1"))
+    /** 飞行命中特效缩放 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置|飞行命中效果", 
+              meta = (DisplayName = "飞行命中特效缩放", ClampMin = "0.1",
+                      EditCondition = "DamageType == EXBProjectileDamageType::FlightOnly || DamageType == EXBProjectileDamageType::Both", EditConditionHides))
     float HitEffectScale = 1.0f;
-
-    /** 是否对场景(地面/墙壁)产生命中 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置|命中效果", meta = (DisplayName = "对场景命中"))
-    bool bHitWorldStatic = false;
 
 protected:
     virtual void BeginPlay() override;
@@ -212,6 +269,9 @@ private:
 
     /** 更新碰撞体类型 */
     void UpdateCollisionType();
+
+    /** 执行爆炸伤害检测 */
+    void PerformExplosionDamage(const FVector& ExplosionLocation);
 
     UPROPERTY(VisibleAnywhere, Category = "组件", meta = (DisplayName = "胶囊碰撞体"))
     TObjectPtr<UCapsuleComponent> CapsuleCollision;
