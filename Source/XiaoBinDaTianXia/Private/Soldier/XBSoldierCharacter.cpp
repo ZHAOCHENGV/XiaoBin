@@ -2640,8 +2640,7 @@ void AXBSoldierCharacter::BindAssignedTargetEvents(AActor *AssignedTarget) {
   }
 
   // 绑定士兵死亡事件
-  if (AXBSoldierCharacter *TargetSoldier =
-          Cast<AXBSoldierCharacter>(AssignedTarget)) {
+  if (AXBSoldierCharacter *TargetSoldier = Cast<AXBSoldierCharacter>(AssignedTarget)) {
     TargetSoldier->OnSoldierDied.AddDynamic(
         this, &AXBSoldierCharacter::HandleAssignedTargetSoldierDied);
     return;
