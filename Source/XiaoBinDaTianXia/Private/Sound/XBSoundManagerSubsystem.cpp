@@ -4,6 +4,7 @@
 #include "Components/AudioComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Sound/XBSoundDatabase.h"
+#include "Sound/XBSoundSettings.h"
 #include "Sound/XBSoundTypes.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogXBSound, Log, All);
@@ -12,10 +13,25 @@ void UXBSoundManagerSubsystem::Initialize(
     FSubsystemCollectionBase &Collection) {
   Super::Initialize(Collection);
 
+  UE_LOG(LogXBSound, Log, TEXT("[XBSoundManager] 开始初始化音效管理器..."));
+
   // 如果未设置数据库，尝试加载
   if (!SoundDatabase) {
-    // 优先使用配置文件中的路径
-    if (SoundDatabasePath.IsValid()) {
+    // 优先从项目设置中读取
+    const UXBSoundSettings *Settings = UXBSoundSettings::Get();
+    if (Settings && Settings->SoundDatabasePath.IsValid()) {
+      UE_LOG(LogXBSound, Log,
+             TEXT("[XBSoundManager] 从项目设置加载音效数据库：%s"),
+             *Settings->SoundDatabasePath.ToString());
+      SoundDatabase =
+          Cast<UXBSoundDatabase>(Settings->SoundDatabasePath.TryLoad());
+    }
+
+    // 如果项目设置未配置，尝试使用配置文件中的路径
+    if (!SoundDatabase && SoundDatabasePath.IsValid()) {
+      UE_LOG(LogXBSound, Log,
+             TEXT("[XBSoundManager] 从配置文件加载音效数据库：%s"),
+             *SoundDatabasePath.ToString());
       SoundDatabase = Cast<UXBSoundDatabase>(SoundDatabasePath.TryLoad());
     }
 
@@ -23,26 +39,26 @@ void UXBSoundManagerSubsystem::Initialize(
     if (!SoundDatabase) {
       const FSoftObjectPath DefaultPath(
           TEXT("/Game/Data/DA_SoundDatabase.DA_SoundDatabase"));
+      UE_LOG(LogXBSound, Log, TEXT("[XBSoundManager] 尝试从默认路径加载：%s"),
+             *DefaultPath.ToString());
       SoundDatabase = Cast<UXBSoundDatabase>(DefaultPath.TryLoad());
     }
 
     if (!SoundDatabase) {
-      UE_LOG(LogXBSound, Warning, TEXT("[XBSoundManager] 音效数据库未找到！"));
+      UE_LOG(LogXBSound, Error,
+             TEXT("[XBSoundManager] ❌ 音效数据库加载失败！"));
+      UE_LOG(LogXBSound, Warning, TEXT("[XBSoundManager] 解决方法："));
       UE_LOG(LogXBSound, Warning,
-             TEXT("[XBSoundManager] 请在 /Game/Data/ 下创建 DA_SoundDatabase"));
+             TEXT("  1. 在项目设置中配置：Project Settings → Plugins → XiaoBin "
+                  "Sound Settings"));
       UE_LOG(LogXBSound, Warning,
-             TEXT("[XBSoundManager] 或在 DefaultEngine.ini 添加配置："));
-      UE_LOG(LogXBSound, Warning,
-             TEXT("  [/Script/XiaoBinDaTianXia.XBSoundManagerSubsystem]"));
-      UE_LOG(
-          LogXBSound, Warning,
-          TEXT("  SoundDatabasePath=/Game/YourPath/YourDatabase.YourDatabase"));
+             TEXT("  2. 或在 /Game/Data/ 下创建 DA_SoundDatabase"));
       return;
     }
   }
 
   UE_LOG(LogXBSound, Log,
-         TEXT("[XBSoundManager] 音效管理器初始化成功，已加载 %d 个音效"),
+         TEXT("[XBSoundManager] ✅ 音效管理器初始化成功！已加载 %d 个音效"),
          SoundDatabase->SoundMap.Num());
 }
 

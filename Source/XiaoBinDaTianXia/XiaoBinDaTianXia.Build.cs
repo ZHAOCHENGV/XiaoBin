@@ -31,7 +31,10 @@ public class XiaoBinDaTianXia : ModuleRules
 			
 			// 渲染相关
 			"RenderCore",
-			"RHI"
+			"RHI",
+			
+			// 项目设置
+			"DeveloperSettings"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[]
