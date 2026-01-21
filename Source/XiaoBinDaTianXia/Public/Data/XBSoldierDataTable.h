@@ -186,25 +186,13 @@ struct XIAOBINDATIANXIA_API FXBSoldierTableRow : public FTableRowBase
 
     // ==================== 战斗配置 ====================
 
-    /** @brief 普通攻击配置 */
+    /** @brief 普通攻击配置（包含基础伤害、攻击范围、攻击间隔等） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "战斗", meta = (DisplayName = "普通攻击"))
     FXBAbilityConfig BasicAttack;
 
     /** @brief 最大血量 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "战斗", meta = (DisplayName = "最大血量", ClampMin = "1.0"))
     float MaxHealth = 100.0f;
-
-    /** @brief 基础伤害 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "战斗", meta = (DisplayName = "基础伤害", ClampMin = "0.0"))
-    float BaseDamage = 10.0f;
-
-    /** @brief 攻击范围（进入此距离后开始攻击） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "战斗", meta = (DisplayName = "攻击范围", ClampMin = "10.0"))
-    float AttackRange = 150.0f;
-
-    /** @brief 攻击间隔（秒） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "战斗", meta = (DisplayName = "攻击间隔", ClampMin = "0.1"))
-    float AttackInterval = 1.0f;
 
     // ==================== 远程配置（弓手专用） ====================
 
@@ -295,7 +283,7 @@ struct XIAOBINDATIANXIA_API FXBSoldierTableRow : public FTableRowBase
             return false;
         }
 
-        if (AttackRange < 10.0f)
+        if (BasicAttack.AttackRange < 10.0f)
         {
             OutError = FText::FromString(TEXT("攻击范围过小"));
             return false;

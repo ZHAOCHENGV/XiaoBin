@@ -81,20 +81,21 @@ public:
     UFUNCTION(BlueprintPure, Category = "XB|Data|Combat", meta = (DisplayName = "获取最大血量"))
     float GetMaxHealth() const { return CachedTableRow.MaxHealth; }
 
+    /** @brief 获取基础伤害（从 BasicAttack 配置读取） */
     UFUNCTION(BlueprintPure, Category = "XB|Data|Combat", meta = (DisplayName = "获取基础伤害"))
-    float GetBaseDamage() const { return CachedTableRow.BaseDamage; }
+    float GetBaseDamage() const { return CachedTableRow.BasicAttack.BaseDamage; }
 
+    /** @brief 获取攻击范围（从 BasicAttack 配置读取） */
     UFUNCTION(BlueprintPure, Category = "XB|Data|Combat", meta = (DisplayName = "获取攻击范围"))
-    float GetAttackRange() const { return CachedTableRow.AttackRange; }
+    float GetAttackRange() const { return CachedTableRow.BasicAttack.AttackRange; }
 
+    /** @brief 获取攻击间隔（从 BasicAttack.Cooldown 读取） */
     UFUNCTION(BlueprintPure, Category = "XB|Data|Combat", meta = (DisplayName = "获取攻击间隔"))
-    float GetAttackInterval() const { return CachedTableRow.AttackInterval; }
+    float GetAttackInterval() const { return CachedTableRow.BasicAttack.Cooldown; }
 
     /**
-     * @brief  获取普攻冷却时间
+     * @brief  获取普攻冷却时间（等同于 GetAttackInterval）
      * @return 普攻冷却（秒）
-     * @note   详细流程分析: 直接读取 BasicAttack.Cooldown，避免和 AttackInterval 混用
-     *         性能/架构注意事项: 纯访问器不做逻辑判断，交由调用方选择兜底策略
      */
     UFUNCTION(BlueprintPure, Category = "XB|Data|Combat", meta = (DisplayName = "获取普攻冷却"))
     float GetBasicAttackCooldown() const { return CachedTableRow.BasicAttack.Cooldown; }
