@@ -23,7 +23,19 @@ class UProjectileMovementComponent;
 class UGameplayEffect;
 class USoundBase;
 class UNiagaraSystem;
+class UBoxComponent;
 struct FHitResult;
+
+/**
+ * @brief 投射物碰撞体类型
+ */
+UENUM(BlueprintType)
+enum class EXBProjectileCollisionType : uint8 {
+  /** 胶囊体碰撞 */
+  Capsule UMETA(DisplayName = "胶囊体"),
+  /** 方体碰撞 */
+  Box UMETA(DisplayName = "方体")
+};
 
 /**
  * @brief 投射物发射模式
@@ -145,6 +157,38 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "伤害", meta = (DisplayName = "伤害效果"))
     TSubclassOf<UGameplayEffect> DamageEffectClass;
 
+    // ========== 碰撞体配置 ==========
+
+    /** 碰撞体类型 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "碰撞体", meta = (DisplayName = "碰撞体类型"))
+    EXBProjectileCollisionType CollisionType = EXBProjectileCollisionType::Capsule;
+
+    /** 胶囊体半径（仅胶囊体生效） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "碰撞体", 
+              meta = (DisplayName = "胶囊体半径", ClampMin = "1.0",
+                      EditCondition = "CollisionType == EXBProjectileCollisionType::Capsule", EditConditionHides))
+    float CapsuleRadius = 12.0f;
+
+    /** 胶囊体半高（仅胶囊体生效） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "碰撞体", 
+              meta = (DisplayName = "胶囊体半高", ClampMin = "1.0",
+                      EditCondition = "CollisionType == EXBProjectileCollisionType::Capsule", EditConditionHides))
+    float CapsuleHalfHeight = 24.0f;
+
+    /** 方体尺寸（仅方体生效） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "碰撞体", 
+              meta = (DisplayName = "方体尺寸",
+                      EditCondition = "CollisionType == EXBProjectileCollisionType::Box", EditConditionHides))
+    FVector BoxExtent = FVector(24.0f, 24.0f, 24.0f);
+
+    /** 网格缩放 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "碰撞体", meta = (DisplayName = "网格缩放", ClampMin = "0.01"))
+    FVector MeshScale = FVector(1.0f, 1.0f, 1.0f);
+
+#if WITH_EDITOR
+    virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+#endif
+
     // ========== 命中效果 ==========
 
     /** 命中音效 */
@@ -170,8 +214,14 @@ private:
     bool ApplyDamageToTarget(AActor* TargetActor, const FHitResult& HitResult);
     bool GetTargetFaction(AActor* TargetActor, EXBFaction& OutFaction) const;
 
-    UPROPERTY(VisibleAnywhere, Category = "组件", meta = (DisplayName = "碰撞胶囊"))
-    TObjectPtr<UCapsuleComponent> CollisionComponent;
+    /** 更新碰撞体类型 */
+    void UpdateCollisionType();
+
+    UPROPERTY(VisibleAnywhere, Category = "组件", meta = (DisplayName = "胶囊碰撞体"))
+    TObjectPtr<UCapsuleComponent> CapsuleCollision;
+
+    UPROPERTY(VisibleAnywhere, Category = "组件", meta = (DisplayName = "方体碰撞体"))
+    TObjectPtr<UBoxComponent> BoxCollision;
 
     UPROPERTY(VisibleAnywhere, Category = "组件", meta = (DisplayName = "网格组件"))
     TObjectPtr<UStaticMeshComponent> MeshComponent;

@@ -2634,22 +2634,26 @@ void AXBSoldierCharacter::HandleAssignedTargetLeaderDied(
  * 注意事项: 未传目标直接返回
  */
 void AXBSoldierCharacter::BindAssignedTargetEvents(AActor *AssignedTarget) {
-  // 无目标直接返回
-  if (!AssignedTarget || !IsValid(AssignedTarget)) {
+  // 无目标或无效目标直接返回
+  if (!AssignedTarget || !IsValid(AssignedTarget) || AssignedTarget->IsPendingKillPending()) {
     return;
   }
 
   // 绑定士兵死亡事件
   if (AXBSoldierCharacter *TargetSoldier = Cast<AXBSoldierCharacter>(AssignedTarget)) {
-    TargetSoldier->OnSoldierDied.AddDynamic(
-        this, &AXBSoldierCharacter::HandleAssignedTargetSoldierDied);
+    if (IsValid(TargetSoldier)) {
+      TargetSoldier->OnSoldierDied.AddDynamic(
+          this, &AXBSoldierCharacter::HandleAssignedTargetSoldierDied);
+    }
     return;
   }
 
   // 绑定主将死亡事件
   if (AXBCharacterBase *TargetLeader = Cast<AXBCharacterBase>(AssignedTarget)) {
-    TargetLeader->OnCharacterDeath.AddDynamic(
-        this, &AXBSoldierCharacter::HandleAssignedTargetLeaderDied);
+    if (IsValid(TargetLeader)) {
+      TargetLeader->OnCharacterDeath.AddDynamic(
+          this, &AXBSoldierCharacter::HandleAssignedTargetLeaderDied);
+    }
   }
 }
 

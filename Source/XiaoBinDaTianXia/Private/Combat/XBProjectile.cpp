@@ -23,26 +23,39 @@
 #include "Utils/XBBlueprintFunctionLibrary.h"
 #include "Utils/XBLogCategories.h"
 #include "XBCollisionChannels.h"
+#include "Components/BoxComponent.h"
 
 AXBProjectile::AXBProjectile()
 {
     PrimaryActorTick.bCanEverTick = false;
 
-    // 🔧 修改 - 以静态网格作为根组件，便于朝向与视觉对齐
+    // 以静态网格作为根组件，便于朝向与视觉对齐
     MeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MeshComponent"));
     MeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     RootComponent = MeshComponent;
 
-    // 🔧 修改 - 碰撞胶囊改为附加在网格下，随Actor旋转
-    CollisionComponent = CreateDefaultSubobject<UCapsuleComponent>(TEXT("CollisionComponent"));
-    CollisionComponent->InitCapsuleSize(12.0f, 24.0f);
-    CollisionComponent->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-    CollisionComponent->SetCollisionObjectType(ECC_WorldDynamic);
-    CollisionComponent->SetCollisionResponseToAllChannels(ECR_Ignore);
-    CollisionComponent->SetCollisionResponseToChannel(XBCollision::Soldier, ECR_Overlap);
-    CollisionComponent->SetCollisionResponseToChannel(XBCollision::Leader, ECR_Overlap);
-    CollisionComponent->SetGenerateOverlapEvents(true);
-    CollisionComponent->SetupAttachment(MeshComponent);
+    // 创建胶囊碰撞体
+    CapsuleCollision = CreateDefaultSubobject<UCapsuleComponent>(TEXT("CapsuleCollision"));
+    CapsuleCollision->InitCapsuleSize(CapsuleRadius, CapsuleHalfHeight);
+    CapsuleCollision->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+    CapsuleCollision->SetCollisionObjectType(ECC_WorldDynamic);
+    CapsuleCollision->SetCollisionResponseToAllChannels(ECR_Ignore);
+    CapsuleCollision->SetCollisionResponseToChannel(XBCollision::Soldier, ECR_Overlap);
+    CapsuleCollision->SetCollisionResponseToChannel(XBCollision::Leader, ECR_Overlap);
+    CapsuleCollision->SetGenerateOverlapEvents(true);
+    CapsuleCollision->SetupAttachment(MeshComponent);
+
+    // 创建盒体碰撞体
+    BoxCollision = CreateDefaultSubobject<UBoxComponent>(TEXT("BoxCollision"));
+    BoxCollision->SetBoxExtent(BoxExtent);
+    BoxCollision->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+    BoxCollision->SetCollisionObjectType(ECC_WorldDynamic);
+    BoxCollision->SetCollisionResponseToAllChannels(ECR_Ignore);
+    BoxCollision->SetCollisionResponseToChannel(XBCollision::Soldier, ECR_Overlap);
+    BoxCollision->SetCollisionResponseToChannel(XBCollision::Leader, ECR_Overlap);
+    BoxCollision->SetGenerateOverlapEvents(true);
+    BoxCollision->SetupAttachment(MeshComponent);
+    BoxCollision->SetVisibility(false);
 
     ProjectileMovementComponent = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileMovementComponent"));
     ProjectileMovementComponent->InitialSpeed = LinearSpeed;
@@ -57,15 +70,28 @@ void AXBProjectile::BeginPlay()
 {
     Super::BeginPlay();
 
-    if (CollisionComponent)
+    // 根据碰撞体类型更新组件状态
+    UpdateCollisionType();
+
+    // 绑定碰撞事件
+    if (CapsuleCollision)
     {
-        CollisionComponent->OnComponentBeginOverlap.AddDynamic(this, &AXBProjectile::OnProjectileOverlap);
+        CapsuleCollision->OnComponentBeginOverlap.AddDynamic(this, &AXBProjectile::OnProjectileOverlap);
+    }
+    if (BoxCollision)
+    {
+        BoxCollision->OnComponentBeginOverlap.AddDynamic(this, &AXBProjectile::OnProjectileOverlap);
     }
 
-    // 🔧 修改 - 输出可视化资源检查日志，便于定位“看不到弓箭”
-    if (MeshComponent && !MeshComponent->GetStaticMesh())
+    // 应用网格缩放
+    if (MeshComponent)
     {
-        UE_LOG(LogXBCombat, Warning, TEXT("投射物 %s 未配置StaticMesh，可能导致不可见"), *GetName());
+        MeshComponent->SetWorldScale3D(MeshScale);
+        
+        if (!MeshComponent->GetStaticMesh())
+        {
+            UE_LOG(LogXBCombat, Warning, TEXT("投射物 %s 未配置StaticMesh，可能导致不可见"), *GetName());
+        }
     }
 }
 
@@ -388,3 +414,46 @@ bool AXBProjectile::GetTargetFaction(AActor* TargetActor, EXBFaction& OutFaction
 
     return false;
 }
+
+void AXBProjectile::UpdateCollisionType()
+{
+    const bool bUseCapsule = (CollisionType == EXBProjectileCollisionType::Capsule);
+    
+    if (CapsuleCollision)
+    {
+        CapsuleCollision->SetCollisionEnabled(bUseCapsule ? ECollisionEnabled::QueryOnly : ECollisionEnabled::NoCollision);
+        CapsuleCollision->SetVisibility(bUseCapsule);
+        CapsuleCollision->SetCapsuleSize(CapsuleRadius, CapsuleHalfHeight);
+    }
+    
+    if (BoxCollision)
+    {
+        BoxCollision->SetCollisionEnabled(bUseCapsule ? ECollisionEnabled::NoCollision : ECollisionEnabled::QueryOnly);
+        BoxCollision->SetVisibility(!bUseCapsule);
+        BoxCollision->SetBoxExtent(BoxExtent);
+    }
+    
+    if (MeshComponent)
+    {
+        MeshComponent->SetWorldScale3D(MeshScale);
+    }
+}
+
+#if WITH_EDITOR
+void AXBProjectile::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+{
+    Super::PostEditChangeProperty(PropertyChangedEvent);
+    
+    const FName PropertyName = PropertyChangedEvent.GetPropertyName();
+    
+    // 碰撞体类型或尺寸变更时更新组件
+    if (PropertyName == GET_MEMBER_NAME_CHECKED(AXBProjectile, CollisionType) ||
+        PropertyName == GET_MEMBER_NAME_CHECKED(AXBProjectile, CapsuleRadius) ||
+        PropertyName == GET_MEMBER_NAME_CHECKED(AXBProjectile, CapsuleHalfHeight) ||
+        PropertyName == GET_MEMBER_NAME_CHECKED(AXBProjectile, BoxExtent) ||
+        PropertyName == GET_MEMBER_NAME_CHECKED(AXBProjectile, MeshScale))
+    {
+        UpdateCollisionType();
+    }
+}
+#endif
