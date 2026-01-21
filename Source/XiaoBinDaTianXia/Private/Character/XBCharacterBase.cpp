@@ -1072,6 +1072,10 @@ void AXBCharacterBase::ExitCombat() {
   bIsInCombat = false;
   bHasEnemiesInCombat = false;
 
+  // 🔧 修复 - 先清除目标，再通知士兵退出战斗
+  // 说明：否则士兵 ExitCombat 检查 GetLastAttackedEnemyLeader 时会认为主将仍有目标而拒绝退出
+  LastAttackedEnemyLeader = nullptr;
+
   GetWorldTimerManager().ClearTimer(CombatTimeoutHandle);
   CancelNoEnemyDisengage();
 
