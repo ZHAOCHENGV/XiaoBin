@@ -7,7 +7,6 @@
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "XBSoundManagerSubsystem.generated.h"
 
-
 class UXBSoundDatabase;
 class UAudioComponent;
 
@@ -68,8 +67,13 @@ public:
                                      float PitchMultiplier = 1.0f);
 
 protected:
-  /** 音效数据库引用 */
+  /** 音效数据库引用（可在蓝图中直接指定） */
   UPROPERTY(EditDefaultsOnly, Category = "Config",
-            meta = (DisplayName = "音效数据库"))
+            meta = (DisplayName = "音效数据库（直接引用）"))
   TObjectPtr<UXBSoundDatabase> SoundDatabase;
+
+  /** 音效数据库路径（可在 DefaultEngine.ini 中配置） */
+  UPROPERTY(Config, EditDefaultsOnly, Category = "Config",
+            meta = (DisplayName = "音效数据库路径（配置文件）"))
+  FSoftObjectPath SoundDatabasePath;
 };
