@@ -22,7 +22,6 @@
 #include "Character/XBCharacterBase.h"
 #include "Utils/XBBlueprintFunctionLibrary.h"
 #include "Utils/XBLogCategories.h"
-#include "XBCollisionChannels.h"
 #include "Components/BoxComponent.h"
 #include "NiagaraComponent.h"
 
@@ -75,6 +74,9 @@ void AXBProjectile::BeginPlay()
         CapsuleCollision->OnComponentBeginOverlap.AddDynamic(this, &AXBProjectile::OnProjectileOverlap);
         if (bHitWorldStatic)
         {
+            // 设置对 WorldStatic 的 Block 响应，OnComponentHit 需要 Block 才能触发
+            CapsuleCollision->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
+            CapsuleCollision->SetNotifyRigidBodyCollision(true);
             CapsuleCollision->OnComponentHit.AddDynamic(this, &AXBProjectile::OnProjectileHit);
         }
     }
@@ -83,6 +85,9 @@ void AXBProjectile::BeginPlay()
         BoxCollision->OnComponentBeginOverlap.AddDynamic(this, &AXBProjectile::OnProjectileOverlap);
         if (bHitWorldStatic)
         {
+            // 设置对 WorldStatic 的 Block 响应，OnComponentHit 需要 Block 才能触发
+            BoxCollision->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
+            BoxCollision->SetNotifyRigidBodyCollision(true);
             BoxCollision->OnComponentHit.AddDynamic(this, &AXBProjectile::OnProjectileHit);
         }
     }

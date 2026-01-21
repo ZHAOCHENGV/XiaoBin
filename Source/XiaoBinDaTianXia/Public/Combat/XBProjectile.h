@@ -25,6 +25,7 @@ class USoundBase;
 class UNiagaraSystem;
 class UBoxComponent;
 struct FHitResult;
+class UNiagaraComponent;
 
 /**
  * @brief 投射物碰撞体类型
@@ -225,7 +226,7 @@ private:
     TObjectPtr<UProjectileMovementComponent> ProjectileMovementComponent;
 
     /** 拖尾 Niagara 组件（直接在组件上配置 Niagara 系统） */
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "拖尾特效组件"))
+    UPROPERTY(VisibleAnywhere, Category = "组件", meta = (DisplayName = "拖尾特效组件"))
     TObjectPtr<UNiagaraComponent> TrailNiagaraComponent;
 
     TWeakObjectPtr<AActor> SourceActor;
