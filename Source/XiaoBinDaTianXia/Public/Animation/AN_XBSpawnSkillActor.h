@@ -102,6 +102,17 @@ struct XIAOBINDATIANXIA_API FXBSkillSpawnConfig {
             meta = (DisplayName = "使用目标方向"))
   bool bUseTargetDirection = true;
 
+  /** 生成Actor的数量 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "多生成配置",
+            meta = (DisplayName = "生成数量", ClampMin = "1", ClampMax = "20"))
+  int32 SpawnCount = 1;
+
+  /** 分布角度（所有生成点在角色前方该角度范围内均匀分布） */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "多生成配置",
+            meta = (DisplayName = "分布角度", ClampMin = "0.0", ClampMax = "360.0",
+                    EditCondition = "SpawnCount > 1"))
+  float SpreadAngle = 45.0f;
+
   /** GAS - 触发的 Gameplay Ability 类（可选） */
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GAS配置",
             meta = (DisplayName = "触发的GA"))

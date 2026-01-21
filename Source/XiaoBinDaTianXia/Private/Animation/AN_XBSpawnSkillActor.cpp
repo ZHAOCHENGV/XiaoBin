@@ -59,115 +59,158 @@ void UAN_XBSpawnSkillActor::Notify(
     return;
   }
 
-  // 计算生成位置和旋转
-  FVector SpawnLocation;
-  FRotator SpawnRotation;
-  if (!CalculateSpawnTransform(MeshComp, SpawnLocation, SpawnRotation)) {
+  // 计算基础生成位置和旋转
+  FVector BaseSpawnLocation;
+  FRotator BaseSpawnRotation;
+  if (!CalculateSpawnTransform(MeshComp, BaseSpawnLocation, BaseSpawnRotation)) {
     UE_LOG(LogXBCombat, Warning,
            TEXT("AN_XBSpawnSkillActor: 计算生成位置失败"));
     return;
   }
 
-  // 生成Actor
+  // 配置生成参数
   FActorSpawnParameters SpawnParams;
   SpawnParams.Owner = OwnerActor;
   SpawnParams.Instigator = Cast<APawn>(OwnerActor);
   SpawnParams.SpawnCollisionHandlingOverride =
       ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
-  AActor *SpawnedActor = World->SpawnActor<AActor>(
-      SpawnConfig.ActorClass, SpawnLocation, SpawnRotation, SpawnParams);
-
-  if (!SpawnedActor) {
-    UE_LOG(LogXBCombat, Error, TEXT("AN_XBSpawnSkillActor: 生成 %s 失败"),
-           *SpawnConfig.ActorClass->GetName());
-    return;
-  }
-
-  // 如果需要附着到插槽
-  if (SpawnConfig.bAttachToSocket &&
-      SpawnConfig.SpawnMode == EXBSkillSpawnMode::Socket) {
-    SpawnedActor->AttachToComponent(
-        MeshComp, FAttachmentTransformRules::KeepWorldTransform,
-        SpawnConfig.SocketName);
-  }
-
-  // 🔧 修复 - 如果施法者是 XBCharacterBase，应用其缩放到生成的 Actor
+  // 获取施法者的缩放（用于应用到生成的Actor）
+  float OwnerScaleFactor = 1.0f;
   if (AXBCharacterBase *Character = Cast<AXBCharacterBase>(OwnerActor)) {
-    const FVector OwnerScale = Character->GetActorScale3D();
-    SpawnedActor->SetActorScale3D(OwnerScale);
-
-    UE_LOG(LogXBCombat, Verbose,
-           TEXT("AN_XBSpawnSkillActor: 生成的 %s 应用缩放 %.2f"),
-           *SpawnedActor->GetName(), OwnerScale.X);
+    OwnerScaleFactor = Character->GetActorScale3D().X;
   }
 
   // 计算伤害值
   float Damage = GetDamage(OwnerActor);
 
-  // 计算生成方向
-  FVector SpawnDirection = CalculateSpawnDirection(OwnerActor, SpawnLocation);
-
   // 获取当前目标
   AActor *Target = GetCurrentTarget(OwnerActor);
 
-  // 如果Actor实现了技能接口，则初始化
-  if (IXBSkillActorInterface *SkillInterface =
-          Cast<IXBSkillActorInterface>(SpawnedActor)) {
-    SkillInterface->InitializeSkillActor(OwnerActor, Damage, SpawnDirection,
-                                         Target);
-    UE_LOG(LogXBCombat, Log,
-           TEXT("AN_XBSpawnSkillActor: 生成 %s，伤害=%.1f，方向=%s"),
-           *SpawnedActor->GetName(), Damage, *SpawnDirection.ToString());
-  }
-  // 🔧 修复 - 添加对 AXBProjectile 的直接初始化支持
-  else if (AXBProjectile *Projectile = Cast<AXBProjectile>(SpawnedActor)) {
-    // 🔧 修复时序问题 - 先禁用碰撞，避免在初始化前触发
-    Projectile->SetActorEnableCollision(false);
-
-    // 计算目标位置用于抛射轨迹
-    FVector TargetLocation = FVector::ZeroVector;
-    if (Target) {
-      TargetLocation = Target->GetActorLocation();
+  // 获取生成数量（至少为1）
+  const int32 ActualSpawnCount = FMath::Max(1, SpawnConfig.SpawnCount);
+  
+  // 计算角度分布参数
+  // 如果只生成1个，则在正前方；多个时在Yaw角度范围内均匀分布
+  const float HalfSpreadAngle = SpawnConfig.SpreadAngle * 0.5f;
+  
+  // 循环生成多个 Actor
+  for (int32 i = 0; i < ActualSpawnCount; ++i) {
+    // 所有Actor在同一基础位置生成
+    FVector FinalSpawnLocation = BaseSpawnLocation;
+    FRotator FinalSpawnRotation = BaseSpawnRotation;
+    
+    // 如果生成数量大于1，根据角度计算旋转偏移
+    if (ActualSpawnCount > 1) {
+      // 计算当前索引对应的角度偏移
+      // 角度从 -HalfSpreadAngle 到 +HalfSpreadAngle 均匀分布
+      float AngleRatio = static_cast<float>(i) / static_cast<float>(ActualSpawnCount - 1);
+      const float CurrentAngle = -HalfSpreadAngle + (SpawnConfig.SpreadAngle * AngleRatio);
+      
+      // 在基础旋转上叠加 Yaw 角度偏移
+      FinalSpawnRotation = BaseSpawnRotation;
+      FinalSpawnRotation.Yaw += CurrentAngle;
     }
 
-    // 直接调用投射物的初始化方法
-    Projectile->InitializeProjectileWithTarget(
-        OwnerActor,              // 来源Actor（士兵或主将）
-        Damage,                  // 伤害值
-        SpawnDirection,          // 发射方向
-        Projectile->LinearSpeed, // 使用投射物自身配置的速度
-        Projectile->bUseArc,     // 使用投射物自身配置的抛射模式
-        TargetLocation           // 目标位置
-    );
+    // 生成Actor
+    AActor *SpawnedActor = World->SpawnActor<AActor>(
+        SpawnConfig.ActorClass, FinalSpawnLocation, FinalSpawnRotation, SpawnParams);
 
-    // 🔧 修复时序问题 - 初始化完成后重新启用碰撞
-    Projectile->SetActorEnableCollision(true);
+    if (!SpawnedActor) {
+      UE_LOG(LogXBCombat, Error, TEXT("AN_XBSpawnSkillActor: 生成 %s 失败 (索引=%d)"),
+             *SpawnConfig.ActorClass->GetName(), i);
+      continue;
+    }
 
-    UE_LOG(
-        LogXBCombat, Log,
-        TEXT(
-            "AN_XBSpawnSkillActor: 生成投射物 %s，来源=%s，伤害=%.1f，方向=%s"),
-        *SpawnedActor->GetName(),
-        OwnerActor ? *OwnerActor->GetName() : TEXT("无"), Damage,
-        *SpawnDirection.ToString());
-  } else {
-    UE_LOG(LogXBCombat, Warning,
-           TEXT("AN_XBSpawnSkillActor: 生成 %s，但不支持该类型的自动初始化"),
-           *SpawnedActor->GetName());
+    // 如果需要附着到插槽（仅第一个Actor附着）
+    if (i == 0 && SpawnConfig.bAttachToSocket &&
+        SpawnConfig.SpawnMode == EXBSkillSpawnMode::Socket) {
+      SpawnedActor->AttachToComponent(
+          MeshComp, FAttachmentTransformRules::KeepWorldTransform,
+          SpawnConfig.SocketName);
+    }
+
+    // 应用施法者缩放到生成的 Actor
+    if (OwnerScaleFactor != 1.0f) {
+      SpawnedActor->SetActorScale3D(FVector(OwnerScaleFactor));
+      UE_LOG(LogXBCombat, Verbose,
+             TEXT("AN_XBSpawnSkillActor: 生成的 %s 应用缩放 %.2f"),
+             *SpawnedActor->GetName(), OwnerScaleFactor);
+    }
+
+    // 计算该Actor的发射方向
+    FVector SpawnDirection = CalculateSpawnDirection(OwnerActor, FinalSpawnLocation);
+    
+    // 如果是多生成且不使用目标方向，则使用偏移方向作为发射方向
+    if (ActualSpawnCount > 1 && !SpawnConfig.bUseTargetDirection) {
+      SpawnDirection = FinalSpawnRotation.Vector();
+    }
+
+    // 如果Actor实现了技能接口，则初始化
+    if (IXBSkillActorInterface *SkillInterface =
+            Cast<IXBSkillActorInterface>(SpawnedActor)) {
+      SkillInterface->InitializeSkillActor(OwnerActor, Damage, SpawnDirection,
+                                           Target);
+      UE_LOG(LogXBCombat, Log,
+             TEXT("AN_XBSpawnSkillActor: 生成 %s (索引=%d)，伤害=%.1f，方向=%s"),
+             *SpawnedActor->GetName(), i, Damage, *SpawnDirection.ToString());
+    }
+    // 添加对 AXBProjectile 的直接初始化支持
+    else if (AXBProjectile *Projectile = Cast<AXBProjectile>(SpawnedActor)) {
+      // 先禁用碰撞，避免在初始化前触发
+      Projectile->SetActorEnableCollision(false);
+
+      // 计算目标位置用于抛射轨迹
+      FVector TargetLocation = FVector::ZeroVector;
+      if (Target) {
+        TargetLocation = Target->GetActorLocation();
+      }
+
+      // 直接调用投射物的初始化方法
+      Projectile->InitializeProjectileWithTarget(
+          OwnerActor,              // 来源Actor（士兵或主将）
+          Damage,                  // 伤害值
+          SpawnDirection,          // 发射方向
+          Projectile->LinearSpeed, // 使用投射物自身配置的速度
+          Projectile->bUseArc,     // 使用投射物自身配置的抛射模式
+          TargetLocation           // 目标位置
+      );
+
+      // 初始化完成后重新启用碰撞
+      Projectile->SetActorEnableCollision(true);
+
+      UE_LOG(
+          LogXBCombat, Log,
+          TEXT("AN_XBSpawnSkillActor: 生成投射物 %s (索引=%d)，来源=%s，伤害=%.1f，方向=%s"),
+          *SpawnedActor->GetName(), i,
+          OwnerActor ? *OwnerActor->GetName() : TEXT("无"), Damage,
+          *SpawnDirection.ToString());
+    } else {
+      UE_LOG(LogXBCombat, Warning,
+             TEXT("AN_XBSpawnSkillActor: 生成 %s，但不支持该类型的自动初始化"),
+             *SpawnedActor->GetName());
+    }
+
+    // 调试绘制
+    if (SpawnConfig.bEnableDebugDraw) {
+      // 使用不同颜色区分不同索引
+      const FColor SphereColor = FColor::MakeRedToGreenColorFromScalar(
+          static_cast<float>(i) / FMath::Max(1.0f, static_cast<float>(ActualSpawnCount - 1)));
+      
+      DrawDebugSphere(World, FinalSpawnLocation, 20.0f, 12, SphereColor, false,
+                      SpawnConfig.DebugDrawDuration);
+      DrawDebugDirectionalArrow(
+          World, FinalSpawnLocation, FinalSpawnLocation + SpawnDirection * 100.0f, 20.0f,
+          FColor::Red, false, SpawnConfig.DebugDrawDuration, 0, 2.0f);
+      DrawDebugString(World, FinalSpawnLocation + FVector(0, 0, 30.0f),
+                      FString::Printf(TEXT("索引: %d, 伤害: %.1f"), i, Damage), nullptr,
+                      FColor::White, SpawnConfig.DebugDrawDuration);
+    }
   }
-
-  // 调试绘制
-  if (SpawnConfig.bEnableDebugDraw) {
-    DrawDebugSphere(World, SpawnLocation, 20.0f, 12, FColor::Yellow, false,
-                    SpawnConfig.DebugDrawDuration);
-    DrawDebugDirectionalArrow(
-        World, SpawnLocation, SpawnLocation + SpawnDirection * 100.0f, 20.0f,
-        FColor::Red, false, SpawnConfig.DebugDrawDuration, 0, 2.0f);
-    DrawDebugString(World, SpawnLocation + FVector(0, 0, 30.0f),
-                    FString::Printf(TEXT("伤害: %.1f"), Damage), nullptr,
-                    FColor::White, SpawnConfig.DebugDrawDuration);
-  }
+  
+  UE_LOG(LogXBCombat, Log,
+         TEXT("AN_XBSpawnSkillActor: 共生成 %d 个 %s，分布角度=%.1f°"),
+         ActualSpawnCount, *SpawnConfig.ActorClass->GetName(), SpawnConfig.SpreadAngle);
 }
 
 /**
