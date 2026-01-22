@@ -61,7 +61,7 @@ void UXBSoundManagerSubsystem::Initialize(
 
   UE_LOG(LogXBSound, Log,
          TEXT("[XBSoundManager] ✅ 音效管理器初始化成功！已加载 %d 个音效"),
-         SoundDatabase->SoundMap.Num());
+         SoundDatabase->SoundEntries.Num());
 }
 
 UAudioComponent *UXBSoundManagerSubsystem::PlaySound2D(FGameplayTag SoundTag,

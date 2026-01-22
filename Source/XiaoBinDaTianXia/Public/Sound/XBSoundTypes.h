@@ -13,13 +13,18 @@
  * 音效配置条目
  * 每个音效可以单独配置其属性
  *
- * @note TitleProperty 让 SoundName 字段显示为 TMap 行的折叠标题
+ * @note TitleProperty 让 SoundName 字段显示为数组行的折叠标题
  */
 USTRUCT(BlueprintType, meta = (TitleProperty = "SoundName"))
 struct FXBSoundEntry {
   GENERATED_BODY()
 
-  /** 音效名称（用于调试和识别） */
+  /** 音效标签（用于查找和引用） */
+  UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Sound",
+            meta = (DisplayName = "音效标签", Categories = "Sound"))
+  FGameplayTag SoundTag;
+
+  /** 音效名称（用于调试和识别，同时作为编辑器显示标题） */
   UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Sound",
             meta = (DisplayName = "音效名称"))
   FString SoundName;

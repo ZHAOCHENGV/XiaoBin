@@ -17,10 +17,10 @@ class XIAOBINDATIANXIA_API UXBSoundDatabase : public UPrimaryDataAsset {
   GENERATED_BODY()
 
 public:
-  /** 音效映射表（Tag → Sound Entry） */
+  /** 音效配置列表（每个条目包含自己的 Tag） */
   UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Sound Database",
-            meta = (DisplayName = "音效配置表", ForceInlineRow))
-  TMap<FGameplayTag, FXBSoundEntry> SoundMap;
+            meta = (DisplayName = "音效配置表", TitleProperty = "SoundName"))
+  TArray<FXBSoundEntry> SoundEntries;
 
   /**
    * 根据 Tag 查找音效配置
@@ -30,9 +30,11 @@ public:
    */
   UFUNCTION(BlueprintCallable, Category = "Sound")
   bool GetSoundEntry(FGameplayTag SoundTag, FXBSoundEntry &OutEntry) const {
-    if (const FXBSoundEntry *Entry = SoundMap.Find(SoundTag)) {
-      OutEntry = *Entry;
-      return true;
+    for (const FXBSoundEntry &Entry : SoundEntries) {
+      if (Entry.SoundTag == SoundTag) {
+        OutEntry = Entry;
+        return true;
+      }
     }
     return false;
   }
@@ -42,6 +44,11 @@ public:
    */
   UFUNCTION(BlueprintCallable, Category = "Sound")
   bool HasSound(FGameplayTag SoundTag) const {
-    return SoundMap.Contains(SoundTag);
+    for (const FXBSoundEntry &Entry : SoundEntries) {
+      if (Entry.SoundTag == SoundTag) {
+        return true;
+      }
+    }
+    return false;
   }
 };

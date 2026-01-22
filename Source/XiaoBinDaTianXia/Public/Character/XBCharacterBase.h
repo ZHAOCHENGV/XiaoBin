@@ -17,6 +17,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "AbilitySystemInterface.h"
+#include "GameplayTagContainer.h"
 #include "Data/XBLeaderDataTable.h"
 #include "Army/XBSoldierTypes.h"
 #include "XBCharacterBase.generated.h"
@@ -35,6 +36,7 @@ class UXBMagnetFieldComponent;
 class UXBFormationComponent;
 class UMaterialInterface;
 struct FXBGameConfigData;
+class UAudioComponent;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCharacterDeath, AXBCharacterBase*, DeadCharacter);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCombatStateChanged, bool, bInCombat);
@@ -553,6 +555,39 @@ protected:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "招募", meta = (DisplayName = "士兵Actor类"))
     TSubclassOf<AXBSoldierCharacter> SoldierActorClass;
+
+    // ==================== 音效配置 ====================
+
+    /** 冲刺音效标签（循环播放） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Sound",
+              meta = (DisplayName = "冲刺音效", Categories = "Sound"))
+    FGameplayTag SprintSoundTag;
+
+    /** 士兵飞出音效标签（将领死亡时） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Sound",
+              meta = (DisplayName = "士兵飞出音效", Categories = "Sound"))
+    FGameplayTag SoldierDropSoundTag;
+
+    /** 招募士兵音效标签 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Sound",
+              meta = (DisplayName = "招募士兵音效", Categories = "Sound"))
+    FGameplayTag RecruitSoundTag;
+
+    /** 当前冲刺音效组件（用于停止循环音效） */
+    UPROPERTY()
+    TObjectPtr<UAudioComponent> SprintAudioComponent;
+
+    /** 开始播放冲刺音效 */
+    void PlaySprintSound();
+
+    /** 停止冲刺音效 */
+    void StopSprintSound();
+
+    /** 播放招募士兵音效 */
+    void PlayRecruitSound();
+
+    /** 播放士兵飞出音效 */
+    void PlaySoldierDropSound();
 
     // ==================== 死亡系统 ====================
 

@@ -36,6 +36,8 @@
 #include "Utils/XBBlueprintFunctionLibrary.h"
 #include "Utils/XBLogCategories.h"
 #include "XBCollisionChannels.h"
+#include "Components/AudioComponent.h"
+#include "Sound/XBSoundManagerSubsystem.h"
 
 AXBCharacterBase::AXBCharacterBase() {
   PrimaryActorTick.bCanEverTick = true;
@@ -528,6 +530,9 @@ void AXBCharacterBase::StartSprint() {
   bIsSprinting = true;
   TargetMoveSpeed = BaseMoveSpeed * SprintSpeedMultiplier;
 
+  // ✨ 新增 - 播放冲刺音效
+  PlaySprintSound();
+
   SetSoldiersEscaping(true);
   OnSprintStateChanged.Broadcast(true);
 }
@@ -545,6 +550,9 @@ void AXBCharacterBase::StopSprint() {
 
   // 🔧 修改 - 冲刺结束时关闭自动前进开关
   bAutoSprintMove = false;
+
+  // ✨ 新增 - 停止冲刺音效
+  StopSprintSound();
 
   SetSoldiersEscaping(false);
   OnSprintStateChanged.Broadcast(false);
@@ -711,6 +719,9 @@ void AXBCharacterBase::AddSoldier(AXBSoldierCharacter *Soldier) {
 
   // 应用成长效果
   ApplyGrowthOnSoldiersAdded(1);
+
+  // ✨ 新增 - 播放招募士兵音效
+  PlayRecruitSound();
 
   // 更新计数
   UpdateSoldierCount(OldCount);
@@ -1779,6 +1790,9 @@ void AXBCharacterBase::SpawnDroppedSoldiers() {
          SoldierDropConfig.DropCount,
          TargetLeader ? *TargetLeader->GetName() : TEXT("无"));
 
+  // ✨ 新增 - 播放士兵飞出音效（只播放一次）
+  PlaySoldierDropSound();
+
   for (int32 i = 0; i < SoldierDropConfig.DropCount; ++i) {
     // 计算抛物线终点位置
     float BaseAngle = (360.0f / SoldierDropConfig.DropCount) * i;
@@ -1930,4 +1944,68 @@ void AXBCharacterBase::PreDestroyCleanup() {
   }
 
   GetWorldTimerManager().ClearTimer(DeathDestroyTimerHandle);
+}
+
+// ==================== 音效系统实现 ====================
+
+/**
+ * @brief 播放冲刺音效（附加到角色，可循环）
+ */
+void AXBCharacterBase::PlaySprintSound() {
+  if (!SprintSoundTag.IsValid()) {
+    return;
+  }
+
+  if (UGameInstance *GameInstance = GetGameInstance()) {
+    if (UXBSoundManagerSubsystem *SoundMgr =
+            GameInstance->GetSubsystem<UXBSoundManagerSubsystem>()) {
+      // 使用 PlaySoundAttached 将音效附加到角色，便于循环和停止控制
+      SprintAudioComponent = SoundMgr->PlaySoundAttached(
+          SprintSoundTag, GetRootComponent(), NAME_None);
+    }
+  }
+}
+
+/**
+ * @brief 停止冲刺音效
+ */
+void AXBCharacterBase::StopSprintSound() {
+  if (SprintAudioComponent && SprintAudioComponent->IsPlaying()) {
+    SprintAudioComponent->Stop();
+  }
+  SprintAudioComponent = nullptr;
+}
+
+/**
+ * @brief 播放招募士兵音效
+ */
+void AXBCharacterBase::PlayRecruitSound() {
+  if (!RecruitSoundTag.IsValid()) {
+    return;
+  }
+
+  if (UGameInstance *GameInstance = GetGameInstance()) {
+    if (UXBSoundManagerSubsystem *SoundMgr =
+            GameInstance->GetSubsystem<UXBSoundManagerSubsystem>()) {
+      SoundMgr->PlaySoundAtLocation(GetWorld(), RecruitSoundTag,
+                                    GetActorLocation());
+    }
+  }
+}
+
+/**
+ * @brief 播放士兵飞出音效（将领死亡时）
+ */
+void AXBCharacterBase::PlaySoldierDropSound() {
+  if (!SoldierDropSoundTag.IsValid()) {
+    return;
+  }
+
+  if (UGameInstance *GameInstance = GetGameInstance()) {
+    if (UXBSoundManagerSubsystem *SoundMgr =
+            GameInstance->GetSubsystem<UXBSoundManagerSubsystem>()) {
+      SoundMgr->PlaySoundAtLocation(GetWorld(), SoldierDropSoundTag,
+                                    GetActorLocation());
+    }
+  }
 }
