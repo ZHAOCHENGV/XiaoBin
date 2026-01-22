@@ -4,6 +4,7 @@
 
 #include "AudioDevice.h"
 #include "Components/AudioComponent.h"
+#include "Engine/DataTable.h"
 #include "Kismet/GameplayStatics.h"
 #include "Sound/XBSoundDatabase.h"
 #include "Sound/XBSoundSettings.h"
@@ -17,9 +18,39 @@ void UXBSoundManagerSubsystem::Initialize(
 
   UE_LOG(LogXBSound, Log, TEXT("[XBSoundManager] 开始初始化音效管理器..."));
 
-  // 如果未设置数据库，尝试加载
+  // 🔧 修改 - 优先使用数据表，其次才使用数据资产
+  if (!SoundDataTable) {
+    // 🔧 修改 - 优先从项目设置中读取数据表路径
+    const UXBSoundSettings *Settings = UXBSoundSettings::Get();
+    if (Settings && Settings->SoundDataTablePath.IsValid()) {
+      UE_LOG(LogXBSound, Log,
+             TEXT("[XBSoundManager] 从项目设置加载音效数据表：%s"),
+             *Settings->SoundDataTablePath.ToString());
+      SoundDataTable = Cast<UDataTable>(Settings->SoundDataTablePath.TryLoad());
+    }
+
+    // 🔧 修改 - 如果项目设置未配置，尝试使用配置文件中的路径
+    if (!SoundDataTable && SoundDataTablePath.IsValid()) {
+      UE_LOG(LogXBSound, Log,
+             TEXT("[XBSoundManager] 从配置文件加载音效数据表：%s"),
+             *SoundDataTablePath.ToString());
+      SoundDataTable = Cast<UDataTable>(SoundDataTablePath.TryLoad());
+    }
+
+    // 🔧 修改 - 如果配置路径无效，尝试默认路径
+    if (!SoundDataTable) {
+      const FSoftObjectPath DefaultPath(
+          TEXT("/Game/Data/DT_SoundDatabase.DT_SoundDatabase"));
+      UE_LOG(LogXBSound, Log,
+             TEXT("[XBSoundManager] 尝试从默认路径加载音效数据表：%s"),
+             *DefaultPath.ToString());
+      SoundDataTable = Cast<UDataTable>(DefaultPath.TryLoad());
+    }
+  }
+
+  // 🔧 修改 - 如果未设置数据库，尝试加载数据资产
   if (!SoundDatabase) {
-    // 优先从项目设置中读取
+    // 🔧 修改 - 优先从项目设置中读取
     const UXBSoundSettings *Settings = UXBSoundSettings::Get();
     if (Settings && Settings->SoundDatabasePath.IsValid()) {
       UE_LOG(LogXBSound, Log,
@@ -29,7 +60,7 @@ void UXBSoundManagerSubsystem::Initialize(
           Cast<UXBSoundDatabase>(Settings->SoundDatabasePath.TryLoad());
     }
 
-    // 如果项目设置未配置，尝试使用配置文件中的路径
+    // 🔧 修改 - 如果项目设置未配置，尝试使用配置文件中的路径
     if (!SoundDatabase && SoundDatabasePath.IsValid()) {
       UE_LOG(LogXBSound, Log,
              TEXT("[XBSoundManager] 从配置文件加载音效数据库：%s"),
@@ -37,7 +68,7 @@ void UXBSoundManagerSubsystem::Initialize(
       SoundDatabase = Cast<UXBSoundDatabase>(SoundDatabasePath.TryLoad());
     }
 
-    // 如果配置路径无效，尝试默认路径
+    // 🔧 修改 - 如果配置路径无效，尝试默认路径
     if (!SoundDatabase) {
       const FSoftObjectPath DefaultPath(
           TEXT("/Game/Data/DA_SoundDatabase.DA_SoundDatabase"));
@@ -45,38 +76,95 @@ void UXBSoundManagerSubsystem::Initialize(
              *DefaultPath.ToString());
       SoundDatabase = Cast<UXBSoundDatabase>(DefaultPath.TryLoad());
     }
-
-    if (!SoundDatabase) {
-      UE_LOG(LogXBSound, Error,
-             TEXT("[XBSoundManager] ❌ 音效数据库加载失败！"));
-      UE_LOG(LogXBSound, Warning, TEXT("[XBSoundManager] 解决方法："));
-      UE_LOG(LogXBSound, Warning,
-             TEXT("  1. 在项目设置中配置：Project Settings → Plugins → XiaoBin "
-                  "Sound Settings"));
-      UE_LOG(LogXBSound, Warning,
-             TEXT("  2. 或在 /Game/Data/ 下创建 DA_SoundDatabase"));
-      return;
-    }
   }
 
-  UE_LOG(LogXBSound, Log,
-         TEXT("[XBSoundManager] ✅ 音效管理器初始化成功！已加载 %d 个音效"),
-         SoundDatabase->SoundEntries.Num());
+  // 🔧 修改 - 如果两者都不存在，直接提示配置
+  if (!SoundDataTable && !SoundDatabase) {
+    UE_LOG(LogXBSound, Error,
+           TEXT("[XBSoundManager] ❌ 音效数据未加载成功！"));
+    UE_LOG(LogXBSound, Warning, TEXT("[XBSoundManager] 解决方法："));
+    UE_LOG(LogXBSound, Warning,
+           TEXT("  1. 在项目设置中配置：Project Settings → Plugins → XiaoBin "
+                "Sound Settings"));
+    UE_LOG(LogXBSound, Warning,
+           TEXT("  2. 或在 /Game/Data/ 下创建 DT_SoundDatabase 或 "
+                "DA_SoundDatabase"));
+    return;
+  }
+
+  if (SoundDataTable) {
+    UE_LOG(LogXBSound, Log,
+           TEXT("[XBSoundManager] ✅ 已加载音效数据表，行数：%d"),
+           SoundDataTable->GetRowNames().Num());
+  }
+
+  if (SoundDatabase) {
+    UE_LOG(LogXBSound, Log,
+           TEXT("[XBSoundManager] ✅ 已加载音效数据库，数量：%d"),
+           SoundDatabase->SoundEntries.Num());
+  }
+}
+
+bool UXBSoundManagerSubsystem::GetSoundEntryByTag(
+    FGameplayTag SoundTag, FXBSoundEntry &OutEntry) const {
+  // 🔧 修改 - 方案A：优先从数据表读取，RowName 需与 SoundTag 字符串一致
+  if (SoundDataTable) {
+    const FName RowName(*SoundTag.ToString());
+    const FXBSoundEntry *Row = SoundDataTable->FindRow<FXBSoundEntry>(
+        RowName, TEXT("XBSoundManager_GetSoundEntryByTag"));
+    if (Row) {
+      OutEntry = *Row;
+      // 🔧 修改 - 如果数据表未填 SoundTag，则使用请求的 Tag 进行补全
+      if (!OutEntry.SoundTag.IsValid()) {
+        OutEntry.SoundTag = SoundTag;
+      }
+      return true;
+    }
+
+    // 🔧 修改 - RowName 未命中时，回退为遍历匹配 SoundTag 字段
+    // 说明：允许行名与 Tag 不一致，但要求行内 SoundTag 正确配置
+    const TArray<FName> RowNames = SoundDataTable->GetRowNames();
+    for (const FName &FallbackRowName : RowNames) {
+      const FXBSoundEntry *FallbackRow =
+          SoundDataTable->FindRow<FXBSoundEntry>(
+              FallbackRowName, TEXT("XBSoundManager_GetSoundEntryByTag"));
+      if (!FallbackRow) {
+        continue;
+      }
+
+      // 🔧 修改 - 使用 GameplayTag 精准匹配，避免字符串误差
+      if (FallbackRow->SoundTag == SoundTag) {
+        OutEntry = *FallbackRow;
+        return true;
+      }
+    }
+
+    UE_LOG(LogXBSound, Warning,
+           TEXT("[XBSoundManager] 数据表未找到音效：RowName=%s，Tag=%s"),
+           *RowName.ToString(), *SoundTag.ToString());
+  }
+
+  // 🔧 修改 - 兼容旧数据资产
+  if (SoundDatabase) {
+    return SoundDatabase->GetSoundEntry(SoundTag, OutEntry);
+  }
+
+  return false;
 }
 
 UAudioComponent *UXBSoundManagerSubsystem::PlaySound2D(FGameplayTag SoundTag,
                                                        float VolumeMultiplier,
                                                        float PitchMultiplier) {
   // 检查数据库
-  if (!SoundDatabase) {
+  if (!SoundDataTable && !SoundDatabase) {
     UE_LOG(LogXBSound, Error,
-           TEXT("[XBSoundManager] PlaySound2D 失败：音效数据库未设置"));
+           TEXT("[XBSoundManager] PlaySound2D 失败：音效数据未设置"));
     return nullptr;
   }
 
   // 查找音效配置
   FXBSoundEntry Entry;
-  if (!SoundDatabase->GetSoundEntry(SoundTag, Entry)) {
+  if (!GetSoundEntryByTag(SoundTag, Entry)) {
     UE_LOG(LogXBSound, Warning, TEXT("[XBSoundManager] 未找到音效：%s"),
            *SoundTag.ToString());
     return nullptr;
@@ -114,14 +202,14 @@ UAudioComponent *UXBSoundManagerSubsystem::PlaySound2D(FGameplayTag SoundTag,
 UAudioComponent *UXBSoundManagerSubsystem::PlaySoundAtLocation(
     const UObject *WorldContextObject, FGameplayTag SoundTag, FVector Location,
     float VolumeMultiplier, float PitchMultiplier) {
-  if (!SoundDatabase) {
+  if (!SoundDataTable && !SoundDatabase) {
     UE_LOG(LogXBSound, Error,
-           TEXT("[XBSoundManager] PlaySoundAtLocation 失败：音效数据库未设置"));
+           TEXT("[XBSoundManager] PlaySoundAtLocation 失败：音效数据未设置"));
     return nullptr;
   }
 
   FXBSoundEntry Entry;
-  if (!SoundDatabase->GetSoundEntry(SoundTag, Entry)) {
+  if (!GetSoundEntryByTag(SoundTag, Entry)) {
     UE_LOG(LogXBSound, Warning, TEXT("[XBSoundManager] 未找到音效：%s"),
            *SoundTag.ToString());
     return nullptr;
@@ -164,9 +252,9 @@ UAudioComponent *UXBSoundManagerSubsystem::PlaySoundAtLocation(
 UAudioComponent *UXBSoundManagerSubsystem::PlaySoundAttached(
     FGameplayTag SoundTag, USceneComponent *AttachToComponent, FName SocketName,
     float VolumeMultiplier, float PitchMultiplier) {
-  if (!SoundDatabase) {
+  if (!SoundDataTable && !SoundDatabase) {
     UE_LOG(LogXBSound, Error,
-           TEXT("[XBSoundManager] PlaySoundAttached 失败：音效数据库未设置"));
+           TEXT("[XBSoundManager] PlaySoundAttached 失败：音效数据未设置"));
     return nullptr;
   }
 
@@ -177,7 +265,7 @@ UAudioComponent *UXBSoundManagerSubsystem::PlaySoundAttached(
   }
 
   FXBSoundEntry Entry;
-  if (!SoundDatabase->GetSoundEntry(SoundTag, Entry)) {
+  if (!GetSoundEntryByTag(SoundTag, Entry)) {
     UE_LOG(LogXBSound, Warning, TEXT("[XBSoundManager] 未找到音效：%s"),
            *SoundTag.ToString());
     return nullptr;

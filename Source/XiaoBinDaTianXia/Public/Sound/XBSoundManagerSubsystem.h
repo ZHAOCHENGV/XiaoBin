@@ -5,10 +5,12 @@
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
 #include "Subsystems/GameInstanceSubsystem.h"
+#include "Sound/XBSoundTypes.h"
 #include "XBSoundManagerSubsystem.generated.h"
 
 class UXBSoundDatabase;
 class UAudioComponent;
+class UDataTable;
 
 /**
  * 音效管理子系统（简化版原型）
@@ -76,8 +78,28 @@ protected:
             meta = (DisplayName = "音效数据库（直接引用）"))
   TObjectPtr<UXBSoundDatabase> SoundDatabase;
 
+  /** 音效数据表引用（可在蓝图中直接指定） */
+  UPROPERTY(EditDefaultsOnly, Category = "Config",
+            meta = (DisplayName = "音效数据表（直接引用）"))
+  TObjectPtr<UDataTable> SoundDataTable;
+
   /** 音效数据库路径（可在 DefaultEngine.ini 中配置） */
   UPROPERTY(Config, EditDefaultsOnly, Category = "Config",
             meta = (DisplayName = "音效数据库路径（配置文件）"))
   FSoftObjectPath SoundDatabasePath;
+
+  /** 音效数据表路径（可在 DefaultGame.ini 中配置） */
+  UPROPERTY(Config, EditDefaultsOnly, Category = "Config",
+            meta = (DisplayName = "音效数据表路径（配置文件）"))
+  FSoftObjectPath SoundDataTablePath;
+
+  /**
+   * @brief  根据 Tag 查找音效配置（优先数据表，其次数据资产）
+   * @param  SoundTag 音效的 Gameplay Tag
+   * @param  OutEntry 输出的音效配置
+   * @return 是否找到
+   * @note   方案A依赖 RowName 与 SoundTag 字符串一致的约定
+   */
+  bool GetSoundEntryByTag(FGameplayTag SoundTag,
+                          FXBSoundEntry &OutEntry) const;
 };

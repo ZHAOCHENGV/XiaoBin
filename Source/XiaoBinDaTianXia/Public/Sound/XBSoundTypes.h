@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Engine/DataTable.h"
 #include "GameplayTagContainer.h"
 #include "Sound/SoundAttenuation.h"
 #include "Sound/SoundBase.h"
@@ -14,9 +15,10 @@
  * 每个音效可以单独配置其属性
  *
  * @note TitleProperty 让 SoundName 字段显示为数组行的折叠标题
+ * @note 方案A：此结构可直接作为 DataTable 的行结构使用
  */
 USTRUCT(BlueprintType, meta = (TitleProperty = "SoundName"))
-struct FXBSoundEntry {
+struct FXBSoundEntry : public FTableRowBase {
   GENERATED_BODY()
 
   /** 音效标签（用于查找和引用） */
