@@ -73,6 +73,12 @@ AXBCharacterBase::AXBCharacterBase() {
   bUseControllerRotationPitch = false;
   bUseControllerRotationYaw = false;
   bUseControllerRotationRoll = false;
+
+  // ✨ 新增 - 设置通用主将音效 Tag 默认值
+  SprintSoundTag = FGameplayTag::RequestGameplayTag(FName("Sound.Leader.Sprint"), false);
+  DeathSoundTag = FGameplayTag::RequestGameplayTag(FName("Sound.Leader.Death"), false);
+  RecruitSoundTag = FGameplayTag::RequestGameplayTag(FName("Sound.Leader.Recruit"), false);
+  SoldierDropSoundTag = FGameplayTag::RequestGameplayTag(FName("Sound.Leader.SoldierDrop"), false);
 }
 
 /**

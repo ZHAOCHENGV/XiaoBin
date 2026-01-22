@@ -242,6 +242,14 @@ public:
                     EditConditionHides))
   bool bDebugExplosionRadius = false;
 
+  /** 爆炸检测对象类型（默认检测士兵和主将通道） */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置|爆炸效果",
+            meta = (DisplayName = "爆炸检测对象类型",
+                    EditCondition =
+                        "DamageType == EXBProjectileDamageType::ExplosionOnly || DamageType == EXBProjectileDamageType::Both",
+                    EditConditionHides))
+  TArray<TEnumAsByte<EObjectTypeQuery>> ExplosionObjectTypes;
+
   // ========== 碰撞体配置 ==========
 
   /** 碰撞体类型 */

@@ -66,6 +66,10 @@ AXBProjectile::AXBProjectile() {
   ProjectileMovementComponent->ProjectileGravityScale = 0.0f;
 
   DamageTag = FGameplayTag::RequestGameplayTag(FName("Data.Damage"), false);
+
+  // ✨ 新增 - 设置爆炸检测默认对象类型（士兵和主将通道）
+  ExplosionObjectTypes.Add(UEngineTypes::ConvertToObjectType(XBCollision::Soldier));
+  ExplosionObjectTypes.Add(UEngineTypes::ConvertToObjectType(XBCollision::Leader));
 }
 
 void AXBProjectile::BeginPlay() {
@@ -615,9 +619,15 @@ void AXBProjectile::PerformExplosionDamage(const FVector &ExplosionLocation) {
     QueryParams.AddIgnoredActor(Source);
   }
 
-  // 使用 Pawn 通道进行检测
-  const bool bHasOverlaps = World->OverlapMultiByChannel(
-      OverlapResults, ExplosionLocation, FQuat::Identity, ECC_Pawn,
+  // ✨ 新增 - 使用配置的对象类型进行检测（默认为 Soldier 和 Leader 通道）
+  FCollisionObjectQueryParams ObjectQueryParams;
+  for (const TEnumAsByte<EObjectTypeQuery>& ObjectType : ExplosionObjectTypes) {
+    ObjectQueryParams.AddObjectTypesToQuery(
+        UEngineTypes::ConvertToCollisionChannel(ObjectType));
+  }
+
+  const bool bHasOverlaps = World->OverlapMultiByObjectType(
+      OverlapResults, ExplosionLocation, FQuat::Identity, ObjectQueryParams,
       FCollisionShape::MakeSphere(ExplosionRadius), QueryParams);
 
   if (!bHasOverlaps) {
