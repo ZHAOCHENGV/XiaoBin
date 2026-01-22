@@ -84,7 +84,7 @@ UAudioComponent *UXBSoundManagerSubsystem::PlaySound2D(FGameplayTag SoundTag,
 
   // 检查音效资源
   if (!Entry.Sound) {
-    UE_LOG(LogXBSound, Warning, TEXT("[XBSoundManager] 音效 %s 的资源为空"),
+    UE_LOG(LogXBSound, Warning, TEXT(333333333"[XBSoundManager] 音效 %s 的资源为空"),
            *SoundTag.ToString());
     return nullptr;
   }
@@ -136,25 +136,29 @@ UAudioComponent *UXBSoundManagerSubsystem::PlaySoundAtLocation(
   const float FinalVolume = Entry.Volume * VolumeMultiplier;
   const float FinalPitch = Entry.Pitch * PitchMultiplier;
 
-  // 🔧 修复 - 使用传入的 WorldContextObject 获取 World
+  // 🔧 修复 - 使用 SpawnSoundAtLocation 创建独立的 AudioComponent
   // 这样音效不会因为调用者（如发射物）销毁而中断
   UWorld *World =
       WorldContextObject ? WorldContextObject->GetWorld() : GetWorld();
 
-  UGameplayStatics::PlaySoundAtLocation(
-      World, Entry.Sound, Location, FinalVolume, FinalPitch,
+  // 🔧 使用 SpawnSoundAtLocation 替代 PlaySoundAtLocation
+  // SpawnSoundAtLocation 会创建一个独立的 AudioComponent，
+  // 即使调用者（如 Projectile）被销毁，音效也会完整播放
+  UAudioComponent *AudioComp = UGameplayStatics::SpawnSoundAtLocation(
+      World, Entry.Sound, Location, FRotator::ZeroRotator, FinalVolume,
+      FinalPitch,
       0.0f, // StartTime
       Entry.bEnableAttenuation ? Entry.Attenuation : nullptr, Entry.Concurrency,
-      nullptr // InitialParams
+      true // bAutoDestroy - 音效播放完毕后自动销毁组件
   );
 
-  UE_LOG(LogXBSound, Verbose,
-         TEXT("[XBSoundManager] 播放3D音效：%s at (%.1f, %.1f, %.1f)"),
-         *SoundTag.ToString(), Location.X, Location.Y, Location.Z);
+  if (AudioComp) {
+    UE_LOG(LogXBSound, Verbose,
+           TEXT("[XBSoundManager] 播放3D音效：%s at (%.1f, %.1f, %.1f)"),
+           *SoundTag.ToString(), Location.X, Location.Y, Location.Z);
+  }
 
-  // 注意：UGameplayStatics::PlaySoundAtLocation 不返回 UAudioComponent
-  // 如果需要控制音效，请使用 SpawnSoundAtLocation
-  return nullptr;
+  return AudioComp;
 }
 
 UAudioComponent *UXBSoundManagerSubsystem::PlaySoundAttached(
