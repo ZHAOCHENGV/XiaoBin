@@ -10,9 +10,7 @@
 #include "AbilitySystemComponent.h"
 #include "Soldier/XBSoldierCharacter.h"
 #include "Character/XBCharacterBase.h"
-#include "Utils/XBGameplayTags.h"
 #include "Utils/XBLogCategories.h"
-#include "Game/XBGameInstance.h"
 #include "Sound/XBSoundManagerSubsystem.h"
 
 UAN_XBTriggerMeleeHit::UAN_XBTriggerMeleeHit()
