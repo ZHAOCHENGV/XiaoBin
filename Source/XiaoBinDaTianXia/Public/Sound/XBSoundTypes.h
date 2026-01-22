@@ -12,8 +12,10 @@
 /**
  * 音效配置条目
  * 每个音效可以单独配置其属性
+ *
+ * @note TitleProperty 让 SoundName 字段显示为 TMap 行的折叠标题
  */
-USTRUCT(BlueprintType)
+USTRUCT(BlueprintType, meta = (TitleProperty = "SoundName"))
 struct FXBSoundEntry {
   GENERATED_BODY()
 

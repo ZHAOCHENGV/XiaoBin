@@ -84,7 +84,7 @@ UAudioComponent *UXBSoundManagerSubsystem::PlaySound2D(FGameplayTag SoundTag,
 
   // 检查音效资源
   if (!Entry.Sound) {
-    UE_LOG(LogXBSound, Warning, TEXT(333333333"[XBSoundManager] 音效 %s 的资源为空"),
+    UE_LOG(LogXBSound, Warning, TEXT("[XBSoundManager] 音效 %s 的资源为空"),
            *SoundTag.ToString());
     return nullptr;
   }
