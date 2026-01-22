@@ -7,6 +7,7 @@
 #include "XBSoundSettings.generated.h"
 
 class UXBSoundDatabase;
+class UDataTable;
 
 /**
  * 音效系统设置（会出现在项目设置中）
@@ -31,6 +32,16 @@ public:
       meta = (DisplayName = "音效数据库",
               AllowedClasses = "/Script/XiaoBinDaTianXia.XBSoundDatabase"))
   FSoftObjectPath SoundDatabasePath;
+
+  /**
+   * 音效数据表（方案A：RowName 与 SoundTag 字符串保持一致）
+   * 在这里直接拖拽你的 DT_SoundDatabase 资源
+   */
+  UPROPERTY(
+      Config, EditAnywhere, Category = "Sound Database",
+      meta = (DisplayName = "音效数据表",
+              AllowedClasses = "/Script/Engine.DataTable"))
+  FSoftObjectPath SoundDataTablePath;
 
   /**
    * 获取设置单例
