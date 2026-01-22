@@ -36,14 +36,14 @@ struct FXBSoundEntry : public FTableRowBase {
             meta = (DisplayName = "音效资源"))
   TObjectPtr<USoundBase> Sound = nullptr;
 
-  /** 音量（0.0 - 1.0） */
+  /** 音量（0.0 - 2.0，1.0 为正常） */
   UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Sound",
-            meta = (DisplayName = "音量", ClampMin = "0.0", ClampMax = "1.0"))
+            meta = (DisplayName = "音量", ClampMin = "0.0", ClampMax = "2.0"))
   float Volume = 1.0f;
 
   /** 音调（0.5 - 2.0，1.0 为正常） */
   UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Sound",
-            meta = (DisplayName = "音调", ClampMin = "0.5", ClampMax = "2.0"))
+            meta = (DisplayName = "音调", ClampMin = "0.0", ClampMax = "2.0"))
   float Pitch = 1.0f;
 
   /** 是否启用衰减（3D 音效需要） */
