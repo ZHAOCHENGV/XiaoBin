@@ -117,6 +117,28 @@ public:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XB|Input|Extended", meta = (DisplayName = "生成主将"))
     TObjectPtr<UInputAction> SpawnLeaderAction;
 
+    // ============ 配置阶段放置 ============
+
+    /** 放置点击 (Bool: Left Mouse Button) */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XB|Input|Placement", meta = (DisplayName = "放置点击"))
+    TObjectPtr<UInputAction> PlacementClickAction;
+
+    /** 放置取消 (Bool: ESC / Right Mouse Button) */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XB|Input|Placement", meta = (DisplayName = "放置取消"))
+    TObjectPtr<UInputAction> PlacementCancelAction;
+
+    /** 放置删除 (Bool: Delete key) */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XB|Input|Placement", meta = (DisplayName = "放置删除"))
+    TObjectPtr<UInputAction> PlacementDeleteAction;
+
+    /** 放置旋转 (Axis1D: Mouse Wheel) */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XB|Input|Placement", meta = (DisplayName = "放置旋转"))
+    TObjectPtr<UInputAction> PlacementRotateAction;
+
+    /** 切换放置菜单 (Bool: Tab key) */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XB|Input|Placement", meta = (DisplayName = "切换放置菜单"))
+    TObjectPtr<UInputAction> TogglePlacementMenuAction;
+
     // ============ 扩展配置 ============
 
     

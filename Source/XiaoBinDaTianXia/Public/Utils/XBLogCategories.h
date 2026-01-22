@@ -42,3 +42,7 @@ DECLARE_LOG_CATEGORY_EXTERN(LogXBInput, Log, All);
 // ✨ 新增 - 配置系统日志
 /** @brief 配置系统日志 */
 DECLARE_LOG_CATEGORY_EXTERN(LogXBConfig, Log, All);
+
+
+/** @brief 游戏系统日志 */
+DECLARE_LOG_CATEGORY_EXTERN(LogXBGame, Log, All);

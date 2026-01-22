@@ -7,6 +7,7 @@
  * 
  * @note 🔧 修改记录:
  *       1. ✨ 新增 - 移动输入时检查角色是否可以移动（技能释放中禁止移动）
+ *       2. ✨ 新增 - 配置阶段放置输入回调
  */
 
 #include "Player/XBPlayerController.h"
@@ -18,6 +19,7 @@
 #include "Camera/CameraComponent.h"
 #include "Character/XBPlayerCharacter.h"
 #include "Character/XBConfigCameraPawn.h"
+#include "Config/XBActorPlacementComponent.h"
 #include "Game/XBGameMode.h"
 #include "Utils/XBGameplayTags.h"
 #include "Character/Components/XBCombatComponent.h"
@@ -258,6 +260,43 @@ void AXBPlayerController::BindInputActions()
         {
             UE_LOG(LogTemp, Warning, TEXT("未配置生成主将输入，请在输入配置中绑定回车"));
         }
+    }
+
+    // ✨ 新增 - 配置阶段放置输入绑定
+    if (InputConfig->PlacementClickAction)
+    {
+        EnhancedInput->BindAction(
+            InputConfig->PlacementClickAction,
+            ETriggerEvent::Started,
+            this,
+            &AXBPlayerController::HandlePlacementClickInput);
+    }
+
+    if (InputConfig->PlacementCancelAction)
+    {
+        EnhancedInput->BindAction(
+            InputConfig->PlacementCancelAction,
+            ETriggerEvent::Started,
+            this,
+            &AXBPlayerController::HandlePlacementCancelInput);
+    }
+
+    if (InputConfig->PlacementDeleteAction)
+    {
+        EnhancedInput->BindAction(
+            InputConfig->PlacementDeleteAction,
+            ETriggerEvent::Started,
+            this,
+            &AXBPlayerController::HandlePlacementDeleteInput);
+    }
+
+    if (InputConfig->PlacementRotateAction)
+    {
+        EnhancedInput->BindAction(
+            InputConfig->PlacementRotateAction,
+            ETriggerEvent::Triggered,
+            this,
+            &AXBPlayerController::HandlePlacementRotateInput);
     }
 
     UE_LOG(LogTemp, Log, TEXT("输入操作已成功绑定!!!"));
@@ -644,5 +683,78 @@ void AXBPlayerController::HandleSpawnLeaderInput()
                 UE_LOG(LogTemp, Warning, TEXT("生成主将失败或条件未满足"));
             }
         }
+    }
+}
+
+// ============ 配置阶段放置输入回调 ============
+
+/**
+ * @brief 处理放置点击输入
+ * @note   详细流程分析: 仅配置阶段有效 -> 获取放置组件 -> 调用 HandleClick
+ */
+void AXBPlayerController::HandlePlacementClickInput()
+{
+    // 仅在配置阶段处理
+    if (!CachedConfigPawn.IsValid())
+    {
+        return;
+    }
+
+    if (UXBActorPlacementComponent* PlacementComp = CachedConfigPawn->GetPlacementComponent())
+    {
+        PlacementComp->HandleClick();
+    }
+}
+
+/**
+ * @brief 处理放置取消输入
+ * @note   详细流程分析: 仅配置阶段有效 -> 获取放置组件 -> 调用 CancelOperation
+ */
+void AXBPlayerController::HandlePlacementCancelInput()
+{
+    if (!CachedConfigPawn.IsValid())
+    {
+        return;
+    }
+
+    if (UXBActorPlacementComponent* PlacementComp = CachedConfigPawn->GetPlacementComponent())
+    {
+        PlacementComp->CancelOperation();
+    }
+}
+
+/**
+ * @brief 处理放置删除输入
+ * @note   详细流程分析: 仅配置阶段有效 -> 获取放置组件 -> 调用 DeleteSelectedActor
+ */
+void AXBPlayerController::HandlePlacementDeleteInput()
+{
+    if (!CachedConfigPawn.IsValid())
+    {
+        return;
+    }
+
+    if (UXBActorPlacementComponent* PlacementComp = CachedConfigPawn->GetPlacementComponent())
+    {
+        PlacementComp->DeleteSelectedActor();
+    }
+}
+
+/**
+ * @brief 处理放置旋转输入
+ * @param InputValue 输入值（滚轮增量）
+ * @note   详细流程分析: 仅配置阶段有效 -> 获取放置组件 -> 调用 RotateActor
+ */
+void AXBPlayerController::HandlePlacementRotateInput(const FInputActionValue& InputValue)
+{
+    if (!CachedConfigPawn.IsValid())
+    {
+        return;
+    }
+
+    const float RotateValue = InputValue.Get<float>();
+    if (UXBActorPlacementComponent* PlacementComp = CachedConfigPawn->GetPlacementComponent())
+    {
+        PlacementComp->RotateActor(RotateValue);
     }
 }

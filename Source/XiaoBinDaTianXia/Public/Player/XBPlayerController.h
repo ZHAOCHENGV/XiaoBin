@@ -199,6 +199,12 @@ protected:
     void HandleRecallInput();
     void HandleSpawnLeaderInput();
 
+    // ✨ 新增 - 配置阶段放置输入回调
+    void HandlePlacementClickInput();
+    void HandlePlacementCancelInput();
+    void HandlePlacementDeleteInput();
+    void HandlePlacementRotateInput(const FInputActionValue& InputValue);
+
 private:
     // ==================== 镜头状态 ====================
 
