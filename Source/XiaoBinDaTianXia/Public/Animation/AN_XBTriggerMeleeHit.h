@@ -41,4 +41,8 @@ protected:
     /** @brief 触发的事件Tag */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "战斗", meta = (DisplayName = "事件Tag"))
     FGameplayTag EventTag;
+
+    /** 命中音效标签（命中敌人时播放） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "音效", meta = (DisplayName = "命中音效", Categories = "Sound"))
+    FGameplayTag HitSoundTag;
 };

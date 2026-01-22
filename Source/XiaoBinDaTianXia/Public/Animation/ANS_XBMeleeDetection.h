@@ -112,6 +112,10 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "伤害配置", meta = (DisplayName = "伤害Tag"))
     FGameplayTag DamageTag;
 
+    /** 命中音效标签（命中敌人时播放） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "音效配置", meta = (DisplayName = "命中音效", Categories = "Sound"))
+    FGameplayTag HitSoundTag;
+
     virtual void NotifyBegin(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation, float TotalDuration, const FAnimNotifyEventReference& EventReference) override;
     virtual void NotifyTick(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation, float FrameDeltaTime, const FAnimNotifyEventReference& EventReference) override;
     virtual void NotifyEnd(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation, const FAnimNotifyEventReference& EventReference) override;

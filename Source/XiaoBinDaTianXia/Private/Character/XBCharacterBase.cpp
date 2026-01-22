@@ -1591,6 +1591,9 @@ void AXBCharacterBase::HandleDeath() {
 
   bIsDead = true;
 
+  // ✨ 新增 - 播放死亡音效
+  PlayDeathSound();
+
   UE_LOG(LogXBCharacter, Log, TEXT("%s: 角色死亡"), *GetName());
 
   if (MagnetFieldComponent) {
@@ -1967,12 +1970,15 @@ void AXBCharacterBase::PlaySprintSound() {
 }
 
 /**
- * @brief 停止冲刺音效
+ * @brief 停止冲刺音效（带淡出）
  */
 void AXBCharacterBase::StopSprintSound() {
   if (SprintAudioComponent && SprintAudioComponent->IsPlaying()) {
-    SprintAudioComponent->Stop();
+    // 🔧 修改 - 使用 FadeOut 淡出音效，避免戛然而止
+    // 参数：淡出时长(秒)、结束时音量(0=静音)、淡出曲线(线性)
+    SprintAudioComponent->FadeOut(0.3f, 0.0f);
   }
+  // 注意：不立即置空，让 FadeOut 完成后自动销毁（bAutoDestroy = true）
   SprintAudioComponent = nullptr;
 }
 
@@ -2005,6 +2011,23 @@ void AXBCharacterBase::PlaySoldierDropSound() {
     if (UXBSoundManagerSubsystem *SoundMgr =
             GameInstance->GetSubsystem<UXBSoundManagerSubsystem>()) {
       SoundMgr->PlaySoundAtLocation(GetWorld(), SoldierDropSoundTag,
+                                    GetActorLocation());
+    }
+  }
+}
+
+/**
+ * @brief 播放死亡音效
+ */
+void AXBCharacterBase::PlayDeathSound() {
+  if (!DeathSoundTag.IsValid()) {
+    return;
+  }
+
+  if (UGameInstance *GameInstance = GetGameInstance()) {
+    if (UXBSoundManagerSubsystem *SoundMgr =
+            GameInstance->GetSubsystem<UXBSoundManagerSubsystem>()) {
+      SoundMgr->PlaySoundAtLocation(GetWorld(), DeathSoundTag,
                                     GetActorLocation());
     }
   }

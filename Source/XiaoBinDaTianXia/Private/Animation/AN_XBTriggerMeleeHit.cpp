@@ -12,6 +12,8 @@
 #include "Character/XBCharacterBase.h"
 #include "Utils/XBGameplayTags.h"
 #include "Utils/XBLogCategories.h"
+#include "Game/XBGameInstance.h"
+#include "Sound/XBSoundManagerSubsystem.h"
 
 UAN_XBTriggerMeleeHit::UAN_XBTriggerMeleeHit()
 {
@@ -77,6 +79,21 @@ void UAN_XBTriggerMeleeHit::Notify(USkeletalMeshComponent* MeshComp, UAnimSequen
     // 🔧 修改 - 通过ASC派发事件，触发对应GA
     if (UAbilitySystemComponent* ASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(OwnerActor))
     {
+        // ✨ 新增 - 播放命中音效
+        if (HitSoundTag.IsValid())
+        {
+            if (UWorld* World = OwnerActor->GetWorld())
+            {
+                if (UGameInstance* GameInstance = World->GetGameInstance<UGameInstance>())
+                {
+                    if (UXBSoundManagerSubsystem* SoundMgr = GameInstance->GetSubsystem<UXBSoundManagerSubsystem>())
+                    {
+                        SoundMgr->PlaySoundAtLocation(World, HitSoundTag, OwnerActor->GetActorLocation());
+                    }
+                }
+            }
+        }
+
         ASC->HandleGameplayEvent(EventTag, &EventData);
         UE_LOG(LogXBCombat, Verbose, TEXT("近战命中Tag触发GA事件: %s, Owner=%s, Target=%s"),
             *EventTag.ToString(),

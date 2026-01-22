@@ -589,6 +589,14 @@ protected:
     /** 播放士兵飞出音效 */
     void PlaySoldierDropSound();
 
+    /** 主将死亡音效标签 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Sound",
+              meta = (DisplayName = "死亡音效", Categories = "Sound"))
+    FGameplayTag DeathSoundTag;
+
+    /** 播放死亡音效 */
+    void PlayDeathSound();
+
     // ==================== 死亡系统 ====================
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "视觉", meta = (DisplayName = "动画蓝图类"))

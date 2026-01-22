@@ -28,6 +28,8 @@
 #include "XBCollisionChannels.h"
 #include "Utils/XBBlueprintFunctionLibrary.h"
 #include "Utils/XBLogCategories.h"
+#include "Game/XBGameInstance.h"
+#include "Sound/XBSoundManagerSubsystem.h"
 
 UANS_XBMeleeDetection::UANS_XBMeleeDetection()
 {
@@ -412,6 +414,21 @@ void UANS_XBMeleeDetection::ApplyDamageToTargets(const TArray<FHitResult>& HitRe
 
         // 记录已命中，避免重复伤害
         HitActors.Add(HitActor);
+
+        // ✨ 新增 - 播放命中音效（只在第一次命中时播放，避免多目标时重复音效）
+        if (HitSoundTag.IsValid() && HitActors.Num() == 1)
+        {
+            if (UWorld* World = OwnerActor->GetWorld())
+            {
+                if (UGameInstance* GameInstance = World->GetGameInstance<UGameInstance>())
+                {
+                    if (UXBSoundManagerSubsystem* SoundMgr = GameInstance->GetSubsystem<UXBSoundManagerSubsystem>())
+                    {
+                        SoundMgr->PlaySoundAtLocation(World, HitSoundTag, Hit.ImpactPoint);
+                    }
+                }
+            }
+        }
 
         // 检查目标是否是士兵
         if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(HitActor))
