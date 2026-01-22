@@ -114,6 +114,36 @@ void AXBConfigCameraPawn::SetupPlayerInputComponent(UInputComponent* PlayerInput
 	UE_LOG(LogXBConfig, Log, TEXT("[配置Pawn] 放置系统输入绑定完成"));
 }
 
+void AXBConfigCameraPawn::AddMovementInput(FVector WorldDirection, float ScaleValue, bool bForce)
+{
+	// 菜单显示时禁止移动
+	if (!bCanMoveAndRotate)
+	{
+		return;
+	}
+	Super::AddMovementInput(WorldDirection, ScaleValue, bForce);
+}
+
+void AXBConfigCameraPawn::AddControllerYawInput(float Val)
+{
+	// 菜单显示时禁止旋转
+	if (!bCanMoveAndRotate)
+	{
+		return;
+	}
+	Super::AddControllerYawInput(Val);
+}
+
+void AXBConfigCameraPawn::AddControllerPitchInput(float Val)
+{
+	// 菜单显示时禁止旋转
+	if (!bCanMoveAndRotate)
+	{
+		return;
+	}
+	Super::AddControllerPitchInput(Val);
+}
+
 void AXBConfigCameraPawn::TogglePlacementMenu()
 {
 	if (bIsMenuVisible)
@@ -134,14 +164,17 @@ void AXBConfigCameraPawn::ShowPlacementMenu()
 	}
 
 	bIsMenuVisible = true;
+	// 禁止移动和旋转
+	bCanMoveAndRotate = false;
 
 	// 显示鼠标光标
 	if (APlayerController* PC = Cast<APlayerController>(GetController()))
 	{
 		PC->bShowMouseCursor = true;
-		// 设置输入模式为游戏和UI（允许同时操作3D世界和UI）
+		// 使用 GameAndUI 模式保持按键响应能力
 		FInputModeGameAndUI InputMode;
 		InputMode.SetHideCursorDuringCapture(false);
+		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
 		PC->SetInputMode(InputMode);
 	}
 
@@ -159,6 +192,8 @@ void AXBConfigCameraPawn::HidePlacementMenu()
 	}
 
 	bIsMenuVisible = false;
+	// 恢复移动和旋转
+	bCanMoveAndRotate = true;
 
 	// 隐藏鼠标光标
 	if (APlayerController* PC = Cast<APlayerController>(GetController()))

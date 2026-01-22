@@ -47,6 +47,17 @@ protected:
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 
 public:
+	// ============ 覆盖移动/旋转输入 ============
+
+	/** 覆盖移动输入，菜单显示时禁止移动 */
+	virtual void AddMovementInput(FVector WorldDirection, float ScaleValue = 1.0f, bool bForce = false) override;
+
+	/** 覆盖控制器Yaw输入，菜单显示时禁止旋转 */
+	virtual void AddControllerYawInput(float Val) override;
+
+	/** 覆盖控制器Pitch输入，菜单显示时禁止旋转 */
+	virtual void AddControllerPitchInput(float Val) override;
+
 	// ============ 放置系统 ============
 
 	/**
@@ -80,6 +91,13 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "XB|放置", meta = (DisplayName = "菜单是否显示"))
 	bool IsPlacementMenuVisible() const { return bIsMenuVisible; }
+
+	/**
+	 * @brief 当前是否可以移动和旋转
+	 * @note 菜单显示时禁止移动和旋转
+	 */
+	UFUNCTION(BlueprintPure, Category = "XB|放置", meta = (DisplayName = "是否可移动旋转"))
+	bool CanMoveAndRotate() const { return bCanMoveAndRotate; }
 
 	// ============ 事件代理 ============
 
@@ -126,4 +144,7 @@ protected:
 private:
 	/** 菜单是否正在显示 */
 	bool bIsMenuVisible = false;
+
+	/** 是否允许移动和旋转（菜单显示时禁用） */
+	bool bCanMoveAndRotate = true;
 };
