@@ -11,7 +11,6 @@
 #include "UI/XBWorldHealthBarComponent.h"
 #include "UI/XBLeaderHealthWidget.h"
 #include "Character/XBCharacterBase.h"
-#include "GAS/XBAbilitySystemComponent.h"
 #include "GAS/XBAttributeSet.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/PlayerController.h"
