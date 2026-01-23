@@ -82,6 +82,10 @@ struct FXBSpawnableActorEntry
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "放置配置", meta = (DisplayName = "允许删除"))
 	bool bAllowDelete = true;
 
+	/** 连续放置模式（放置后自动继续预览同类型 Actor，右键取消预览） */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "放置配置", meta = (DisplayName = "连续放置"))
+	bool bContinuousPlacement = false;
+
 	FXBSpawnableActorEntry()
 		: DefaultScale(FVector::OneVector)
 		, DefaultRotation(FRotator::ZeroRotator)
@@ -89,6 +93,7 @@ struct FXBSpawnableActorEntry
 		, bAllowRotation(true)
 		, bAllowMove(true)
 		, bAllowDelete(true)
+		, bContinuousPlacement(false)
 	{
 	}
 };

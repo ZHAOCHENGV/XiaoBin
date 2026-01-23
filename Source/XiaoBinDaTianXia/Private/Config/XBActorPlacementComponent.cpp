@@ -14,6 +14,8 @@
 #include "Kismet/GameplayStatics.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/Character.h"
+#include "Components/CapsuleComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Utils/XBLogCategories.h"
@@ -52,6 +54,12 @@ void UXBActorPlacementComponent::TickComponent(float DeltaTime, ELevelTick TickT
 	if (CurrentState == EXBPlacementState::Previewing)
 	{
 		UpdatePreviewLocation();
+	}
+
+	// 空闲状态时更新悬停状态（用于高亮显示）
+	if (CurrentState == EXBPlacementState::Idle)
+	{
+		UpdateHoverState();
 	}
 }
 
@@ -194,16 +202,10 @@ AActor* UXBActorPlacementComponent::ConfirmPlacement()
 	// 应用缩放
 	NewActor->SetActorScale3D(Entry->DefaultScale);
 
-	// ✨ 新增 - 调整 Actor 位置使其紧贴地面（不陷入地面）
-	FVector Origin;
-	FVector BoxExtent;
-	NewActor->GetActorBounds(false, Origin, BoxExtent);
-	// 计算 Actor 底部到原点的偏移
-	const float BottomOffset = BoxExtent.Z;
-	// 将 Actor 向上移动，使底部紧贴地面
-	FVector AdjustedLocation = PreviewLocation;
-	AdjustedLocation.Z += BottomOffset;
-	NewActor->SetActorLocation(AdjustedLocation);
+	// ✨ 修复 - 使用预览 Actor 的位置（已经在 UpdatePreviewLocation 中计算过偏移）
+	// 获取预览 Actor 的当前位置作为最终放置位置
+	FVector FinalLocation = PreviewActor.IsValid() ? PreviewActor->GetActorLocation() : PreviewLocation;
+	NewActor->SetActorLocation(FinalLocation);
 
 	// ✨ 新增 - 配置阶段禁用磁场组件（防止提前招募士兵）
 	if (UXBMagnetFieldComponent* MagnetComp = NewActor->FindComponentByClass<UXBMagnetFieldComponent>())
@@ -212,12 +214,12 @@ AActor* UXBActorPlacementComponent::ConfirmPlacement()
 		UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 已禁用磁场组件: %s"), *NewActor->GetName());
 	}
 
-	// 记录放置数据（使用调整后的位置）
+	// 记录放置数据
 	FXBPlacedActorData PlacedData;
 	PlacedData.PlacedActor = NewActor;
 	PlacedData.EntryIndex = CurrentPreviewEntryIndex;
 	PlacedData.ActorClassPath = FSoftClassPath(Entry->ActorClass);
-	PlacedData.Location = AdjustedLocation;
+	PlacedData.Location = FinalLocation;
 	PlacedData.Rotation = PreviewRotation;
 	PlacedData.Scale = Entry->DefaultScale;
 	PlacedActors.Add(PlacedData);
@@ -228,11 +230,16 @@ AActor* UXBActorPlacementComponent::ConfirmPlacement()
 	// 广播事件
 	OnActorPlaced.Broadcast(NewActor, CurrentPreviewEntryIndex);
 
-	UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 已放置 Actor: %s 位置: %s"), *NewActor->GetName(), *AdjustedLocation.ToString());
+	UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 已放置 Actor: %s 位置: %s"), *NewActor->GetName(), *FinalLocation.ToString());
 
-	// ✨ 新增 - 连续放置模式：自动继续预览同类型 Actor
+	// ✨ 修改 - 连续放置模式：由条目的 bContinuousPlacement 控制
+	// 如果条目启用连续放置，则放置后自动继续预览同类型 Actor（需要右键才能退出预览）
 	const int32 PlacedEntryIndex = CurrentPreviewEntryIndex;
-	if (PlacementConfig && PlacementConfig->bContinuousPlacementMode)
+	const bool bGlobalContinuousMode = PlacementConfig && PlacementConfig->bContinuousPlacementMode;
+	const bool bEntryContinuousMode = Entry->bContinuousPlacement;
+	
+	// 启用连续放置的条件：全局开关开启 或 条目的 bContinuousPlacement 为真
+	if (bGlobalContinuousMode || bEntryContinuousMode)
 	{
 		// 自动开始新的预览
 		StartPreview(PlacedEntryIndex);
@@ -417,6 +424,12 @@ const TArray<FXBSpawnableActorEntry>& UXBActorPlacementComponent::GetAllSpawnabl
 	return PlacementConfig->SpawnableActors;
 }
 
+void UXBActorPlacementComponent::SetPlacementConfig(UXBPlacementConfigAsset* Config)
+{
+	PlacementConfig = Config;
+	UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 已设置放置配置: %s"), Config ? *Config->GetName() : TEXT("None"));
+}
+
 bool UXBActorPlacementComponent::GetMouseHitLocation(FVector& OutLocation, FVector& OutNormal) const
 {
 	if (!CachedPlayerController.IsValid())
@@ -492,7 +505,12 @@ void UXBActorPlacementComponent::UpdatePreviewLocation()
 			PreviewLocation = HitLocation;
 		}
 
-		PreviewActor->SetActorLocation(PreviewLocation);
+		// ✨ 修改 - 使用 CalculateActorBottomOffset 计算偏移，支持角色类型特殊处理
+		const float ZOffset = CalculateActorBottomOffset(PreviewActor.Get());
+		FVector AdjustedLocation = PreviewLocation;
+		AdjustedLocation.Z += ZOffset;
+
+		PreviewActor->SetActorLocation(AdjustedLocation);
 		bIsPreviewLocationValid = true;
 
 		// 更新预览材质颜色
@@ -722,7 +740,8 @@ void UXBActorPlacementComponent::SetPlacementState(EXBPlacementState NewState)
 	CurrentState = NewState;
 
 	// 根据状态启用/禁用 Tick
-	const bool bNeedsTick = (NewState == EXBPlacementState::Previewing);
+	// Idle 状态需要 Tick 用于悬停检测，Previewing 状态需要 Tick 用于更新预览位置
+	const bool bNeedsTick = (NewState == EXBPlacementState::Idle || NewState == EXBPlacementState::Previewing);
 	SetComponentTickEnabled(bNeedsTick);
 
 	// 广播状态变更事件
@@ -760,4 +779,251 @@ bool UXBActorPlacementComponent::TraceForGround(const FVector& InLocation, FVect
 
 	OutGroundLocation = InLocation;
 	return false;
+}
+
+// ============ 悬停与高亮相关实现 ============
+
+void UXBActorPlacementComponent::UpdateHoverState()
+{
+	// 获取当前光标下的已放置 Actor
+	AActor* NewHovered = nullptr;
+	GetHitPlacedActor(NewHovered);
+
+	// 悬停对象变化时更新材质
+	if (NewHovered != HoveredActor.Get())
+	{
+		// 移除旧的高亮
+		if (HoveredActor.IsValid())
+		{
+			ApplyHoverMaterial(HoveredActor.Get(), false);
+		}
+
+		// 更新悬停引用
+		HoveredActor = NewHovered;
+
+		// 应用新的高亮
+		if (HoveredActor.IsValid())
+		{
+			ApplyHoverMaterial(HoveredActor.Get(), true);
+		}
+	}
+}
+
+void UXBActorPlacementComponent::ApplyHoverMaterial(AActor* Actor, bool bHovered)
+{
+	if (!Actor || !PlacementConfig)
+	{
+		return;
+	}
+
+	if (bHovered)
+	{
+		// 缓存原始材质（如果尚未缓存）
+		CacheOriginalMaterials(Actor);
+
+		// 加载高亮材质
+		UMaterialInterface* HighlightMat = PlacementConfig->SelectionHighlightMaterial.LoadSynchronous();
+		if (!HighlightMat)
+		{
+			UE_LOG(LogXBConfig, Warning, TEXT("[放置组件] 未配置选中高亮材质"));
+			return;
+		}
+
+		// 创建或复用动态材质实例
+		if (!CachedHoverMID)
+		{
+			CachedHoverMID = UMaterialInstanceDynamic::Create(HighlightMat, this);
+		}
+
+		// 设置高亮颜色
+		CachedHoverMID->SetVectorParameterValue(TEXT("Color"), PlacementConfig->SelectionColor);
+
+		// 应用到所有 Mesh 组件
+		TArray<UPrimitiveComponent*> PrimitiveComps;
+		Actor->GetComponents<UPrimitiveComponent>(PrimitiveComps);
+
+		for (UPrimitiveComponent* PrimComp : PrimitiveComps)
+		{
+			if (PrimComp)
+			{
+				const int32 NumMaterials = PrimComp->GetNumMaterials();
+				for (int32 i = 0; i < NumMaterials; ++i)
+				{
+					PrimComp->SetMaterial(i, CachedHoverMID);
+				}
+			}
+		}
+
+		UE_LOG(LogXBConfig, Verbose, TEXT("[放置组件] 应用悬停高亮: %s"), *Actor->GetName());
+	}
+	else
+	{
+		// 恢复原始材质
+		RestoreCachedMaterials(Actor);
+
+		UE_LOG(LogXBConfig, Verbose, TEXT("[放置组件] 移除悬停高亮: %s"), *Actor->GetName());
+	}
+}
+
+bool UXBActorPlacementComponent::HandleRightClick()
+{
+	switch (CurrentState)
+	{
+	case EXBPlacementState::Idle:
+		{
+			// 空闲状态 -> 删除悬停的 Actor
+			if (HoveredActor.IsValid())
+			{
+				return DeleteHoveredActor();
+			}
+			return false;
+		}
+
+	case EXBPlacementState::Previewing:
+		{
+			// 预览状态 -> 取消预览
+			CancelOperation();
+			return true;
+		}
+
+	case EXBPlacementState::Editing:
+		{
+			// 编辑状态 -> 删除选中的 Actor
+			return DeleteSelectedActor();
+		}
+
+	default:
+		return false;
+	}
+}
+
+bool UXBActorPlacementComponent::DeleteHoveredActor()
+{
+	if (!HoveredActor.IsValid())
+	{
+		return false;
+	}
+
+	AActor* ActorToDelete = HoveredActor.Get();
+
+	// 移除悬停高亮
+	ApplyHoverMaterial(ActorToDelete, false);
+
+	// 从已放置列表中移除
+	PlacedActors.RemoveAll([ActorToDelete](const FXBPlacedActorData& Data)
+	{
+		return Data.PlacedActor.Get() == ActorToDelete;
+	});
+
+	// 广播删除事件
+	OnActorDeleted.Broadcast(ActorToDelete);
+
+	// 销毁 Actor
+	ActorToDelete->Destroy();
+
+	// 清空悬停引用
+	HoveredActor.Reset();
+
+	UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 已删除悬停 Actor"));
+
+	return true;
+}
+
+float UXBActorPlacementComponent::CalculateActorBottomOffset(AActor* Actor) const
+{
+	if (!Actor)
+	{
+		return 0.0f;
+	}
+
+	// 只对角色类型使用胶囊体半高偏移（使角色脚底贴地）
+	if (ACharacter* CharActor = Cast<ACharacter>(Actor))
+	{
+		if (UCapsuleComponent* Capsule = CharActor->GetCapsuleComponent())
+		{
+			return Capsule->GetScaledCapsuleHalfHeight();
+		}
+	}
+
+	// 普通 Actor 不需要偏移，保持原点在地面
+	return 0.0f;
+}
+
+void UXBActorPlacementComponent::CacheOriginalMaterials(AActor* Actor)
+{
+	if (!Actor)
+	{
+		return;
+	}
+
+	// 如果已缓存则跳过
+	TWeakObjectPtr<AActor> WeakActor = Actor;
+	if (OriginalMaterialsCache.Contains(WeakActor))
+	{
+		return;
+	}
+
+	TArray<TPair<int32, TArray<TObjectPtr<UMaterialInterface>>>> ComponentMaterials;
+
+	TArray<UPrimitiveComponent*> PrimitiveComps;
+	Actor->GetComponents<UPrimitiveComponent>(PrimitiveComps);
+
+	for (int32 CompIdx = 0; CompIdx < PrimitiveComps.Num(); ++CompIdx)
+	{
+		UPrimitiveComponent* PrimComp = PrimitiveComps[CompIdx];
+		if (!PrimComp)
+		{
+			continue;
+		}
+
+		TArray<TObjectPtr<UMaterialInterface>> Materials;
+		const int32 NumMaterials = PrimComp->GetNumMaterials();
+		for (int32 MatIdx = 0; MatIdx < NumMaterials; ++MatIdx)
+		{
+			Materials.Add(PrimComp->GetMaterial(MatIdx));
+		}
+
+		ComponentMaterials.Add(TPair<int32, TArray<TObjectPtr<UMaterialInterface>>>(CompIdx, Materials));
+	}
+
+	OriginalMaterialsCache.Add(WeakActor, ComponentMaterials);
+}
+
+void UXBActorPlacementComponent::RestoreCachedMaterials(AActor* Actor)
+{
+	if (!Actor)
+	{
+		return;
+	}
+
+	TWeakObjectPtr<AActor> WeakActor = Actor;
+	TArray<TPair<int32, TArray<TObjectPtr<UMaterialInterface>>>>* CachedData = OriginalMaterialsCache.Find(WeakActor);
+	if (!CachedData)
+	{
+		return;
+	}
+
+	TArray<UPrimitiveComponent*> PrimitiveComps;
+	Actor->GetComponents<UPrimitiveComponent>(PrimitiveComps);
+
+	for (const TPair<int32, TArray<TObjectPtr<UMaterialInterface>>>& CompData : *CachedData)
+	{
+		const int32 CompIdx = CompData.Key;
+		const TArray<TObjectPtr<UMaterialInterface>>& Materials = CompData.Value;
+
+		if (CompIdx < PrimitiveComps.Num() && PrimitiveComps[CompIdx])
+		{
+			UPrimitiveComponent* PrimComp = PrimitiveComps[CompIdx];
+			for (int32 MatIdx = 0; MatIdx < Materials.Num(); ++MatIdx)
+			{
+				if (MatIdx < PrimComp->GetNumMaterials())
+				{
+					PrimComp->SetMaterial(MatIdx, Materials[MatIdx]);
+				}
+			}
+		}
+	}
+
+	// 清理缓存
+	OriginalMaterialsCache.Remove(WeakActor);
 }

@@ -29,6 +29,12 @@ void AXBConfigCameraPawn::BeginPlay()
 {
 	Super::BeginPlay();
 
+	// 将放置配置传递给组件
+	if (PlacementComponent && PlacementConfig)
+	{
+		PlacementComponent->SetPlacementConfig(PlacementConfig);
+	}
+
 	// 初始隐藏鼠标光标（配置阶段默认漫游模式）
 	if (APlayerController* PC = Cast<APlayerController>(GetController()))
 	{
@@ -242,9 +248,22 @@ void AXBConfigCameraPawn::Input_PlacementCancel(const FInputActionValue& Value)
 
 void AXBConfigCameraPawn::Input_PlacementDelete(const FInputActionValue& Value)
 {
-	// 删除当前选中的 Actor
-	if (PlacementComponent)
+	if (!PlacementComponent)
 	{
+		return;
+	}
+
+	// 根据当前状态决定删除行为
+	const EXBPlacementState State = PlacementComponent->GetPlacementState();
+
+	if (State == EXBPlacementState::Idle)
+	{
+		// 空闲状态删除悬停的 Actor
+		PlacementComponent->DeleteHoveredActor();
+	}
+	else if (State == EXBPlacementState::Editing)
+	{
+		// 编辑状态删除选中的 Actor
 		PlacementComponent->DeleteSelectedActor();
 	}
 }

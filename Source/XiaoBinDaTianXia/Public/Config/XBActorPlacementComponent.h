@@ -94,6 +94,28 @@ public:
 	bool DeleteSelectedActor();
 
 	/**
+	 * @brief 删除当前悬停的 Actor（光标下的 Actor）
+	 * @return 是否成功删除
+	 */
+	UFUNCTION(BlueprintCallable, Category = "放置系统", meta = (DisplayName = "删除悬停"))
+	bool DeleteHoveredActor();
+
+	/**
+	 * @brief 处理右键输入（删除悬停/选中的 Actor）
+	 * @return 是否成功处理
+	 * @note   Idle 状态删除悬停 Actor，Editing 状态删除选中 Actor，Previewing 状态取消预览
+	 */
+	UFUNCTION(BlueprintCallable, Category = "放置系统", meta = (DisplayName = "处理右键"))
+	bool HandleRightClick();
+
+	/**
+	 * @brief 获取当前悬停的 Actor
+	 * @return 悬停的 Actor 指针
+	 */
+	UFUNCTION(BlueprintPure, Category = "放置系统", meta = (DisplayName = "获取悬停Actor"))
+	AActor* GetHoveredActor() const { return HoveredActor.Get(); }
+
+	/**
 	 * @brief 旋转当前预览或选中的 Actor
 	 * @param YawDelta Yaw 旋转增量
 	 */
@@ -160,6 +182,14 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "放置系统|数据", meta = (DisplayName = "获取全部可放置条目"))
 	const TArray<FXBSpawnableActorEntry>& GetAllSpawnableActorEntries() const;
+
+	/**
+	 * @brief 设置放置配置资产
+	 * @param Config 放置配置 DataAsset
+	 * @note 由 AXBConfigCameraPawn 在 BeginPlay 时调用
+	 */
+	UFUNCTION(BlueprintCallable, Category = "放置系统|数据", meta = (DisplayName = "设置放置配置"))
+	void SetPlacementConfig(UXBPlacementConfigAsset* Config);
 
 	// ============ 代理事件 ============
 
@@ -279,6 +309,10 @@ private:
 	UPROPERTY()
 	TWeakObjectPtr<AActor> SelectedActor;
 
+	/** 当前悬停的 Actor（光标下的已放置 Actor） */
+	UPROPERTY()
+	TWeakObjectPtr<AActor> HoveredActor;
+
 	/** 预览 Actor 当前位置 */
 	FVector PreviewLocation = FVector::ZeroVector;
 
@@ -296,10 +330,53 @@ private:
 	UPROPERTY()
 	TObjectPtr<UMaterialInstanceDynamic> CachedPreviewMID;
 
+	/** 缓存的高亮动态材质实例 */
+	UPROPERTY()
+	TObjectPtr<UMaterialInstanceDynamic> CachedHoverMID;
+
 	/** 缓存的玩家控制器 */
 	UPROPERTY()
 	TWeakObjectPtr<APlayerController> CachedPlayerController;
 
 	/** 上一次点击的世界位置（用于显示菜单） */
 	FVector LastClickLocation = FVector::ZeroVector;
+
+	// ============ 悬停相关内部方法 ============
+
+	/**
+	 * @brief 更新悬停状态（在 Tick 中调用）
+	 */
+	void UpdateHoverState();
+
+	/**
+	 * @brief 应用悬停高亮材质
+	 * @param Actor 目标 Actor
+	 * @param bHovered 是否悬停
+	 */
+	void ApplyHoverMaterial(AActor* Actor, bool bHovered);
+
+	/**
+	 * @brief 计算 Actor 底部到原点的 Z 偏移
+	 * @param Actor 目标 Actor
+	 * @return Z 偏移量（使 Actor 底部贴地）
+	 * @note   角色类型使用胶囊体半高，普通 Actor 使用 Bounds
+	 */
+	float CalculateActorBottomOffset(AActor* Actor) const;
+
+	/**
+	 * @brief 保存 Actor 的原始材质
+	 * @param Actor 目标 Actor
+	 */
+	void CacheOriginalMaterials(AActor* Actor);
+
+	/**
+	 * @brief 恢复缓存的原始材质（带清理）
+	 * @param Actor 目标 Actor
+	 */
+	void RestoreCachedMaterials(AActor* Actor);
+
+	// ============ 原始材质缓存 ============
+
+	/** 缓存的原始材质（Actor -> (组件索引, 材质槽索引, 材质)） */
+	TMap<TWeakObjectPtr<AActor>, TArray<TPair<int32, TArray<TObjectPtr<UMaterialInterface>>>>> OriginalMaterialsCache;
 };
