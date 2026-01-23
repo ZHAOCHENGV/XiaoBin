@@ -49,13 +49,13 @@ protected:
 public:
 	// ============ 覆盖移动/旋转输入 ============
 
-	/** 覆盖移动输入，菜单显示时禁止移动 */
+	/** 覆盖移动输入，根据 bCanMove 决定是否允许移动 */
 	virtual void AddMovementInput(FVector WorldDirection, float ScaleValue = 1.0f, bool bForce = false) override;
 
-	/** 覆盖控制器Yaw输入，菜单显示时禁止旋转 */
+	/** 覆盖控制器Yaw输入，根据 bCanRotate 决定是否允许旋转 */
 	virtual void AddControllerYawInput(float Val) override;
 
-	/** 覆盖控制器Pitch输入，菜单显示时禁止旋转 */
+	/** 覆盖控制器Pitch输入，根据 bCanRotate 决定是否允许旋转 */
 	virtual void AddControllerPitchInput(float Val) override;
 
 	// ============ 放置系统 ============
@@ -93,11 +93,16 @@ public:
 	bool IsPlacementMenuVisible() const { return bIsMenuVisible; }
 
 	/**
-	 * @brief 当前是否可以移动和旋转
-	 * @note 菜单显示时禁止移动和旋转
+	 * @brief 当前是否可以移动
 	 */
-	UFUNCTION(BlueprintPure, Category = "XB|放置", meta = (DisplayName = "是否可移动旋转"))
-	bool CanMoveAndRotate() const { return bCanMoveAndRotate; }
+	UFUNCTION(BlueprintPure, Category = "XB|放置", meta = (DisplayName = "是否可移动"))
+	bool CanMove() const { return bCanMove; }
+
+	/**
+	 * @brief 当前是否可以旋转
+	 */
+	UFUNCTION(BlueprintPure, Category = "XB|放置", meta = (DisplayName = "是否可旋转"))
+	bool CanRotate() const { return bCanRotate; }
 
 	// ============ 事件代理 ============
 
@@ -145,6 +150,9 @@ private:
 	/** 菜单是否正在显示 */
 	bool bIsMenuVisible = false;
 
-	/** 是否允许移动和旋转（菜单显示时禁用） */
-	bool bCanMoveAndRotate = true;
+	/** 是否允许移动（菜单显示时仍允许移动） */
+	bool bCanMove = true;
+
+	/** 是否允许旋转（菜单显示时禁止旋转） */
+	bool bCanRotate = true;
 };

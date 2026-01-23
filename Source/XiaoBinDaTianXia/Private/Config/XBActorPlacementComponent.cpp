@@ -10,6 +10,7 @@
 
 #include "Config/XBActorPlacementComponent.h"
 #include "Config/XBPlacementConfigAsset.h"
+#include "Character/Components/XBMagnetFieldComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
@@ -193,12 +194,30 @@ AActor* UXBActorPlacementComponent::ConfirmPlacement()
 	// 应用缩放
 	NewActor->SetActorScale3D(Entry->DefaultScale);
 
-	// 记录放置数据
+	// ✨ 新增 - 调整 Actor 位置使其紧贴地面（不陷入地面）
+	FVector Origin;
+	FVector BoxExtent;
+	NewActor->GetActorBounds(false, Origin, BoxExtent);
+	// 计算 Actor 底部到原点的偏移
+	const float BottomOffset = BoxExtent.Z;
+	// 将 Actor 向上移动，使底部紧贴地面
+	FVector AdjustedLocation = PreviewLocation;
+	AdjustedLocation.Z += BottomOffset;
+	NewActor->SetActorLocation(AdjustedLocation);
+
+	// ✨ 新增 - 配置阶段禁用磁场组件（防止提前招募士兵）
+	if (UXBMagnetFieldComponent* MagnetComp = NewActor->FindComponentByClass<UXBMagnetFieldComponent>())
+	{
+		MagnetComp->SetFieldEnabled(false);
+		UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 已禁用磁场组件: %s"), *NewActor->GetName());
+	}
+
+	// 记录放置数据（使用调整后的位置）
 	FXBPlacedActorData PlacedData;
 	PlacedData.PlacedActor = NewActor;
 	PlacedData.EntryIndex = CurrentPreviewEntryIndex;
 	PlacedData.ActorClassPath = FSoftClassPath(Entry->ActorClass);
-	PlacedData.Location = PreviewLocation;
+	PlacedData.Location = AdjustedLocation;
 	PlacedData.Rotation = PreviewRotation;
 	PlacedData.Scale = Entry->DefaultScale;
 	PlacedActors.Add(PlacedData);
@@ -209,10 +228,21 @@ AActor* UXBActorPlacementComponent::ConfirmPlacement()
 	// 广播事件
 	OnActorPlaced.Broadcast(NewActor, CurrentPreviewEntryIndex);
 
-	UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 已放置 Actor: %s 位置: %s"), *NewActor->GetName(), *PreviewLocation.ToString());
+	UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 已放置 Actor: %s 位置: %s"), *NewActor->GetName(), *AdjustedLocation.ToString());
 
-	// 回到空闲状态
-	SetPlacementState(EXBPlacementState::Idle);
+	// ✨ 新增 - 连续放置模式：自动继续预览同类型 Actor
+	const int32 PlacedEntryIndex = CurrentPreviewEntryIndex;
+	if (PlacementConfig && PlacementConfig->bContinuousPlacementMode)
+	{
+		// 自动开始新的预览
+		StartPreview(PlacedEntryIndex);
+		UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 连续放置模式：自动开始预览索引 %d"), PlacedEntryIndex);
+	}
+	else
+	{
+		// 回到空闲状态
+		SetPlacementState(EXBPlacementState::Idle);
+	}
 
 	return NewActor;
 }
@@ -355,6 +385,36 @@ void UXBActorPlacementComponent::RestoreFromSaveData(const TArray<FXBPlacedActor
 	}
 
 	UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 存档恢复完成，共恢复 %d 个 Actor"), PlacedActors.Num());
+}
+
+int32 UXBActorPlacementComponent::GetSpawnableActorCount() const
+{
+	if (!PlacementConfig)
+	{
+		return 0;
+	}
+	return PlacementConfig->GetEntryCount();
+}
+
+bool UXBActorPlacementComponent::GetSpawnableActorEntry(int32 Index, FXBSpawnableActorEntry& OutEntry) const
+{
+	if (!PlacementConfig)
+	{
+		return false;
+	}
+	return PlacementConfig->GetEntryByIndex(Index, OutEntry);
+}
+
+const TArray<FXBSpawnableActorEntry>& UXBActorPlacementComponent::GetAllSpawnableActorEntries() const
+{
+	// 返回空数组的静态引用作为 fallback
+	static const TArray<FXBSpawnableActorEntry> EmptyArray;
+	
+	if (!PlacementConfig)
+	{
+		return EmptyArray;
+	}
+	return PlacementConfig->SpawnableActors;
 }
 
 bool UXBActorPlacementComponent::GetMouseHitLocation(FVector& OutLocation, FVector& OutNormal) const
@@ -595,15 +655,20 @@ bool UXBActorPlacementComponent::GetHitPlacedActor(AActor*& OutActor) const
 	{
 		AActor* HitActor = HitResult.GetActor();
 		
+		UE_LOG(LogXBConfig, Verbose, TEXT("[放置组件] 射线命中 Actor: %s"), HitActor ? *HitActor->GetName() : TEXT("None"));
+		
 		// 检查是否是已放置的 Actor
 		for (const FXBPlacedActorData& Data : PlacedActors)
 		{
 			if (Data.PlacedActor.Get() == HitActor)
 			{
 				OutActor = HitActor;
+				UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 检测到已放置的 Actor: %s"), *HitActor->GetName());
 				return true;
 			}
 		}
+		
+		UE_LOG(LogXBConfig, Verbose, TEXT("[放置组件] 命中的 Actor 不在已放置列表中，PlacedActors 数量: %d"), PlacedActors.Num());
 	}
 
 	return false;

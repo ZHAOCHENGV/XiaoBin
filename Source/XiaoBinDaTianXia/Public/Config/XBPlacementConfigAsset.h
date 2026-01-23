@@ -59,6 +59,10 @@ public:
 
 	// ============ 操作配置 ============
 
+	/** 连续放置模式（放置完成后自动继续预览同类型 Actor） */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "操作配置", meta = (DisplayName = "连续放置模式"))
+	bool bContinuousPlacementMode = false;
+
 	/** 旋转速度（度/滚轮单位） */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "操作配置", meta = (DisplayName = "旋转速度", ClampMin = "1.0", ClampMax = "90.0"))
 	float RotationSpeed = 15.0f;

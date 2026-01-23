@@ -128,6 +128,39 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "放置系统", meta = (DisplayName = "从存档恢复"))
 	void RestoreFromSaveData(const TArray<FXBPlacedActorData>& SavedData);
 
+	// ============ 数据资产访问接口 ============
+
+	/**
+	 * @brief 获取放置配置资产
+	 * @return 放置配置 DataAsset 指针
+	 */
+	UFUNCTION(BlueprintPure, Category = "放置系统|数据", meta = (DisplayName = "获取放置配置"))
+	UXBPlacementConfigAsset* GetPlacementConfig() const { return PlacementConfig; }
+
+	/**
+	 * @brief 获取可放置 Actor 条目数量
+	 * @return 条目数量
+	 */
+	UFUNCTION(BlueprintPure, Category = "放置系统|数据", meta = (DisplayName = "获取可放置数量"))
+	int32 GetSpawnableActorCount() const;
+
+	/**
+	 * @brief 按索引获取可放置 Actor 条目
+	 * @param Index 索引
+	 * @param OutEntry 输出条目
+	 * @return 是否获取成功
+	 */
+	UFUNCTION(BlueprintCallable, Category = "放置系统|数据", meta = (DisplayName = "获取可放置条目"))
+	bool GetSpawnableActorEntry(int32 Index, FXBSpawnableActorEntry& OutEntry) const;
+
+	/**
+	 * @brief 获取所有可放置 Actor 条目数组
+	 * @return 条目数组引用
+	 * @note 用于 UI 遍历生成按钮
+	 */
+	UFUNCTION(BlueprintPure, Category = "放置系统|数据", meta = (DisplayName = "获取全部可放置条目"))
+	const TArray<FXBSpawnableActorEntry>& GetAllSpawnableActorEntries() const;
+
 	// ============ 代理事件 ============
 
 	/** 放置状态变更事件 */

@@ -116,8 +116,8 @@ void AXBConfigCameraPawn::SetupPlayerInputComponent(UInputComponent* PlayerInput
 
 void AXBConfigCameraPawn::AddMovementInput(FVector WorldDirection, float ScaleValue, bool bForce)
 {
-	// 菜单显示时禁止移动
-	if (!bCanMoveAndRotate)
+	// 根据 bCanMove 决定是否允许移动
+	if (!bCanMove)
 	{
 		return;
 	}
@@ -126,8 +126,8 @@ void AXBConfigCameraPawn::AddMovementInput(FVector WorldDirection, float ScaleVa
 
 void AXBConfigCameraPawn::AddControllerYawInput(float Val)
 {
-	// 菜单显示时禁止旋转
-	if (!bCanMoveAndRotate)
+	// 根据 bCanRotate 决定是否允许旋转
+	if (!bCanRotate)
 	{
 		return;
 	}
@@ -136,8 +136,8 @@ void AXBConfigCameraPawn::AddControllerYawInput(float Val)
 
 void AXBConfigCameraPawn::AddControllerPitchInput(float Val)
 {
-	// 菜单显示时禁止旋转
-	if (!bCanMoveAndRotate)
+	// 根据 bCanRotate 决定是否允许旋转
+	if (!bCanRotate)
 	{
 		return;
 	}
@@ -164,8 +164,9 @@ void AXBConfigCameraPawn::ShowPlacementMenu()
 	}
 
 	bIsMenuVisible = true;
-	// 禁止移动和旋转
-	bCanMoveAndRotate = false;
+	// 菜单显示时：允许移动，禁止旋转
+	bCanMove = true;
+	bCanRotate = false;
 
 	// 显示鼠标光标
 	if (APlayerController* PC = Cast<APlayerController>(GetController()))
@@ -193,7 +194,8 @@ void AXBConfigCameraPawn::HidePlacementMenu()
 
 	bIsMenuVisible = false;
 	// 恢复移动和旋转
-	bCanMoveAndRotate = true;
+	bCanMove = true;
+	bCanRotate = true;
 
 	// 隐藏鼠标光标
 	if (APlayerController* PC = Cast<APlayerController>(GetController()))

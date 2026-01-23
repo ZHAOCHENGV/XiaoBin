@@ -52,7 +52,7 @@ struct FXBSpawnableActorEntry
 
 	/** 缩略图/图标（用于UI显示） */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "放置配置", meta = (DisplayName = "图标"))
-	TSoftObjectPtr<UTexture2D> Icon;
+	TObjectPtr<UTexture2D> Icon;
 
 	/** 分类标签（用于UI分组，仅显示 Placement 下的标签） */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "放置配置", meta = (DisplayName = "分类标签", Categories = "Placement"))
