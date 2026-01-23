@@ -117,6 +117,9 @@ void AXBConfigCameraPawn::SetupPlayerInputComponent(UInputComponent* PlayerInput
 		);
 	}
 
+	// 🔧 修改 - SpawnLeaderAction 的处理已移至 XBPlayerController::HandleSpawnLeaderInput()
+	// 该函数会在生成主将之前触发 OnConfigConfirmed 事件
+
 	UE_LOG(LogXBConfig, Log, TEXT("[配置Pawn] 放置系统输入绑定完成"));
 }
 
@@ -276,4 +279,11 @@ void AXBConfigCameraPawn::Input_PlacementRotate(const FInputActionValue& Value)
 	{
 		PlacementComponent->RotateActor(RotateValue);
 	}
+}
+
+void AXBConfigCameraPawn::Input_ConfigConfirm(const FInputActionValue& Value)
+{
+	// 广播配置确认事件（在销毁 Pawn 之前执行蓝图绑定的逻辑）
+	OnConfigConfirmed.Broadcast();
+	UE_LOG(LogXBConfig, Log, TEXT("[配置Pawn] 配置确认事件已广播"));
 }

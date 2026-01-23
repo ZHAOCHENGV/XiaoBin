@@ -28,6 +28,9 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnRequestShowPlacementMenu);
 // 请求隐藏放置菜单代理
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnRequestHidePlacementMenu);
 
+// 配置确认代理（回车键按下时触发，在销毁 Pawn 之前执行）
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnConfigConfirmed);
+
 /**
  * @brief 配置阶段浮空相机Pawn
  * @note 继承 DefaultPawn，复用其移动与旋转逻辑
@@ -114,6 +117,10 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "XB|放置|事件")
 	FOnRequestHidePlacementMenu OnRequestHidePlacementMenu;
 
+	/** 配置确认事件（回车键按下时触发，在销毁 ConfigCameraPawn 之前执行） */
+	UPROPERTY(BlueprintAssignable, Category = "XB|放置|事件")
+	FOnConfigConfirmed OnConfigConfirmed;
+
 protected:
 	// ============ 增强输入回调 ============
 
@@ -131,6 +138,9 @@ protected:
 
 	/** 处理旋转事件（滚轮旋转预览/选中 Actor） */
 	void Input_PlacementRotate(const FInputActionValue& Value);
+
+	/** 处理回车确认事件（配置完成） */
+	void Input_ConfigConfirm(const FInputActionValue& Value);
 
 	// ============ 配置引用 ============
 

@@ -52,8 +52,8 @@ void AXBBushVolume::OnBushOverlapBegin(UPrimitiveComponent* OverlappedComponent,
 
     OverlappingLeaders.Add(Leader);
 
-    // 🔧 修改 - 主将进入草丛后全军隐身
-    Leader->SetHiddenInBush(true);
+    // 🔧 修复 - 使用引用计数机制，支持连续穿过多个草丛
+    Leader->IncrementBushOverlapCount();
 
     UE_LOG(LogXBCharacter, Log, TEXT("主将 %s 进入草丛，全军隐身"), *Leader->GetName());
 }
@@ -69,8 +69,10 @@ void AXBBushVolume::OnBushOverlapEnd(UPrimitiveComponent* OverlappedComponent, A
 
     OverlappingLeaders.Remove(Leader);
 
-    // 🔧 修改 - 主将离开草丛后恢复
-    Leader->SetHiddenInBush(false);
+    // 🔧 修复 - 检查主将是否仍在其他草丛中
+    // 只有当主将完全离开所有草丛时才恢复可见
+    // 通过使用 AXBCharacterBase 中的引用计数机制来处理
+    Leader->DecrementBushOverlapCount();
 
-    UE_LOG(LogXBCharacter, Log, TEXT("主将 %s 离开草丛，全军显形"), *Leader->GetName());
+    UE_LOG(LogXBCharacter, Log, TEXT("主将 %s 离开草丛"), *Leader->GetName());
 }

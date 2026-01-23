@@ -674,6 +674,10 @@ void AXBPlayerController::HandleSpawnLeaderInput()
                 return;
             }
 
+            // ✨ 新增 - 在生成主将之前触发配置确认事件，让蓝图有机会执行预处理逻辑
+            CachedConfigPawn->OnConfigConfirmed.Broadcast();
+            UE_LOG(LogTemp, Log, TEXT("[PlayerController] 配置确认事件已广播"));
+
             if (GameMode->SpawnPlayerLeader(this))
             {
                 UE_LOG(LogTemp, Log, TEXT("已确认进入游戏阶段，主将生成完成"));

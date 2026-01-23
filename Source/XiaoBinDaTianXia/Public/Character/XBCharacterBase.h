@@ -308,6 +308,20 @@ public:
     UFUNCTION(BlueprintPure, Category = "草丛", meta = (DisplayName = "是否草丛隐身"))
     bool IsHiddenInBush() const { return bIsHiddenInBush; }
 
+    /**
+     * @brief  增加草丛重叠计数（进入草丛时调用）
+     * @note   当计数从 0 变为 1 时开启隐身
+     */
+    UFUNCTION(BlueprintCallable, Category = "草丛", meta = (DisplayName = "增加草丛计数"))
+    void IncrementBushOverlapCount();
+
+    /**
+     * @brief  减少草丛重叠计数（离开草丛时调用）
+     * @note   当计数从 1 变为 0 时关闭隐身
+     */
+    UFUNCTION(BlueprintCallable, Category = "草丛", meta = (DisplayName = "减少草丛计数"))
+    void DecrementBushOverlapCount();
+
     UFUNCTION(BlueprintPure, Category = "移动", meta = (DisplayName = "是否正在冲刺"))
     bool IsSprinting() const { return bIsSprinting; }
 
@@ -529,6 +543,10 @@ protected:
 
     UPROPERTY(BlueprintReadOnly, Category = "草丛", meta = (DisplayName = "是否草丛隐身"))
     bool bIsHiddenInBush = false;
+
+    /** 草丛重叠计数（支持同时在多个草丛中） */
+    UPROPERTY(BlueprintReadOnly, Category = "草丛", meta = (DisplayName = "草丛重叠计数"))
+    int32 BushOverlapCount = 0;
 
     UPROPERTY()
     bool bCachedBushCollisionResponse = false;

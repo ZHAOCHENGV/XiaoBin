@@ -368,6 +368,7 @@ void UXBActorPlacementComponent::RotateActor(float YawDelta)
 
 	const float RotationStep = PlacementConfig->RotationSpeed * YawDelta;
 
+	// 🔧 修复 - 仅在预览状态下允许旋转，放置后的 Actor 不再允许旋转
 	if (CurrentState == EXBPlacementState::Previewing && PreviewActor.IsValid())
 	{
 		// 预览模式下只有手动旋转模式才允许旋转
@@ -378,23 +379,7 @@ void UXBActorPlacementComponent::RotateActor(float YawDelta)
 			PreviewActor->SetActorRotation(PreviewRotation);
 		}
 	}
-	else if (CurrentState == EXBPlacementState::Editing && SelectedActor.IsValid())
-	{
-		// 编辑模式下始终允许旋转已放置的 Actor
-		FRotator CurrentRot = SelectedActor->GetActorRotation();
-		CurrentRot.Yaw += RotationStep;
-		SelectedActor->SetActorRotation(CurrentRot);
-
-		// 更新记录
-		for (FXBPlacedActorData& Data : PlacedActors)
-		{
-			if (Data.PlacedActor.Get() == SelectedActor.Get())
-			{
-				Data.Rotation = CurrentRot;
-				break;
-			}
-		}
-	}
+	// 已移除 Editing 状态下的旋转逻辑，放置完成后不再允许旋转
 }
 
 void UXBActorPlacementComponent::RestoreFromSaveData(const TArray<FXBPlacedActorData>& SavedData)

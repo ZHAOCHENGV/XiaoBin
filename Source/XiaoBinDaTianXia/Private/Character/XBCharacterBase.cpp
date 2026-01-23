@@ -1580,6 +1580,40 @@ void AXBCharacterBase::SetHiddenInBush(bool bEnableHidden) {
          bEnableHidden ? TEXT("开启") : TEXT("关闭"));
 }
 
+/**
+ * @brief  增加草丛重叠计数（进入草丛时调用）
+ * @note   当计数从 0 变为 1 时开启隐身
+ */
+void AXBCharacterBase::IncrementBushOverlapCount()
+{
+    BushOverlapCount++;
+    
+    // 第一次进入草丛时开启隐身
+    if (BushOverlapCount == 1)
+    {
+        SetHiddenInBush(true);
+    }
+    
+    UE_LOG(LogXBCharacter, Log, TEXT("主将 %s 进入草丛，当前计数: %d"), *GetName(), BushOverlapCount);
+}
+
+/**
+ * @brief  减少草丛重叠计数（离开草丛时调用）
+ * @note   当计数从 1 变为 0 时关闭隐身
+ */
+void AXBCharacterBase::DecrementBushOverlapCount()
+{
+    BushOverlapCount = FMath::Max(0, BushOverlapCount - 1);
+    
+    // 完全离开所有草丛时关闭隐身
+    if (BushOverlapCount == 0)
+    {
+        SetHiddenInBush(false);
+    }
+    
+    UE_LOG(LogXBCharacter, Log, TEXT("主将 %s 离开草丛，当前计数: %d"), *GetName(), BushOverlapCount);
+}
+
 void AXBCharacterBase::SetSoldiersEscaping(bool bEscaping) {
   for (AXBSoldierCharacter *Soldier : Soldiers) {
     if (Soldier) {
