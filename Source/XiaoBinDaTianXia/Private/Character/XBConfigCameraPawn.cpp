@@ -230,15 +230,11 @@ void AXBConfigCameraPawn::Input_PlacementClick(const FInputActionValue& Value)
 
 void AXBConfigCameraPawn::Input_PlacementCancel(const FInputActionValue& Value)
 {
-	// 如果在预览或编辑状态，取消操作
+	// ESC 只取消当前预览或编辑操作，不关闭菜单
+	// 菜单的关闭通过 Tab 键（TogglePlacementMenu）来触发
 	if (PlacementComponent && PlacementComponent->GetPlacementState() != EXBPlacementState::Idle)
 	{
 		PlacementComponent->CancelOperation();
-	}
-	else if (bIsMenuVisible)
-	{
-		// 如果菜单显示中且无操作，则隐藏菜单
-		HidePlacementMenu();
 	}
 }
 
