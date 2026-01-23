@@ -34,8 +34,11 @@ void UXBActorPlacementComponent::BeginPlay()
 	// 缓存玩家控制器
 	CachedPlayerController = UGameplayStatics::GetPlayerController(GetWorld(), 0);
 
-	// 默认禁用 Tick，仅在预览/编辑状态启用
-	SetComponentTickEnabled(false);
+	// 初始化为 Idle 状态，启用 Tick 以支持悬停检测
+	CurrentState = EXBPlacementState::Idle;
+	SetComponentTickEnabled(true);
+
+	UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 初始化完成，PlacementConfig: %s"), PlacementConfig ? *PlacementConfig->GetName() : TEXT("None"));
 }
 
 void UXBActorPlacementComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -150,7 +153,47 @@ bool UXBActorPlacementComponent::StartPreview(int32 EntryIndex)
 	}
 
 	CurrentPreviewEntryIndex = EntryIndex;
-	PreviewRotation = Entry->DefaultRotation;
+
+	// 根据旋转模式设置初始旋转
+	switch (Entry->RotationMode)
+	{
+	case EXBPlacementRotationMode::Manual:
+		// 手动模式使用默认旋转
+		PreviewRotation = Entry->DefaultRotation;
+		break;
+
+	case EXBPlacementRotationMode::FacePlayer:
+		// 朝向玩家模式：计算面朝玩家 Pawn 的方向
+		if (APawn* PlayerPawn = CachedPlayerController.IsValid() ? CachedPlayerController->GetPawn() : nullptr)
+		{
+			FVector PawnLocation = PlayerPawn->GetActorLocation();
+			FVector PreviewDir = PawnLocation - PreviewLocation;
+			PreviewDir.Z = 0.0f;
+			if (!PreviewDir.IsNearlyZero())
+			{
+				PreviewRotation = PreviewDir.Rotation();
+			}
+			else
+			{
+				PreviewRotation = Entry->DefaultRotation;
+			}
+		}
+		else
+		{
+			PreviewRotation = Entry->DefaultRotation;
+		}
+		break;
+
+	case EXBPlacementRotationMode::Random:
+		// 随机模式：随机 Yaw 角度
+		PreviewRotation = Entry->DefaultRotation;
+		PreviewRotation.Yaw = FMath::FRandRange(0.0f, 360.0f);
+		break;
+
+	default:
+		PreviewRotation = Entry->DefaultRotation;
+		break;
+	}
 
 	// 切换到预览状态
 	SetPlacementState(EXBPlacementState::Previewing);
@@ -224,26 +267,33 @@ AActor* UXBActorPlacementComponent::ConfirmPlacement()
 	PlacedData.Scale = Entry->DefaultScale;
 	PlacedActors.Add(PlacedData);
 
-	// 销毁预览 Actor
-	DestroyPreviewActor();
-
-	// 广播事件
-	OnActorPlaced.Broadcast(NewActor, CurrentPreviewEntryIndex);
-
-	UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 已放置 Actor: %s 位置: %s"), *NewActor->GetName(), *FinalLocation.ToString());
-
-	// ✨ 修改 - 连续放置模式：由条目的 bContinuousPlacement 控制
-	// 如果条目启用连续放置，则放置后自动继续预览同类型 Actor（需要右键才能退出预览）
+	// ✨ 重要：在销毁预览 Actor 前保存连续放置相关数据
 	const int32 PlacedEntryIndex = CurrentPreviewEntryIndex;
 	const bool bGlobalContinuousMode = PlacementConfig && PlacementConfig->bContinuousPlacementMode;
 	const bool bEntryContinuousMode = Entry->bContinuousPlacement;
-	
-	// 启用连续放置的条件：全局开关开启 或 条目的 bContinuousPlacement 为真
-	if (bGlobalContinuousMode || bEntryContinuousMode)
+	const bool bShouldContinue = bGlobalContinuousMode || bEntryContinuousMode;
+
+	UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 连续放置检查 - 全局: %s, 条目: %s, 索引: %d, 应继续: %s"),
+		bGlobalContinuousMode ? TEXT("开启") : TEXT("关闭"),
+		bEntryContinuousMode ? TEXT("开启") : TEXT("关闭"),
+		PlacedEntryIndex,
+		bShouldContinue ? TEXT("是") : TEXT("否"));
+
+	// 销毁预览 Actor（这会重置 CurrentPreviewEntryIndex）
+	DestroyPreviewActor();
+
+	// 广播事件
+	OnActorPlaced.Broadcast(NewActor, PlacedEntryIndex);
+
+	UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 已放置 Actor: %s 位置: %s"), *NewActor->GetName(), *FinalLocation.ToString());
+
+	// 连续放置模式：放置后自动继续预览同类型 Actor
+	if (bShouldContinue)
 	{
-		// 自动开始新的预览
-		StartPreview(PlacedEntryIndex);
-		UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 连续放置模式：自动开始预览索引 %d"), PlacedEntryIndex);
+		// 直接调用 StartPreview，使用之前保存的索引
+		const bool bStarted = StartPreview(PlacedEntryIndex);
+		UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 连续放置模式：自动开始预览索引 %d，结果: %s"),
+			PlacedEntryIndex, bStarted ? TEXT("成功") : TEXT("失败"));
 	}
 	else
 	{
@@ -320,11 +370,17 @@ void UXBActorPlacementComponent::RotateActor(float YawDelta)
 
 	if (CurrentState == EXBPlacementState::Previewing && PreviewActor.IsValid())
 	{
-		PreviewRotation.Yaw += RotationStep;
-		PreviewActor->SetActorRotation(PreviewRotation);
+		// 预览模式下只有手动旋转模式才允许旋转
+		const FXBSpawnableActorEntry* Entry = PlacementConfig->GetEntryByIndexPtr(CurrentPreviewEntryIndex);
+		if (Entry && Entry->RotationMode == EXBPlacementRotationMode::Manual)
+		{
+			PreviewRotation.Yaw += RotationStep;
+			PreviewActor->SetActorRotation(PreviewRotation);
+		}
 	}
 	else if (CurrentState == EXBPlacementState::Editing && SelectedActor.IsValid())
 	{
+		// 编辑模式下始终允许旋转已放置的 Actor
 		FRotator CurrentRot = SelectedActor->GetActorRotation();
 		CurrentRot.Yaw += RotationStep;
 		SelectedActor->SetActorRotation(CurrentRot);
@@ -669,7 +725,9 @@ bool UXBActorPlacementComponent::GetHitPlacedActor(AActor*& OutActor) const
 		return false;
 	}
 
-	if (World->LineTraceSingleByChannel(HitResult, WorldLocation, TraceEnd, ECC_Visibility, QueryParams))
+	// 使用 Pawn 通道以支持角色类型检测，同时也尝试 Visibility
+	if (World->LineTraceSingleByChannel(HitResult, WorldLocation, TraceEnd, ECC_Pawn, QueryParams) ||
+		World->LineTraceSingleByChannel(HitResult, WorldLocation, TraceEnd, ECC_Visibility, QueryParams))
 	{
 		AActor* HitActor = HitResult.GetActor();
 		

@@ -99,8 +99,9 @@ public:
 protected:
     // ============ 配置属性 ============
 
+    /** 启用磁场（默认关闭，只有玩家主将生成后才启用） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField", meta = (DisplayName = "启用磁场"))
-    bool bIsFieldEnabled = true;
+    bool bIsFieldEnabled = false;
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XB|MagnetField", meta = (DisplayName = "默认磁场半径"))
     float DefaultFieldRadius = 300.0f;

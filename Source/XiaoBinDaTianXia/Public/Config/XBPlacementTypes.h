@@ -34,6 +34,23 @@ enum class EXBPlacementState : uint8
 };
 
 /**
+ * @brief 放置时旋转模式枚举
+ * @note 控制 Actor 在放置时的旋转行为
+ */
+UENUM(BlueprintType)
+enum class EXBPlacementRotationMode : uint8
+{
+	/** 手动旋转 - 使用鼠标滚轮手动控制旋转 */
+	Manual UMETA(DisplayName = "手动旋转"),
+	
+	/** 固定旋转 - 生成时面朝玩家操控的 Pawn */
+	FacePlayer UMETA(DisplayName = "朝向玩家"),
+	
+	/** 随机旋转 - 生成时随机 Yaw 角度 */
+	Random UMETA(DisplayName = "随机旋转")
+};
+
+/**
  * @brief 可生成 Actor 条目配置
  * @note 用于 DataAsset 中配置可放置的 Actor 类型
  */
@@ -70,17 +87,13 @@ struct FXBSpawnableActorEntry
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "放置配置", meta = (DisplayName = "贴地放置"))
 	bool bSnapToGround = true;
 
-	/** 是否可旋转 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "放置配置", meta = (DisplayName = "允许旋转"))
-	bool bAllowRotation = true;
+	/** 旋转模式（手动、朝向玩家、随机） */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "放置配置", meta = (DisplayName = "旋转模式"))
+	EXBPlacementRotationMode RotationMode = EXBPlacementRotationMode::Manual;
 
 	/** 是否可移动 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "放置配置", meta = (DisplayName = "允许移动"))
 	bool bAllowMove = true;
-
-	/** 是否可删除 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "放置配置", meta = (DisplayName = "允许删除"))
-	bool bAllowDelete = true;
 
 	/** 连续放置模式（放置后自动继续预览同类型 Actor，右键取消预览） */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "放置配置", meta = (DisplayName = "连续放置"))
@@ -90,9 +103,8 @@ struct FXBSpawnableActorEntry
 		: DefaultScale(FVector::OneVector)
 		, DefaultRotation(FRotator::ZeroRotator)
 		, bSnapToGround(true)
-		, bAllowRotation(true)
+		, RotationMode(EXBPlacementRotationMode::Manual)
 		, bAllowMove(true)
-		, bAllowDelete(true)
 		, bContinuousPlacement(false)
 	{
 	}

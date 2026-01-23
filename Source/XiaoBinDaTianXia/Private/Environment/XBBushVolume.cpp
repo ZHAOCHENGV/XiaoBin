@@ -19,8 +19,13 @@ AXBBushVolume::AXBBushVolume()
 
     BushBox = CreateDefaultSubobject<UBoxComponent>(TEXT("BushBox"));
     BushBox->SetBoxExtent(FVector(200.0f, 200.0f, 150.0f));
-    BushBox->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+    // 启用 Query 和 Physics 以同时支持射线检测和重叠事件
+    BushBox->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    // 默认对所有通道 Overlap（用于角色进入检测）
     BushBox->SetCollisionResponseToAllChannels(ECR_Overlap);
+    // 对 Visibility 和 Camera 通道 Block 响应（用于射线检测选中）
+    BushBox->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+    BushBox->SetCollisionResponseToChannel(ECC_Camera, ECR_Block);
     BushBox->SetGenerateOverlapEvents(true);
     RootComponent = BushBox;
 }
