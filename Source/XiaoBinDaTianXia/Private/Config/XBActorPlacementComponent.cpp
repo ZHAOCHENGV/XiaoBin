@@ -11,6 +11,7 @@
 #include "Config/XBActorPlacementComponent.h"
 #include "Character/Components/XBMagnetFieldComponent.h"
 #include "Character/XBCharacterBase.h"
+#include "Character/XBDummyCharacter.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "Config/XBLeaderSpawnConfigData.h"
@@ -264,6 +265,18 @@ AActor *UXBActorPlacementComponent::ConfirmPlacement() {
 
       // 应用游戏配置（包括主将类型切换、视觉配置等）
       Leader->ApplyRuntimeConfig(PendingConfigData.GameConfig, true);
+
+      // ✨ 新增 - 调用 XBDummyCharacter 专用的名称初始化函数
+      if (AXBDummyCharacter *DummyLeader = Cast<AXBDummyCharacter>(NewActor)) {
+        // 优先使用 LeaderDisplayName，如果为空则使用 LeaderConfigRowName
+        FString DisplayName = PendingConfigData.GameConfig.LeaderDisplayName;
+        if (DisplayName.IsEmpty() &&
+            !PendingConfigData.GameConfig.LeaderConfigRowName.IsNone()) {
+          DisplayName =
+              PendingConfigData.GameConfig.LeaderConfigRowName.ToString();
+        }
+        DummyLeader->InitializeCharacterNameFromConfig(DisplayName);
+      }
 
       UE_LOG(LogXBConfig, Log,
              TEXT("[放置组件] 已应用配置到主将: %s, 阵营: %d, 主将行: %s"),
@@ -1186,6 +1199,22 @@ void UXBActorPlacementComponent::HandleLeaderConfigConfirmed(
   if (CreatePreviewActor(EntryIndex)) {
     CurrentPreviewEntryIndex = EntryIndex;
     SetPlacementState(EXBPlacementState::Previewing);
+
+    // ✨ 新增 - 在预览时就初始化假人主将的 CharacterName
+    if (PreviewActor.IsValid()) {
+      if (AXBDummyCharacter *DummyPreview =
+              Cast<AXBDummyCharacter>(PreviewActor.Get())) {
+        // 优先使用 LeaderDisplayName，如果为空则使用 LeaderConfigRowName
+        FString DisplayName = ConfigData.GameConfig.LeaderDisplayName;
+        if (DisplayName.IsEmpty() &&
+            !ConfigData.GameConfig.LeaderConfigRowName.IsNone()) {
+          DisplayName = ConfigData.GameConfig.LeaderConfigRowName.ToString();
+        }
+        DummyPreview->InitializeCharacterNameFromConfig(DisplayName);
+        UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 预览 Actor 名称已初始化: %s"),
+               *DisplayName);
+      }
+    }
 
     UE_LOG(LogXBConfig, Log,
            TEXT("[放置组件] 配置确认后进入预览模式，索引: %d"), EntryIndex);

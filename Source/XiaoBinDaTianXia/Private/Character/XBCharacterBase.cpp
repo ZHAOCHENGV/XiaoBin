@@ -370,6 +370,23 @@ void AXBCharacterBase::ApplyRuntimeConfig(const FXBGameConfigData &GameConfig,
     }
   }
 
+  // ✨ 新增 - 初始化角色名称
+  // 优先使用 LeaderDisplayName，如果为空则使用 LeaderConfigRowName
+  if (!GameConfig.LeaderDisplayName.IsEmpty()) {
+    CharacterName = GameConfig.LeaderDisplayName;
+    CachedLeaderData.LeaderName = FText::FromString(CharacterName);
+    UE_LOG(LogXBCharacter, Log,
+           TEXT("[主将] %s 设置角色名称(从DisplayName): %s"), *GetName(),
+           *CharacterName);
+  } else if (!GameConfig.LeaderConfigRowName.IsNone()) {
+    // 如果没有指定显示名称，使用配置行名作为角色名称
+    CharacterName = GameConfig.LeaderConfigRowName.ToString();
+    CachedLeaderData.LeaderName = FText::FromString(CharacterName);
+    UE_LOG(LogXBCharacter, Log,
+           TEXT("[主将] %s 设置角色名称(从ConfigRowName): %s"), *GetName(),
+           *CharacterName);
+  }
+
   // ==================== 主将配置覆盖 ====================
 
   // 🔧 修改 - 主将生命值倍率
