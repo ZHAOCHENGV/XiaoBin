@@ -20,6 +20,7 @@
 #include "Character/Components/XBFormationComponent.h"
 #include "Character/Components/XBMagnetFieldComponent.h"
 #include "Character/XBPlayerCharacter.h"
+#include "Components/AudioComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Data/XBLeaderDataTable.h"
 #include "Engine/DataTable.h"
@@ -31,13 +32,12 @@
 #include "Particles/ParticleSystemComponent.h"
 #include "Soldier/Component/XBSoldierPoolSubsystem.h"
 #include "Soldier/XBSoldierCharacter.h"
+#include "Sound/XBSoundManagerSubsystem.h"
 #include "TimerManager.h"
 #include "UI/XBWorldHealthBarComponent.h"
 #include "Utils/XBBlueprintFunctionLibrary.h"
 #include "Utils/XBLogCategories.h"
 #include "XBCollisionChannels.h"
-#include "Components/AudioComponent.h"
-#include "Sound/XBSoundManagerSubsystem.h"
 
 AXBCharacterBase::AXBCharacterBase() {
   PrimaryActorTick.bCanEverTick = true;
@@ -75,10 +75,14 @@ AXBCharacterBase::AXBCharacterBase() {
   bUseControllerRotationRoll = false;
 
   // ✨ 新增 - 设置通用主将音效 Tag 默认值
-  SprintSoundTag = FGameplayTag::RequestGameplayTag(FName("Sound.Leader.Sprint"), false);
-  DeathSoundTag = FGameplayTag::RequestGameplayTag(FName("Sound.Leader.Death"), false);
-  RecruitSoundTag = FGameplayTag::RequestGameplayTag(FName("Sound.Leader.Recruit"), false);
-  SoldierDropSoundTag = FGameplayTag::RequestGameplayTag(FName("Sound.Leader.SoldierDrop"), false);
+  SprintSoundTag =
+      FGameplayTag::RequestGameplayTag(FName("Sound.Leader.Sprint"), false);
+  DeathSoundTag =
+      FGameplayTag::RequestGameplayTag(FName("Sound.Leader.Death"), false);
+  RecruitSoundTag =
+      FGameplayTag::RequestGameplayTag(FName("Sound.Leader.Recruit"), false);
+  SoldierDropSoundTag = FGameplayTag::RequestGameplayTag(
+      FName("Sound.Leader.SoldierDrop"), false);
 }
 
 /**
@@ -351,33 +355,97 @@ void AXBCharacterBase::ApplyInitialAttributes() {
 
 void AXBCharacterBase::ApplyRuntimeConfig(const FXBGameConfigData &GameConfig,
                                           bool bApplyInitialSoldiers) {
-  // ==================== 主将配置覆盖 ====================
-  // 🔧 修改 - 主将名称/倍率仅在初始阶段写入，运行时不再覆盖
+  // ==================== 主将类型切换（视觉配置） ====================
+  // 🔧 修改 - 如果 LeaderConfigRowName 变化，重新从数据表加载视觉配置
+  if (!GameConfig.LeaderConfigRowName.IsNone() &&
+      GameConfig.LeaderConfigRowName != ConfigRowName) {
+    ConfigRowName = GameConfig.LeaderConfigRowName;
 
+    // 重新从数据表加载配置（骨骼网格、动画蓝图、死亡蒙太奇等）
+    if (ConfigDataTable) {
+      InitializeFromDataTable(ConfigDataTable, ConfigRowName);
+      UE_LOG(LogXBCharacter, Log,
+             TEXT("[主将] %s 切换配置行名: %s，已重新加载视觉配置"), *GetName(),
+             *ConfigRowName.ToString());
+    }
+  }
+
+  // ==================== 主将配置覆盖 ====================
+
+  // 🔧 修改 - 主将生命值倍率
+  if (GameConfig.LeaderHealthMultiplier > 0.0f) {
+    CachedLeaderData.HealthMultiplier = GameConfig.LeaderHealthMultiplier;
+  }
+
+  // 🔧 修改 - 主将伤害倍率
+  if (GameConfig.LeaderDamageMultiplier > 0.0f) {
+    CachedLeaderData.DamageMultiplier = GameConfig.LeaderDamageMultiplier;
+  }
+
+  // 🔧 修改 - 主将移动速度
   if (GameConfig.LeaderMoveSpeed > 0.0f) {
     CachedLeaderData.MoveSpeed = GameConfig.LeaderMoveSpeed;
   }
 
   // 🔧 修改 - 冲刺倍率由配置直接覆盖
-  SprintSpeedMultiplier = GameConfig.LeaderSprintSpeedMultiplier;
+  if (GameConfig.LeaderSprintSpeedMultiplier > 0.0f) {
+    SprintSpeedMultiplier = GameConfig.LeaderSprintSpeedMultiplier;
+  }
 
   // ✨ 新增 - 冲刺持续时间由配置直接覆盖
-  SprintDuration = GameConfig.LeaderSprintDuration;
+  if (GameConfig.LeaderSprintDuration > 0.0f) {
+    SprintDuration = GameConfig.LeaderSprintDuration;
+  }
+
+  // ✨ 新增 - 主将初始缩放
+  if (GameConfig.LeaderInitialScale > 0.0f) {
+    CachedLeaderData.Scale = GameConfig.LeaderInitialScale;
+    BaseScale = GameConfig.LeaderInitialScale;
+  }
+
+  // ✨ 新增 - 主将最大体型
+  if (GameConfig.LeaderMaxScale > 0.0f) {
+    GrowthConfigCache.MaxScale = GameConfig.LeaderMaxScale;
+  }
+
+  // ✨ 新增 - 每士兵伤害加成倍率
+  if (GameConfig.LeaderDamageMultiplierPerSoldier >= 0.0f) {
+    GrowthConfigCache.DamageMultiplierPerSoldier =
+        GameConfig.LeaderDamageMultiplierPerSoldier;
+  }
 
   // 🔧 修改 - 提升伤害倍率上限，确保高倍率配置不会被上限截断
   GrowthConfigCache.MaxDamageMultiplier = FMath::Max(
       GrowthConfigCache.MaxDamageMultiplier, GameConfig.LeaderDamageMultiplier);
 
   // 🔧 修改 - 掉落数量由配置覆盖
-  SoldierDropConfig.DropCount = GameConfig.LeaderDeathDropCount;
+  if (GameConfig.LeaderDeathDropCount >= 0) {
+    SoldierDropConfig.DropCount = GameConfig.LeaderDeathDropCount;
+  }
+
+  // ==================== 士兵配置覆盖 ====================
+
+  // ✨ 新增 - 士兵生命值倍率（用于招募时应用）
+  // 注意：此处仅缓存配置，实际应用由士兵初始化时读取
+
+  // ✨ 新增 - 士兵伤害倍率（用于招募时应用）
+
+  // ✨ 新增 - 士兵初始大小（用于招募时应用）
 
   // ==================== 招募/成长配置 ====================
   if (!GameConfig.InitialSoldierRowName.IsNone()) {
     RecruitSoldierRowName = GameConfig.InitialSoldierRowName;
   }
 
-  GrowthConfigCache.ScalePerSoldier = GameConfig.SoldierScalePerRecruit;
-  GrowthConfigCache.HealthPerSoldier = GameConfig.SoldierHealthPerRecruit;
+  // ✨ 新增 - 每士兵缩放加成
+  if (GameConfig.SoldierScalePerRecruit >= 0.0f) {
+    GrowthConfigCache.ScalePerSoldier = GameConfig.SoldierScalePerRecruit;
+  }
+
+  // ✨ 新增 - 每士兵生命加成
+  if (GameConfig.SoldierHealthPerRecruit >= 0.0f) {
+    GrowthConfigCache.HealthPerSoldier = GameConfig.SoldierHealthPerRecruit;
+  }
 
   // ==================== 磁场配置 ====================
   if (MagnetFieldComponent) {
@@ -1090,7 +1158,8 @@ void AXBCharacterBase::ExitCombat() {
   bHasEnemiesInCombat = false;
 
   // 🔧 修复 - 先清除目标，再通知士兵退出战斗
-  // 说明：否则士兵 ExitCombat 检查 GetLastAttackedEnemyLeader 时会认为主将仍有目标而拒绝退出
+  // 说明：否则士兵 ExitCombat 检查 GetLastAttackedEnemyLeader
+  // 时会认为主将仍有目标而拒绝退出
   LastAttackedEnemyLeader = nullptr;
 
   GetWorldTimerManager().ClearTimer(CombatTimeoutHandle);
@@ -1584,34 +1653,32 @@ void AXBCharacterBase::SetHiddenInBush(bool bEnableHidden) {
  * @brief  增加草丛重叠计数（进入草丛时调用）
  * @note   当计数从 0 变为 1 时开启隐身
  */
-void AXBCharacterBase::IncrementBushOverlapCount()
-{
-    BushOverlapCount++;
-    
-    // 第一次进入草丛时开启隐身
-    if (BushOverlapCount == 1)
-    {
-        SetHiddenInBush(true);
-    }
-    
-    UE_LOG(LogXBCharacter, Log, TEXT("主将 %s 进入草丛，当前计数: %d"), *GetName(), BushOverlapCount);
+void AXBCharacterBase::IncrementBushOverlapCount() {
+  BushOverlapCount++;
+
+  // 第一次进入草丛时开启隐身
+  if (BushOverlapCount == 1) {
+    SetHiddenInBush(true);
+  }
+
+  UE_LOG(LogXBCharacter, Log, TEXT("主将 %s 进入草丛，当前计数: %d"),
+         *GetName(), BushOverlapCount);
 }
 
 /**
  * @brief  减少草丛重叠计数（离开草丛时调用）
  * @note   当计数从 1 变为 0 时关闭隐身
  */
-void AXBCharacterBase::DecrementBushOverlapCount()
-{
-    BushOverlapCount = FMath::Max(0, BushOverlapCount - 1);
-    
-    // 完全离开所有草丛时关闭隐身
-    if (BushOverlapCount == 0)
-    {
-        SetHiddenInBush(false);
-    }
-    
-    UE_LOG(LogXBCharacter, Log, TEXT("主将 %s 离开草丛，当前计数: %d"), *GetName(), BushOverlapCount);
+void AXBCharacterBase::DecrementBushOverlapCount() {
+  BushOverlapCount = FMath::Max(0, BushOverlapCount - 1);
+
+  // 完全离开所有草丛时关闭隐身
+  if (BushOverlapCount == 0) {
+    SetHiddenInBush(false);
+  }
+
+  UE_LOG(LogXBCharacter, Log, TEXT("主将 %s 离开草丛，当前计数: %d"),
+         *GetName(), BushOverlapCount);
 }
 
 void AXBCharacterBase::SetSoldiersEscaping(bool bEscaping) {

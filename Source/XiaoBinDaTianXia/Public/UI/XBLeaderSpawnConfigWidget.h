@@ -15,7 +15,6 @@
 #include "CoreMinimal.h"
 #include "XBLeaderSpawnConfigWidget.generated.h"
 
-
 class UDataTable;
 
 // ============ 代理声明 ============
@@ -155,7 +154,16 @@ public:
             meta = (DisplayName = "初始配置缓存"))
   FXBLeaderSpawnConfigData InitialConfigData;
 
+protected:
+  // ============ 生命周期 ============
+
+  virtual void NativeConstruct() override;
+  virtual void NativeDestruct() override;
+
 private:
   /** 放置条目索引 */
   int32 EntryIndex = -1;
+
+  /** 缓存原始光标状态 */
+  bool bOriginalShowCursor = false;
 };

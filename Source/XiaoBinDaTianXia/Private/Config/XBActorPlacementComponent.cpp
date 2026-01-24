@@ -21,6 +21,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Save/XBSaveGame.h"
+#include "UI/XBLeaderSpawnConfigWidget.h"
 #include "Utils/XBLogCategories.h"
 
 UXBActorPlacementComponent::UXBActorPlacementComponent() {
@@ -253,6 +254,26 @@ AActor *UXBActorPlacementComponent::ConfirmPlacement() {
     MagnetComp->SetFieldEnabled(false);
     UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 已禁用磁场组件: %s"),
            *NewActor->GetName());
+  }
+
+  // ✨ 新增 - 如果有待应用的配置数据，应用到生成的 Actor
+  if (bHasPendingConfig) {
+    if (AXBCharacterBase *Leader = Cast<AXBCharacterBase>(NewActor)) {
+      // 设置阵营
+      Leader->SetFaction(PendingConfigData.Faction);
+
+      // 应用游戏配置（包括主将类型切换、视觉配置等）
+      Leader->ApplyRuntimeConfig(PendingConfigData.GameConfig, true);
+
+      UE_LOG(LogXBConfig, Log,
+             TEXT("[放置组件] 已应用配置到主将: %s, 阵营: %d, 主将行: %s"),
+             *NewActor->GetName(),
+             static_cast<int32>(PendingConfigData.Faction),
+             *PendingConfigData.GameConfig.LeaderConfigRowName.ToString());
+    }
+
+    // 清理配置状态
+    bHasPendingConfig = false;
   }
 
   // 记录放置数据
@@ -1070,14 +1091,13 @@ AActor *UXBActorPlacementComponent::ConfirmPlacementWithConfig(
     // 设置阵营
     Leader->SetFaction(ConfigData.Faction);
 
-    // 转换为 GameConfigData 并应用
-    FXBGameConfigData GameConfig = ConfigData.ToGameConfigData();
-    Leader->ApplyRuntimeConfig(GameConfig, true);
+    // 直接使用 GameConfig 成员应用配置
+    Leader->ApplyRuntimeConfig(ConfigData.GameConfig, true);
 
     UE_LOG(LogXBConfig, Log,
            TEXT("[放置组件] 已应用配置到主将: %s, 阵营: %d, 初始士兵: %d"),
            *NewActor->GetName(), static_cast<int32>(ConfigData.Faction),
-           ConfigData.InitialSoldierCount);
+           ConfigData.GameConfig.InitialSoldierCount);
   }
 
   // 配置阶段禁用磁场组件（防止提前招募士兵）
@@ -1122,4 +1142,72 @@ void UXBActorPlacementComponent::CancelPendingConfig() {
     PendingConfigLocation = FVector::ZeroVector;
     PendingConfigRotation = FRotator::ZeroRotator;
   }
+}
+
+// ============ 配置界面绑定实现 ============
+
+void UXBActorPlacementComponent::SetConfigWidget(
+    UXBLeaderSpawnConfigWidget *Widget) {
+  // 解绑旧 Widget
+  if (CurrentConfigWidget.IsValid()) {
+    CurrentConfigWidget->OnConfigConfirmed.RemoveDynamic(
+        this, &UXBActorPlacementComponent::HandleLeaderConfigConfirmed);
+    CurrentConfigWidget->OnConfigCancelled.RemoveDynamic(
+        this, &UXBActorPlacementComponent::HandleLeaderConfigCancelled);
+  }
+
+  CurrentConfigWidget = Widget;
+
+  // 绑定新 Widget 事件
+  if (Widget) {
+    Widget->OnConfigConfirmed.AddDynamic(
+        this, &UXBActorPlacementComponent::HandleLeaderConfigConfirmed);
+    Widget->OnConfigCancelled.AddDynamic(
+        this, &UXBActorPlacementComponent::HandleLeaderConfigCancelled);
+
+    UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 已绑定配置界面事件"));
+  }
+}
+
+void UXBActorPlacementComponent::HandleLeaderConfigConfirmed(
+    int32 EntryIndex, FXBLeaderSpawnConfigData ConfigData) {
+  UE_LOG(LogXBConfig, Log,
+         TEXT("[放置组件] 收到配置确认，索引: %d，主将行: %s"), EntryIndex,
+         *ConfigData.GameConfig.LeaderConfigRowName.ToString());
+
+  // 保存配置数据，等待用户确认位置后再应用
+  PendingConfigData = ConfigData;
+  bHasPendingConfig = true;
+
+  // 清理 Widget 引用
+  CurrentConfigWidget.Reset();
+
+  // 创建预览 Actor（跟随光标）
+  if (CreatePreviewActor(EntryIndex)) {
+    CurrentPreviewEntryIndex = EntryIndex;
+    SetPlacementState(EXBPlacementState::Previewing);
+
+    UE_LOG(LogXBConfig, Log,
+           TEXT("[放置组件] 配置确认后进入预览模式，索引: %d"), EntryIndex);
+  } else {
+    UE_LOG(LogXBConfig, Warning,
+           TEXT("[放置组件] 配置确认后创建预览失败，索引: %d"), EntryIndex);
+    bHasPendingConfig = false;
+  }
+
+  // 清理待配置状态
+  PendingConfigEntryIndex = -1;
+}
+
+void UXBActorPlacementComponent::HandleLeaderConfigCancelled() {
+  UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 配置已取消"));
+
+  // 取消待配置状态
+  CancelPendingConfig();
+
+  // 清理 Widget 引用
+  CurrentConfigWidget.Reset();
+
+  // 清理配置数据
+  bHasPendingConfig = false;
 }

@@ -10,6 +10,31 @@
 #include "Engine/DataTable.h"
 #include "Utils/XBLogCategories.h"
 
+void UXBLeaderSpawnConfigWidget::NativeConstruct() {
+  Super::NativeConstruct();
+
+  // 缓存并显示光标
+  if (APlayerController *PC = GetOwningPlayer()) {
+    bOriginalShowCursor = PC->bShowMouseCursor;
+    PC->bShowMouseCursor = true;
+    PC->SetInputMode(FInputModeUIOnly().SetWidgetToFocus(TakeWidget()));
+
+    UE_LOG(LogXBConfig, Log, TEXT("[主将配置界面] 已显示光标"));
+  }
+}
+
+void UXBLeaderSpawnConfigWidget::NativeDestruct() {
+  // 恢复光标状态
+  if (APlayerController *PC = GetOwningPlayer()) {
+    PC->bShowMouseCursor = bOriginalShowCursor;
+    PC->SetInputMode(FInputModeGameOnly());
+
+    UE_LOG(LogXBConfig, Log, TEXT("[主将配置界面] 已恢复光标状态"));
+  }
+
+  Super::NativeDestruct();
+}
+
 void UXBLeaderSpawnConfigWidget::InitializeWithEntry(int32 InEntryIndex) {
   EntryIndex = InEntryIndex;
 
@@ -46,8 +71,8 @@ void UXBLeaderSpawnConfigWidget::OnConfirmClicked() {
   UE_LOG(
       LogXBConfig, Log,
       TEXT("[主将配置界面] 配置确认，条目索引: %d，主将行: %s，初始士兵数: %d"),
-      EntryIndex, *ConfigData.LeaderConfigRowName.ToString(),
-      ConfigData.InitialSoldierCount);
+      EntryIndex, *ConfigData.GameConfig.LeaderConfigRowName.ToString(),
+      ConfigData.GameConfig.InitialSoldierCount);
 
   // 关闭界面
   RemoveFromParent();

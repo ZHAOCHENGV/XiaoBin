@@ -12,14 +12,15 @@
 
 #include "Components/ActorComponent.h"
 #include "CoreMinimal.h"
+#include "XBLeaderSpawnConfigData.h"
 #include "XBPlacementTypes.h"
 #include "XBActorPlacementComponent.generated.h"
-
 
 class UXBPlacementConfigAsset;
 class UMaterialInterface;
 class UMaterialInstanceDynamic;
 class UUserWidget;
+class UXBLeaderSpawnConfigWidget;
 struct FXBLeaderSpawnConfigData;
 
 // ============ 代理声明 ============
@@ -287,7 +288,27 @@ public:
             meta = (DisplayName = "是否待配置"))
   bool HasPendingConfig() const { return PendingConfigEntryIndex >= 0; }
 
+  /**
+   * @brief 设置当前配置界面引用
+   * @param Widget 配置界面指针
+   * @note 蓝图端创建 Widget 后调用此函数绑定事件
+   */
+  UFUNCTION(BlueprintCallable, Category = "放置系统",
+            meta = (DisplayName = "设置配置界面"))
+  void SetConfigWidget(UXBLeaderSpawnConfigWidget *Widget);
+
 protected:
+  // ============ 事件处理 ============
+
+  /** 处理配置确认事件 */
+  UFUNCTION()
+  void HandleLeaderConfigConfirmed(int32 EntryIndex,
+                                   FXBLeaderSpawnConfigData ConfigData);
+
+  /** 处理配置取消事件 */
+  UFUNCTION()
+  void HandleLeaderConfigCancelled();
+
   // ============ 配置引用 ============
 
   /** 放置配置 DataAsset */
@@ -427,6 +448,16 @@ private:
 
   /** 待配置的旋转 */
   FRotator PendingConfigRotation = FRotator::ZeroRotator;
+
+  /** 当前配置界面引用 */
+  UPROPERTY()
+  TWeakObjectPtr<UXBLeaderSpawnConfigWidget> CurrentConfigWidget;
+
+  /** 待应用的配置数据（配置确认后保存，确认放置时应用） */
+  FXBLeaderSpawnConfigData PendingConfigData;
+
+  /** 是否有待应用的配置数据 */
+  bool bHasPendingConfig = false;
 
   // ============ 悬停相关内部方法 ============
 
