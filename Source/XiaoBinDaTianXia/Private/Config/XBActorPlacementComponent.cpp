@@ -340,9 +340,11 @@ AActor *UXBActorPlacementComponent::ConfirmPlacement() {
                               : PreviewLocation;
   NewActor->SetActorLocation(FinalLocation);
 
-  // ✨ 新增 - 配置阶段禁用磁场组件（防止提前招募士兵）
-  if (UXBMagnetFieldComponent *MagnetComp =
-          NewActor->FindComponentByClass<UXBMagnetFieldComponent>()) {
+  // ✨ 新增 - 生成后立即禁用磁场组件（防止用默认配置招募士兵）
+  // 必须在 ApplyRuntimeConfig 之前禁用，否则 BeginPlay 中开启的磁场会提前招募
+  UXBMagnetFieldComponent *MagnetComp =
+      NewActor->FindComponentByClass<UXBMagnetFieldComponent>();
+  if (MagnetComp) {
     MagnetComp->SetFieldEnabled(false);
     UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 已禁用磁场组件: %s"),
            *NewActor->GetName());
@@ -376,7 +378,8 @@ AActor *UXBActorPlacementComponent::ConfirmPlacement() {
 
       // 🔧 修复 - 刷新血条组件，确保显示正确的名称
       // 问题：BeginPlay 时血条组件缓存了数据表默认名称，这里需要通知刷新
-      if (UXBWorldHealthBarComponent *HealthBar = DummyLeader->GetHealthBarComponent()) {
+      if (UXBWorldHealthBarComponent *HealthBar =
+              DummyLeader->GetHealthBarComponent()) {
         HealthBar->RefreshNameDisplay();
       }
 
@@ -386,10 +389,11 @@ AActor *UXBActorPlacementComponent::ConfirmPlacement() {
              *DummyLeader->CharacterName);
 
       // ✨ 新增 - 应用假人移动模式
-      if (!PendingConfigData.GameConfig.LeaderDummyMoveMode.IsNone()) 
-      {
-        FString ModeStr = PendingConfigData.GameConfig.LeaderDummyMoveMode.ToString();
-        EXBLeaderAIMoveMode MoveMode = EXBLeaderAIMoveMode::Stand; // 默认原地站立
+      if (!PendingConfigData.GameConfig.LeaderDummyMoveMode.IsNone()) {
+        FString ModeStr =
+            PendingConfigData.GameConfig.LeaderDummyMoveMode.ToString();
+        EXBLeaderAIMoveMode MoveMode =
+            EXBLeaderAIMoveMode::Stand; // 默认原地站立
 
         if (ModeStr == TEXT("Wander") || ModeStr == TEXT("范围内移动")) {
           MoveMode = EXBLeaderAIMoveMode::Wander;
@@ -399,7 +403,6 @@ AActor *UXBActorPlacementComponent::ConfirmPlacement() {
           MoveMode = EXBLeaderAIMoveMode::Forward;
         }
         DummyLeader->SetDummyMoveMode(MoveMode);
-        
       }
 
       UE_LOG(LogXBConfig, Log,
@@ -407,6 +410,14 @@ AActor *UXBActorPlacementComponent::ConfirmPlacement() {
              *NewActor->GetName(),
              static_cast<int32>(PendingConfigData.Faction),
              *PendingConfigData.GameConfig.LeaderConfigRowName.ToString());
+
+      // ✨ 新增 - 配置应用完成后开启磁场，此时已使用自定义配置
+      if (MagnetComp) {
+        MagnetComp->SetFieldEnabled(true);
+        UE_LOG(LogXBConfig, Log,
+               TEXT("[放置组件] 已开启磁场组件（配置应用完成）: %s"),
+               *NewActor->GetName());
+      }
     }
 
     // 清理配置状态

@@ -106,7 +106,8 @@ void AXBCharacterBase::BeginPlay() {
       MagnetFieldComponent->OnActorEnteredField.AddDynamic(
           this, &AXBCharacterBase::OnMagnetFieldActorEntered);
     }
-    MagnetFieldComponent->SetFieldEnabled(true);
+    // 🔧 修改 - 磁场默认禁用，由外部（如配置系统、游戏开始）主动开启
+    // 避免配置阶段用默认数据招募士兵
   }
 
   // 🔧 修改 - 统一初始化主将数据，子类可重写扩展
@@ -442,10 +443,9 @@ void AXBCharacterBase::ApplyRuntimeConfig(const FXBGameConfigData &GameConfig,
   if (GameConfig.LeaderDeathDropCount >= 0) {
     SoldierDropConfig.DropCount = GameConfig.LeaderDeathDropCount;
   }
-  
 
   // ==================== 招募/成长配置 ====================
-  
+
   // 初始士兵行名
   if (!GameConfig.InitialSoldierRowName.IsNone()) {
     RecruitSoldierRowName = GameConfig.InitialSoldierRowName;
