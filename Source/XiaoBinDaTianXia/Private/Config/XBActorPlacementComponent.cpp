@@ -1750,15 +1750,52 @@ bool UXBActorPlacementComponent::DeletePlacementSave(const FString &SlotName) {
 
 /**
  * @brief 清除当前所有放置的 Actor
+ * @note 不仅清除 PlacedActors 数组中的 Actor，还搜索场景中所有匹配配置的 Actor
  */
 void UXBActorPlacementComponent::ClearAllPlacedActors() {
+  UWorld *World = GetWorld();
+  if (!World) {
+    UE_LOG(LogXBConfig, Warning,
+           TEXT("[放置组件] ClearAllPlacedActors: World 为空"));
+    return;
+  }
+
+  int32 DestroyedCount = 0;
+
+  // 首先清除 PlacedActors 数组中记录的 Actor
   for (FXBPlacedActorData &Data : PlacedActors) {
     if (Data.PlacedActor.IsValid()) {
       Data.PlacedActor->Destroy();
+      ++DestroyedCount;
+    }
+  }
+  PlacedActors.Empty();
+
+  // 然后根据配置搜索场景中所有匹配的 Actor 并删除
+  if (PlacementConfig) {
+    for (const FXBSpawnableActorEntry &Entry :
+         PlacementConfig->SpawnableActors) {
+      if (!Entry.ActorClass) {
+        continue;
+      }
+
+      // 使用 GetAllActorsOfClass 搜索场景中所有此类的 Actor
+      TArray<AActor *> FoundActors;
+      UGameplayStatics::GetAllActorsOfClass(World, Entry.ActorClass,
+                                            FoundActors);
+
+      for (AActor *FoundActor : FoundActors) {
+        if (FoundActor && !FoundActor->IsPendingKillPending()) {
+          UE_LOG(LogXBConfig, Log,
+                 TEXT("[放置组件] 清除场景中的 Actor: %s (类: %s)"),
+                 *FoundActor->GetName(), *Entry.ActorClass->GetName());
+          FoundActor->Destroy();
+          ++DestroyedCount;
+        }
+      }
     }
   }
 
-  PlacedActors.Empty();
-
-  UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 已清除所有放置的 Actor"));
+  UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 已清除所有放置的 Actor，共 %d 个"),
+         DestroyedCount);
 }
