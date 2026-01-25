@@ -634,12 +634,6 @@ void UXBActorPlacementComponent::RestoreFromSaveData(
           // 使用 SetFaction 设置阵营
           DummyLeader->SetFaction(ConfigData.Faction);
 
-          // 应用显示名称
-          if (!ConfigData.GameConfig.LeaderDisplayName.IsEmpty()) {
-            DummyLeader->InitializeCharacterNameFromConfig(
-                ConfigData.GameConfig.LeaderDisplayName);
-          }
-
           // 应用移动模式
           if (!ConfigData.GameConfig.LeaderDummyMoveMode.IsNone()) {
             FString ModeStr =
@@ -660,6 +654,22 @@ void UXBActorPlacementComponent::RestoreFromSaveData(
           // 使用 ApplyRuntimeConfig 应用完整配置（主将行、士兵配置等）
           DummyLeader->ApplyRuntimeConfig(ConfigData.GameConfig, true);
 
+          // ✨ 修复 - 显示名称必须在 ApplyRuntimeConfig 之后设置，否则会被覆盖
+          if (!ConfigData.GameConfig.LeaderDisplayName.IsEmpty()) {
+            DummyLeader->InitializeCharacterNameFromConfig(
+                ConfigData.GameConfig.LeaderDisplayName);
+            UE_LOG(LogXBConfig, Log, TEXT("[放置组件-恢复] 设置显示名称: %s"),
+                   *ConfigData.GameConfig.LeaderDisplayName);
+
+            // ✨ 新增 - 刷新血条组件显示
+            if (UXBWorldHealthBarComponent *HealthBar =
+                    DummyLeader->GetHealthBarComponent()) {
+              HealthBar->RefreshNameDisplay();
+              UE_LOG(LogXBConfig, Log,
+                     TEXT("[放置组件-恢复] 已刷新血条显示名称"));
+            }
+          }
+
           // 开启磁场
           if (UXBMagnetFieldComponent *MagnetComp =
                   DummyLeader
@@ -669,10 +679,11 @@ void UXBActorPlacementComponent::RestoreFromSaveData(
 
           UE_LOG(LogXBConfig, Log,
                  TEXT("[放置组件] 已恢复主将配置: %s, 阵营=%d, 主将行=%s, "
-                      "士兵数=%d"),
+                      "士兵数=%d, 显示名=%s"),
                  *NewActor->GetName(), static_cast<int32>(ConfigData.Faction),
                  *ConfigData.GameConfig.LeaderConfigRowName.ToString(),
-                 ConfigData.GameConfig.InitialSoldierCount);
+                 ConfigData.GameConfig.InitialSoldierCount,
+                 *ConfigData.GameConfig.LeaderDisplayName);
         }
       }
 
