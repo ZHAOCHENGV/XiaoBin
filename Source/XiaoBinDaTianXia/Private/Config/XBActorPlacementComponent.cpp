@@ -220,12 +220,10 @@ bool UXBActorPlacementComponent::StartPreview(int32 EntryIndex) {
     // 这修复了连续放置后悬停检测失效的问题
     SetPlacementState(EXBPlacementState::Idle);
 
-    UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 需要配置面板，缓存索引: %d"),
-           PendingConfigEntryIndex);
+    UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 需要配置面板，缓存索引: %d"),PendingConfigEntryIndex);
 
     // 广播请求显示配置面板事件
-    OnRequestShowConfigPanel.Broadcast(PendingConfigEntryIndex,
-                                       Entry->ConfigWidgetClass);
+    OnRequestShowConfigPanel.Broadcast(PendingConfigEntryIndex, Entry->ConfigWidgetClass);
     return true; // 返回 true 表示处理成功（但没有创建预览）
   }
 
@@ -341,11 +339,9 @@ AActor *UXBActorPlacementComponent::ConfirmPlacement() {
   NewActor->SetActorLocation(FinalLocation);
 
   // ✨ 新增 - 配置阶段禁用磁场组件（防止提前招募士兵）
-  if (UXBMagnetFieldComponent *MagnetComp =
-          NewActor->FindComponentByClass<UXBMagnetFieldComponent>()) {
+  if (UXBMagnetFieldComponent *MagnetComp = NewActor->FindComponentByClass<UXBMagnetFieldComponent>()) {
     MagnetComp->SetFieldEnabled(false);
-    UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 已禁用磁场组件: %s"),
-           *NewActor->GetName());
+    UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 已禁用磁场组件: %s"),*NewActor->GetName());
   }
 
   // ✨ 新增 - 如果有待应用的配置数据，应用到生成的 Actor
@@ -353,7 +349,6 @@ AActor *UXBActorPlacementComponent::ConfirmPlacement() {
     if (AXBCharacterBase *Leader = Cast<AXBCharacterBase>(NewActor)) {
       // 设置阵营
       Leader->SetFaction(PendingConfigData.Faction);
-
       // 应用游戏配置（包括主将类型切换、视觉配置等）
       Leader->ApplyRuntimeConfig(PendingConfigData.GameConfig, true);
 
@@ -378,8 +373,7 @@ AActor *UXBActorPlacementComponent::ConfirmPlacement() {
 
         // 🔧 修复 - 刷新血条组件，确保显示正确的名称
         // 问题：BeginPlay 时血条组件缓存了数据表默认名称，这里需要通知刷新
-        if (UXBWorldHealthBarComponent *HealthBar =
-                DummyLeader->GetHealthBarComponent()) {
+        if (UXBWorldHealthBarComponent *HealthBar = DummyLeader->GetHealthBarComponent()) {
           HealthBar->RefreshNameDisplay();
         }
 
@@ -412,8 +406,7 @@ AActor *UXBActorPlacementComponent::ConfirmPlacement() {
 
   // ✨ 重要：在销毁预览 Actor 前保存连续放置相关数据
   const int32 PlacedEntryIndex = CurrentPreviewEntryIndex;
-  const bool bGlobalContinuousMode =
-      PlacementConfig && PlacementConfig->bContinuousPlacementMode;
+  const bool bGlobalContinuousMode = PlacementConfig && PlacementConfig->bContinuousPlacementMode;
   const bool bEntryContinuousMode = Entry->bContinuousPlacement;
   const bool bShouldContinue = bGlobalContinuousMode || bEntryContinuousMode;
 

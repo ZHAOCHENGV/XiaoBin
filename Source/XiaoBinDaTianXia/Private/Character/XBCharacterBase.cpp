@@ -353,6 +353,9 @@ void AXBCharacterBase::ApplyInitialAttributes() {
       UXBAttributeSet::GetScaleAttribute(), CachedLeaderData.Scale);
 }
 
+/*
+ * 应用运行时配置
+ */
 void AXBCharacterBase::ApplyRuntimeConfig(const FXBGameConfigData &GameConfig,
                                           bool bApplyInitialSoldiers) {
   // ==================== 主将类型切换（视觉配置） ====================
@@ -439,17 +442,11 @@ void AXBCharacterBase::ApplyRuntimeConfig(const FXBGameConfigData &GameConfig,
   if (GameConfig.LeaderDeathDropCount >= 0) {
     SoldierDropConfig.DropCount = GameConfig.LeaderDeathDropCount;
   }
-
-  // ==================== 士兵配置覆盖 ====================
-
-  // ✨ 新增 - 士兵生命值倍率（用于招募时应用）
-  // 注意：此处仅缓存配置，实际应用由士兵初始化时读取
-
-  // ✨ 新增 - 士兵伤害倍率（用于招募时应用）
-
-  // ✨ 新增 - 士兵初始大小（用于招募时应用）
+  
 
   // ==================== 招募/成长配置 ====================
+  
+  // 初始士兵行名
   if (!GameConfig.InitialSoldierRowName.IsNone()) {
     RecruitSoldierRowName = GameConfig.InitialSoldierRowName;
   }
