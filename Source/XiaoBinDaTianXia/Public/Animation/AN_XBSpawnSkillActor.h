@@ -12,11 +12,10 @@
 
 #pragma once
 
-#include "AN_XBSpawnSkillActor.generated.h"
 #include "Animation/AnimNotifies/AnimNotify.h"
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
-
+#include "AN_XBSpawnSkillActor.generated.h"
 
 class UGameplayAbility;
 class UGameplayEffect;
