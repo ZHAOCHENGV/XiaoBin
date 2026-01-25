@@ -24,6 +24,7 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Save/XBSaveGame.h"
 #include "UI/XBLeaderSpawnConfigWidget.h"
+#include "UI/XBWorldHealthBarComponent.h"
 #include "Utils/XBLogCategories.h"
 #include "XBCollisionChannels.h"
 
@@ -375,10 +376,17 @@ AActor *UXBActorPlacementComponent::ConfirmPlacement() {
         }
         DummyLeader->InitializeCharacterNameFromConfig(DisplayName);
 
+        // 🔧 修复 - 刷新血条组件，确保显示正确的名称
+        // 问题：BeginPlay 时血条组件缓存了数据表默认名称，这里需要通知刷新
+        if (UXBWorldHealthBarComponent *HealthBar =
+                DummyLeader->GetHealthBarComponent()) {
+          HealthBar->RefreshNameDisplay();
+        }
+
         // 🔧 调试 - 检查初始化后的 CharacterName
         UE_LOG(LogXBConfig, Log,
                TEXT("[放置组件] 📝 初始化后 CharacterName='%s'"),
-               *DummyLeader->GetCharacterName());
+               *DummyLeader->CharacterName);
       }
 
       UE_LOG(LogXBConfig, Log,
