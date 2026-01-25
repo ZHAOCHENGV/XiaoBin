@@ -432,6 +432,18 @@ AActor *UXBActorPlacementComponent::ConfirmPlacement() {
   PlacedData.Location = FinalLocation;
   PlacedData.Rotation = PreviewRotation;
   PlacedData.Scale = Entry->DefaultScale;
+
+  // ✨ 新增 - 保存主将配置数据（如果有）
+  if (bHasPendingConfig) {
+    PlacedData.bHasLeaderConfig = true;
+    PlacedData.LeaderConfigData = PendingConfigData;
+    UE_LOG(LogXBConfig, Log,
+           TEXT("[放置组件] 保存主将配置: 阵营=%d, 主将行=%s, 士兵数=%d"),
+           static_cast<int32>(PendingConfigData.Faction),
+           *PendingConfigData.GameConfig.LeaderConfigRowName.ToString(),
+           PendingConfigData.GameConfig.InitialSoldierCount);
+  }
+
   PlacedActors.Add(PlacedData);
 
   // ✨ 重要：在销毁预览 Actor 前保存连续放置相关数据
@@ -585,6 +597,58 @@ void UXBActorPlacementComponent::RestoreFromSaveData(
 
     if (NewActor) {
       NewActor->SetActorScale3D(SavedItem.Scale);
+
+      // ✨ 新增 - 如果有主将配置数据，应用到 DummyCharacter
+      if (SavedItem.bHasLeaderConfig) {
+        if (AXBDummyCharacter *DummyLeader =
+                Cast<AXBDummyCharacter>(NewActor)) {
+          const FXBLeaderSpawnConfigData &ConfigData =
+              SavedItem.LeaderConfigData;
+
+          // 使用 SetFaction 设置阵营
+          DummyLeader->SetFaction(ConfigData.Faction);
+
+          // 应用显示名称
+          if (!ConfigData.GameConfig.LeaderDisplayName.IsEmpty()) {
+            DummyLeader->InitializeCharacterNameFromConfig(
+                ConfigData.GameConfig.LeaderDisplayName);
+          }
+
+          // 应用移动模式
+          if (!ConfigData.GameConfig.LeaderDummyMoveMode.IsNone()) {
+            FString ModeStr =
+                ConfigData.GameConfig.LeaderDummyMoveMode.ToString();
+            EXBLeaderAIMoveMode MoveMode = EXBLeaderAIMoveMode::Stand;
+            if (ModeStr == TEXT("Wander") || ModeStr == TEXT("范围内移动")) {
+              MoveMode = EXBLeaderAIMoveMode::Wander;
+            } else if (ModeStr == TEXT("Route") ||
+                       ModeStr == TEXT("固定路线")) {
+              MoveMode = EXBLeaderAIMoveMode::Route;
+            } else if (ModeStr == TEXT("Forward") ||
+                       ModeStr == TEXT("向前行走")) {
+              MoveMode = EXBLeaderAIMoveMode::Forward;
+            }
+            DummyLeader->SetDummyMoveMode(MoveMode);
+          }
+
+          // 使用 ApplyRuntimeConfig 应用完整配置（主将行、士兵配置等）
+          DummyLeader->ApplyRuntimeConfig(ConfigData.GameConfig, true);
+
+          // 开启磁场
+          if (UXBMagnetFieldComponent *MagnetComp =
+                  DummyLeader
+                      ->FindComponentByClass<UXBMagnetFieldComponent>()) {
+            MagnetComp->SetFieldEnabled(true);
+          }
+
+          UE_LOG(LogXBConfig, Log,
+                 TEXT("[放置组件] 已恢复主将配置: %s, 阵营=%d, 主将行=%s, "
+                      "士兵数=%d"),
+                 *NewActor->GetName(), static_cast<int32>(ConfigData.Faction),
+                 *ConfigData.GameConfig.LeaderConfigRowName.ToString(),
+                 ConfigData.GameConfig.InitialSoldierCount);
+        }
+      }
 
       FXBPlacedActorData RestoredData = SavedItem;
       RestoredData.PlacedActor = NewActor;
