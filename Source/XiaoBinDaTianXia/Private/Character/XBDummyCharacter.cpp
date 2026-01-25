@@ -9,7 +9,6 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Soldier/XBSoldierCharacter.h"
 #include "TimerManager.h"
-#include "Utils/XBBlueprintFunctionLibrary.h"
 #include "Utils/XBLogCategories.h"
 
 AXBDummyCharacter::AXBDummyCharacter() {

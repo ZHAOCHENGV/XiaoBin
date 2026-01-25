@@ -20,10 +20,7 @@ class UDataTable;
 // ============ 代理声明 ============
 
 /** 配置确认代理 */
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnLeaderConfigConfirmed, int32,
-                                             EntryIndex,
-                                             FXBLeaderSpawnConfigData,
-                                             ConfigData);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnLeaderConfigConfirmed, int32,EntryIndex,FXBLeaderSpawnConfigData,ConfigData);
 
 /** 配置取消代理 */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnLeaderConfigCancelled);

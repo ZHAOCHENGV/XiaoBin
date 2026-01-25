@@ -51,6 +51,10 @@ struct FXBGameConfigData
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "主将配置行"))
     FName LeaderConfigRowName;
     
+    /** 假人主将移动方式 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "假人主将移动方式"))
+    FName LeaderDummyMoveMode;
+    
     /** 主将生命值倍率 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "主将生命值倍率"))
     float LeaderHealthMultiplier = 1.0f;
