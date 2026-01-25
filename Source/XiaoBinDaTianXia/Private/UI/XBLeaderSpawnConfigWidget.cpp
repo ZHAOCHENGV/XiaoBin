@@ -24,12 +24,17 @@ void UXBLeaderSpawnConfigWidget::NativeConstruct() {
 }
 
 void UXBLeaderSpawnConfigWidget::NativeDestruct() {
-  // 恢复光标状态
+  // 🔧 修复 - 恢复到 GameAndUI 模式，保持放置菜单可用
+  // 原问题：配置界面关闭后恢复到 GameOnly 模式，导致放置菜单点击无响应
   if (APlayerController *PC = GetOwningPlayer()) {
-    PC->bShowMouseCursor = bOriginalShowCursor;
-    PC->SetInputMode(FInputModeGameOnly());
+    // 保持光标可见，允许继续放置操作
+    PC->bShowMouseCursor = true;
+    FInputModeGameAndUI InputMode;
+    InputMode.SetHideCursorDuringCapture(false);
+    InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+    PC->SetInputMode(InputMode);
 
-    UE_LOG(LogXBConfig, Log, TEXT("[主将配置界面] 已恢复光标状态"));
+    UE_LOG(LogXBConfig, Log, TEXT("[主将配置界面] 已恢复到放置模式"));
   }
 
   Super::NativeDestruct();

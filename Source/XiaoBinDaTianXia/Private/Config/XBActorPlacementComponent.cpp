@@ -16,6 +16,7 @@
 #include "Components/PrimitiveComponent.h"
 #include "Config/XBLeaderSpawnConfigData.h"
 #include "Config/XBPlacementConfigAsset.h"
+#include "DrawDebugHelpers.h"
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/PlayerController.h"
@@ -24,17 +25,30 @@
 #include "Save/XBSaveGame.h"
 #include "UI/XBLeaderSpawnConfigWidget.h"
 #include "Utils/XBLogCategories.h"
+#include "XBCollisionChannels.h"
 
+/**
+ * @brief 构造函数
+ * @note  初始化 Tick 设置：允许 Tick 但默认禁用
+ *        实际启用时机在 BeginPlay 中根据状态决定
+ */
 UXBActorPlacementComponent::UXBActorPlacementComponent() {
-  // 启用 Tick 用于更新预览位置
   PrimaryComponentTick.bCanEverTick = true;
   PrimaryComponentTick.bStartWithTickEnabled = false;
 }
 
+/**
+ * @brief 组件开始运行时调用
+ * @note  详细流程:
+ *        1. 缓存玩家控制器引用（避免每帧查询）
+ *        2. 初始化为 Idle 状态
+ *        3. 启用 Tick 以支持悬停检测
+ *        性能注意: 玩家控制器仅缓存一次，后续使用弱引用检查有效性
+ */
 void UXBActorPlacementComponent::BeginPlay() {
   Super::BeginPlay();
 
-  // 缓存玩家控制器
+  // 缓存玩家控制器（避免每帧查询 GetPlayerController）
   CachedPlayerController = UGameplayStatics::GetPlayerController(GetWorld(), 0);
 
   // 初始化为 Idle 状态，启用 Tick 以支持悬停检测
@@ -45,11 +59,14 @@ void UXBActorPlacementComponent::BeginPlay() {
          PlacementConfig ? *PlacementConfig->GetName() : TEXT("None"));
 }
 
+/**
+ * @brief 组件结束运行时调用
+ * @param EndPlayReason 结束原因枚举
+ * @note  清理预览 Actor 防止内存泄漏
+ */
 void UXBActorPlacementComponent::EndPlay(
     const EEndPlayReason::Type EndPlayReason) {
-  // 清理预览 Actor
   DestroyPreviewActor();
-
   Super::EndPlay(EndPlayReason);
 }
 
@@ -67,20 +84,49 @@ void UXBActorPlacementComponent::TickComponent(
   if (CurrentState == EXBPlacementState::Idle) {
     UpdateHoverState();
   }
+
+  // ✨ 调试 - 每2秒输出一次当前状态
+#if WITH_EDITOR
+  static float DebugTimer = 0.0f;
+  DebugTimer += DeltaTime;
+  if (DebugTimer >= 2.0f) {
+    DebugTimer = 0.0f;
+    const TCHAR *StateStr =
+        CurrentState == EXBPlacementState::Idle         ? TEXT("Idle")
+        : CurrentState == EXBPlacementState::Previewing ? TEXT("Previewing")
+        : CurrentState == EXBPlacementState::Editing    ? TEXT("Editing")
+                                                        : TEXT("Unknown");
+    UE_LOG(LogXBConfig, Log,
+           TEXT("[放置组件调试] 当前状态: %s, PlacedActors数量: %d"), StateStr,
+           PlacedActors.Num());
+  }
+#endif
 }
 
+/**
+ * @brief 处理鼠标左键点击输入
+ * @return 是否成功处理点击
+ * @note  详细流程（状态机模式）:
+ *        - Idle 状态:
+ *          1. 检测是否点击已放置 Actor -> 进入 Editing 状态
+ *          2. 否则广播 OnRequestShowMenu 事件 -> UI 显示放置菜单
+ *        - Previewing 状态:
+ *          1. 位置有效 -> 调用 ConfirmPlacement 确认放置
+ *        - Editing 状态:
+ *          1. 点击其他 Actor -> 切换选中
+ *          2. 点击空白 -> 取消选中，回到 Idle
+ */
 bool UXBActorPlacementComponent::HandleClick() {
   switch (CurrentState) {
   case EXBPlacementState::Idle: {
-    // 空闲状态 -> 检测是否点击已放置 Actor 或请求显示菜单
+    /*// 空闲状态：检测是否点击已放置 Actor 或请求显示菜单
     AActor *HitActor = nullptr;
     if (GetHitPlacedActor(HitActor)) {
-      // 点击到已放置的 Actor，进入编辑状态
       SelectActor(HitActor);
       return true;
-    }
+    }*/
 
-    // 未点击到已放置 Actor，获取点击位置并广播显示菜单事件
+    // 未点击到已放置 Actor，广播显示菜单事件
     FVector HitLocation;
     FVector HitNormal;
     if (GetMouseHitLocation(HitLocation, HitNormal)) {
@@ -92,7 +138,7 @@ bool UXBActorPlacementComponent::HandleClick() {
   }
 
   case EXBPlacementState::Previewing: {
-    // 预览状态 -> 确认放置
+    // 预览状态：确认放置
     if (bIsPreviewLocationValid) {
       ConfirmPlacement();
       return true;
@@ -101,11 +147,10 @@ bool UXBActorPlacementComponent::HandleClick() {
   }
 
   case EXBPlacementState::Editing: {
-    // 编辑状态 -> 检测是否点击其他 Actor 或取消选中
+    // 编辑状态：检测是否点击其他 Actor 或取消选中
     AActor *HitActor = nullptr;
     if (GetHitPlacedActor(HitActor)) {
       if (HitActor != SelectedActor.Get()) {
-        // 选中其他 Actor
         SelectActor(HitActor);
       }
       return true;
@@ -121,7 +166,33 @@ bool UXBActorPlacementComponent::HandleClick() {
   }
 }
 
+/**
+ * @brief 开始预览指定索引的 Actor
+ * @param EntryIndex 配置条目索引（对应 PlacementConfig->SpawnableActors 数组）
+ * @return 是否成功开始预览
+ * @note  详细流程:
+ *        1. 检查是否处于 Editing 状态 -> 忽略请求（防止意外触发）
+ *        2. 检查是否需要配置面板（bRequiresConfig）:
+ *           - 是 -> 设置 Idle 状态，广播 OnRequestShowConfigPanel 事件
+ *           - 否 -> 创建预览 Actor，进入 Previewing 状态
+ *        3. 根据旋转模式设置初始旋转（Manual/FacePlayer/Random）
+ *        注意事项: 对于需要配置的 Actor，此函数不会创建预览 Actor，
+ *                  而是等待用户在配置界面确认后由 HandleLeaderConfigConfirmed
+ * 创建
+ */
 bool UXBActorPlacementComponent::StartPreview(int32 EntryIndex) {
+  UE_LOG(LogXBConfig, Log,
+         TEXT("[放置组件] 📍 StartPreview 被调用，索引: %d，当前状态: %d"),
+         EntryIndex, static_cast<int32>(CurrentState));
+
+  // 🔧 修复 - 如果当前处于 Editing 状态（用户正在编辑已选中的 Actor），
+  // 不执行 StartPreview，避免意外弹出配置界面
+  if (CurrentState == EXBPlacementState::Editing) {
+    UE_LOG(LogXBConfig, Log,
+           TEXT("[放置组件] 当前处于编辑状态，忽略 StartPreview 请求"));
+    return false;
+  }
+
   if (!PlacementConfig) {
     UE_LOG(LogXBConfig, Warning, TEXT("[放置组件] 未配置 PlacementConfig"));
     return false;
@@ -143,6 +214,10 @@ bool UXBActorPlacementComponent::StartPreview(int32 EntryIndex) {
     // 位置在配置确认后再获取（用户点击位置）
     PendingConfigLocation = FVector::ZeroVector;
     PendingConfigRotation = Entry->DefaultRotation;
+
+    // 🔧 修复 - 确保状态为 Idle，因为此时没有实际的预览 Actor
+    // 这修复了连续放置后悬停检测失效的问题
+    SetPlacementState(EXBPlacementState::Idle);
 
     UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 需要配置面板，缓存索引: %d"),
            PendingConfigEntryIndex);
@@ -205,6 +280,21 @@ bool UXBActorPlacementComponent::StartPreview(int32 EntryIndex) {
   return true;
 }
 
+/**
+ * @brief 确认放置当前预览的 Actor
+ * @return 放置成功返回新生成的 Actor 指针，失败返回 nullptr
+ * @note  详细流程:
+ *        1. 验证状态（必须为 Previewing）和预览 Actor 有效性
+ *        2. 在预览位置生成实际 Actor
+ *        3. 应用配置数据到主将类型 Actor（阵营、名称等）
+ *        4. 禁用磁场组件（配置阶段防止招募士兵）
+ *        5. 记录放置数据到 PlacedActors 列表
+ *        6. 销毁预览 Actor
+ *        7. 广播 OnActorPlaced 事件
+ *        8. 处理连续放置逻辑（对于不需要配置的 Actor）
+ *        注意事项: 对于需要配置的 Actor，不会自动触发连续放置，
+ *                  因为每次放置都需要用户手动配置
+ */
 AActor *UXBActorPlacementComponent::ConfirmPlacement() {
   if (CurrentState != EXBPlacementState::Previewing) {
     return nullptr;
@@ -270,12 +360,25 @@ AActor *UXBActorPlacementComponent::ConfirmPlacement() {
       if (AXBDummyCharacter *DummyLeader = Cast<AXBDummyCharacter>(NewActor)) {
         // 优先使用 LeaderDisplayName，如果为空则使用 LeaderConfigRowName
         FString DisplayName = PendingConfigData.GameConfig.LeaderDisplayName;
+
+        // 🔧 调试 - 输出 LeaderDisplayName 的值
+        UE_LOG(LogXBConfig, Log,
+               TEXT("[放置组件] 📝 LeaderDisplayName='%s', "
+                    "LeaderConfigRowName='%s'"),
+               *DisplayName,
+               *PendingConfigData.GameConfig.LeaderConfigRowName.ToString());
+
         if (DisplayName.IsEmpty() &&
             !PendingConfigData.GameConfig.LeaderConfigRowName.IsNone()) {
           DisplayName =
               PendingConfigData.GameConfig.LeaderConfigRowName.ToString();
         }
         DummyLeader->InitializeCharacterNameFromConfig(DisplayName);
+
+        // 🔧 调试 - 检查初始化后的 CharacterName
+        UE_LOG(LogXBConfig, Log,
+               TEXT("[放置组件] 📝 初始化后 CharacterName='%s'"),
+               *DummyLeader->GetCharacterName());
       }
 
       UE_LOG(LogXBConfig, Log,
@@ -306,13 +409,17 @@ AActor *UXBActorPlacementComponent::ConfirmPlacement() {
   const bool bEntryContinuousMode = Entry->bContinuousPlacement;
   const bool bShouldContinue = bGlobalContinuousMode || bEntryContinuousMode;
 
-  UE_LOG(
-      LogXBConfig, Log,
-      TEXT(
-          "[放置组件] 连续放置检查 - 全局: %s, 条目: %s, 索引: %d, 应继续: %s"),
-      bGlobalContinuousMode ? TEXT("开启") : TEXT("关闭"),
-      bEntryContinuousMode ? TEXT("开启") : TEXT("关闭"), PlacedEntryIndex,
-      bShouldContinue ? TEXT("是") : TEXT("否"));
+  // 🔧 修复 - 对于需要配置的 Actor，不自动触发连续放置
+  // 因为每次放置都需要用户手动配置，自动触发会导致状态从 Idle 变为 Previewing
+  const bool bActualContinue = bShouldContinue && !Entry->bRequiresConfig;
+
+  UE_LOG(LogXBConfig, Log,
+         TEXT("[放置组件] 连续放置检查 - 全局: %s, 条目: %s, 需配置: %s, 索引: "
+              "%d, 应继续: %s"),
+         bGlobalContinuousMode ? TEXT("开启") : TEXT("关闭"),
+         bEntryContinuousMode ? TEXT("开启") : TEXT("关闭"),
+         Entry->bRequiresConfig ? TEXT("是") : TEXT("否"), PlacedEntryIndex,
+         bActualContinue ? TEXT("是") : TEXT("否"));
 
   // 销毁预览 Actor（这会重置 CurrentPreviewEntryIndex）
   DestroyPreviewActor();
@@ -323,8 +430,8 @@ AActor *UXBActorPlacementComponent::ConfirmPlacement() {
   UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 已放置 Actor: %s 位置: %s"),
          *NewActor->GetName(), *FinalLocation.ToString());
 
-  // 连续放置模式：放置后自动继续预览同类型 Actor
-  if (bShouldContinue) {
+  // 连续放置模式：放置后自动继续预览同类型 Actor（仅对不需要配置的 Actor）
+  if (bActualContinue) {
     // 直接调用 StartPreview，使用之前保存的索引
     const bool bStarted = StartPreview(PlacedEntryIndex);
     UE_LOG(LogXBConfig, Log,
@@ -338,6 +445,12 @@ AActor *UXBActorPlacementComponent::ConfirmPlacement() {
   return NewActor;
 }
 
+/**
+ * @brief 取消当前操作
+ * @note  根据当前状态执行不同操作:
+ *        - Previewing: 销毁预览 Actor，回到 Idle
+ *        - Editing: 取消选中，回到 Idle
+ */
 void UXBActorPlacementComponent::CancelOperation() {
   switch (CurrentState) {
   case EXBPlacementState::Previewing:
@@ -487,6 +600,15 @@ void UXBActorPlacementComponent::SetPlacementConfig(
          Config ? *Config->GetName() : TEXT("None"));
 }
 
+/**
+ * @brief 获取鼠标射线检测命中位置
+ * @param OutLocation 输出命中位置
+ * @param OutNormal 输出命中面法线
+ * @return 是否命中
+ * @note  用于预览位置更新和放置位置确定
+ *        使用 ECC_Visibility 通道检测地面/障碍物
+ *        自动忽略 Owner Actor 和预览 Actor
+ */
 bool UXBActorPlacementComponent::GetMouseHitLocation(FVector &OutLocation,
                                                      FVector &OutNormal) const {
   if (!CachedPlayerController.IsValid()) {
@@ -669,6 +791,15 @@ void UXBActorPlacementComponent::RestoreOriginalMaterials(AActor *Actor) {
   // 选中高亮功能可以在此扩展
 }
 
+/**
+ * @brief 检测射线命中的已放置 Actor
+ * @param OutActor 输出命中的 Actor 指针
+ * @return 是否命中已放置的 Actor
+ * @note  用于悬停检测和点击选中
+ *        使用多个碰撞通道检测（Leader/Pawn/Visibility）
+ *        仅返回 PlacedActors 列表中的 Actor
+ *        包含调试可视化（绿色=命中，红色=未命中）
+ */
 bool UXBActorPlacementComponent::GetHitPlacedActor(AActor *&OutActor) const {
   if (!CachedPlayerController.IsValid()) {
     return false;
@@ -702,11 +833,16 @@ bool UXBActorPlacementComponent::GetHitPlacedActor(AActor *&OutActor) const {
     return false;
   }
 
-  // 使用 Pawn 通道以支持角色类型检测，同时也尝试 Visibility
-  if (World->LineTraceSingleByChannel(HitResult, WorldLocation, TraceEnd,
+  // 射线检测已放置 Actor（使用多个碰撞通道）
+  bool bHit =
+      World->LineTraceSingleByChannel(HitResult, WorldLocation, TraceEnd,
+                                      XBCollision::Leader, QueryParams) ||
+      World->LineTraceSingleByChannel(HitResult, WorldLocation, TraceEnd,
                                       ECC_Pawn, QueryParams) ||
       World->LineTraceSingleByChannel(HitResult, WorldLocation, TraceEnd,
-                                      ECC_Visibility, QueryParams)) {
+                                      ECC_Visibility, QueryParams);
+
+  if (bHit) {
     AActor *HitActor = HitResult.GetActor();
 
     UE_LOG(LogXBConfig, Verbose, TEXT("[放置组件] 射线命中 Actor: %s"),
@@ -770,6 +906,7 @@ void UXBActorPlacementComponent::SetPlacementState(EXBPlacementState NewState) {
     return;
   }
 
+  const EXBPlacementState OldState = CurrentState;
   CurrentState = NewState;
 
   // 根据状态启用/禁用 Tick
@@ -781,8 +918,21 @@ void UXBActorPlacementComponent::SetPlacementState(EXBPlacementState NewState) {
   // 广播状态变更事件
   OnPlacementStateChanged.Broadcast(NewState);
 
-  UE_LOG(LogXBConfig, Verbose, TEXT("[放置组件] 状态变更: %d"),
-         static_cast<int32>(NewState));
+  // ✨ 调试 - 详细日志
+  auto StateToString = [](EXBPlacementState State) -> const TCHAR * {
+    switch (State) {
+    case EXBPlacementState::Idle:
+      return TEXT("Idle");
+    case EXBPlacementState::Previewing:
+      return TEXT("Previewing");
+    case EXBPlacementState::Editing:
+      return TEXT("Editing");
+    default:
+      return TEXT("Unknown");
+    }
+  };
+  UE_LOG(LogXBConfig, Log, TEXT("[放置组件] ⚠️ 状态变更: %s -> %s"),
+         StateToString(OldState), StateToString(NewState));
 }
 
 bool UXBActorPlacementComponent::TraceForGround(
