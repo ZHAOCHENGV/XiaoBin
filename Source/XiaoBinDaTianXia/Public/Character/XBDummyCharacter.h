@@ -92,6 +92,14 @@ public:
             meta = (DisplayName = "获取移动模式"))
   EXBLeaderAIMoveMode GetDummyMoveMode() const { return DummyMoveMode; }
 
+  /**
+   * @brief  设置假人移动模式
+   * @param  InMoveMode 移动模式枚举
+   */
+  UFUNCTION(BlueprintCallable, Category = "AI|移动",
+            meta = (DisplayName = "设置移动模式"))
+  void SetDummyMoveMode(EXBLeaderAIMoveMode InMoveMode);
+
 private:
   // ✨ 新增 - 巡逻路线Actor（需包含Spline组件）
   /**

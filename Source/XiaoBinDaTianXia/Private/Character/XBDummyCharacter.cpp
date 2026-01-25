@@ -224,6 +224,16 @@ AXBCharacterBase *AXBDummyCharacter::GetLastDamageLeader() const {
 void AXBDummyCharacter::ClearLastDamageLeader() { LastDamageLeader = nullptr; }
 
 /**
+ * @brief  设置假人移动模式
+ * @param  InMoveMode 移动模式枚举
+ */
+void AXBDummyCharacter::SetDummyMoveMode(EXBLeaderAIMoveMode InMoveMode) {
+  DummyMoveMode = InMoveMode;
+  UE_LOG(LogXBAI, Log, TEXT("假人 %s 设置移动模式: %d"), *GetName(),
+         static_cast<int32>(InMoveMode));
+}
+
+/**
  * @brief  获取巡逻路线样条组件
  * @return 样条组件指针（可能为空）
  * @note   详细流程分析: 读取路线Actor -> 查找第一个Spline组件

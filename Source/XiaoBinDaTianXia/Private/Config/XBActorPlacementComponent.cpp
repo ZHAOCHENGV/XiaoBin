@@ -220,10 +220,12 @@ bool UXBActorPlacementComponent::StartPreview(int32 EntryIndex) {
     // 这修复了连续放置后悬停检测失效的问题
     SetPlacementState(EXBPlacementState::Idle);
 
-    UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 需要配置面板，缓存索引: %d"),PendingConfigEntryIndex);
+    UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 需要配置面板，缓存索引: %d"),
+           PendingConfigEntryIndex);
 
     // 广播请求显示配置面板事件
-    OnRequestShowConfigPanel.Broadcast(PendingConfigEntryIndex, Entry->ConfigWidgetClass);
+    OnRequestShowConfigPanel.Broadcast(PendingConfigEntryIndex,
+                                       Entry->ConfigWidgetClass);
     return true; // 返回 true 表示处理成功（但没有创建预览）
   }
 
@@ -339,48 +341,65 @@ AActor *UXBActorPlacementComponent::ConfirmPlacement() {
   NewActor->SetActorLocation(FinalLocation);
 
   // ✨ 新增 - 配置阶段禁用磁场组件（防止提前招募士兵）
-  if (UXBMagnetFieldComponent *MagnetComp = NewActor->FindComponentByClass<UXBMagnetFieldComponent>()) {
+  if (UXBMagnetFieldComponent *MagnetComp =
+          NewActor->FindComponentByClass<UXBMagnetFieldComponent>()) {
     MagnetComp->SetFieldEnabled(false);
-    UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 已禁用磁场组件: %s"),*NewActor->GetName());
+    UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 已禁用磁场组件: %s"),
+           *NewActor->GetName());
   }
 
   // ✨ 新增 - 如果有待应用的配置数据，应用到生成的 Actor
   if (bHasPendingConfig) {
-    if (AXBCharacterBase *Leader = Cast<AXBCharacterBase>(NewActor)) {
+    // ✨ 新增 - 调用 XBDummyCharacter 专用的名称初始化函数
+    if (AXBDummyCharacter *DummyLeader = Cast<AXBDummyCharacter>(NewActor)) {
       // 设置阵营
-      Leader->SetFaction(PendingConfigData.Faction);
+      DummyLeader->SetFaction(PendingConfigData.Faction);
       // 应用游戏配置（包括主将类型切换、视觉配置等）
-      Leader->ApplyRuntimeConfig(PendingConfigData.GameConfig, true);
+      DummyLeader->ApplyRuntimeConfig(PendingConfigData.GameConfig, true);
 
-      // ✨ 新增 - 调用 XBDummyCharacter 专用的名称初始化函数
-      if (AXBDummyCharacter *DummyLeader = Cast<AXBDummyCharacter>(NewActor)) {
-        // 优先使用 LeaderDisplayName，如果为空则使用 LeaderConfigRowName
-        FString DisplayName = PendingConfigData.GameConfig.LeaderDisplayName;
+      // 优先使用 LeaderDisplayName，如果为空则使用 LeaderConfigRowName
+      FString DisplayName = PendingConfigData.GameConfig.LeaderDisplayName;
 
-        // 🔧 调试 - 输出 LeaderDisplayName 的值
-        UE_LOG(LogXBConfig, Log,
-               TEXT("[放置组件] 📝 LeaderDisplayName='%s', "
-                    "LeaderConfigRowName='%s'"),
-               *DisplayName,
-               *PendingConfigData.GameConfig.LeaderConfigRowName.ToString());
+      // 🔧 调试 - 输出 LeaderDisplayName 的值
+      UE_LOG(LogXBConfig, Log,
+             TEXT("[放置组件] 📝 LeaderDisplayName='%s', "
+                  "LeaderConfigRowName='%s'"),
+             *DisplayName,
+             *PendingConfigData.GameConfig.LeaderConfigRowName.ToString());
 
-        if (DisplayName.IsEmpty() &&
-            !PendingConfigData.GameConfig.LeaderConfigRowName.IsNone()) {
-          DisplayName =
-              PendingConfigData.GameConfig.LeaderConfigRowName.ToString();
+      if (DisplayName.IsEmpty() &&
+          !PendingConfigData.GameConfig.LeaderConfigRowName.IsNone()) {
+        DisplayName =
+            PendingConfigData.GameConfig.LeaderConfigRowName.ToString();
+      }
+      DummyLeader->InitializeCharacterNameFromConfig(DisplayName);
+
+      // 🔧 修复 - 刷新血条组件，确保显示正确的名称
+      // 问题：BeginPlay 时血条组件缓存了数据表默认名称，这里需要通知刷新
+      if (UXBWorldHealthBarComponent *HealthBar = DummyLeader->GetHealthBarComponent()) {
+        HealthBar->RefreshNameDisplay();
+      }
+
+      // 🔧 调试 - 检查初始化后的 CharacterName
+      UE_LOG(LogXBConfig, Log,
+             TEXT("[放置组件] 📝 初始化后 CharacterName='%s'"),
+             *DummyLeader->CharacterName);
+
+      // ✨ 新增 - 应用假人移动模式
+      if (!PendingConfigData.GameConfig.LeaderDummyMoveMode.IsNone()) 
+      {
+        FString ModeStr = PendingConfigData.GameConfig.LeaderDummyMoveMode.ToString();
+        EXBLeaderAIMoveMode MoveMode = EXBLeaderAIMoveMode::Stand; // 默认原地站立
+
+        if (ModeStr == TEXT("Wander") || ModeStr == TEXT("范围内移动")) {
+          MoveMode = EXBLeaderAIMoveMode::Wander;
+        } else if (ModeStr == TEXT("Stand") || ModeStr == TEXT("原地站立")) {
+          MoveMode = EXBLeaderAIMoveMode::Route;
+        } else if (ModeStr == TEXT("Forward") || ModeStr == TEXT("向前行走")) {
+          MoveMode = EXBLeaderAIMoveMode::Forward;
         }
-        DummyLeader->InitializeCharacterNameFromConfig(DisplayName);
-
-        // 🔧 修复 - 刷新血条组件，确保显示正确的名称
-        // 问题：BeginPlay 时血条组件缓存了数据表默认名称，这里需要通知刷新
-        if (UXBWorldHealthBarComponent *HealthBar = DummyLeader->GetHealthBarComponent()) {
-          HealthBar->RefreshNameDisplay();
-        }
-
-        // 🔧 调试 - 检查初始化后的 CharacterName
-        UE_LOG(LogXBConfig, Log,
-               TEXT("[放置组件] 📝 初始化后 CharacterName='%s'"),
-               *DummyLeader->CharacterName);
+        DummyLeader->SetDummyMoveMode(MoveMode);
+        
       }
 
       UE_LOG(LogXBConfig, Log,
@@ -406,7 +425,8 @@ AActor *UXBActorPlacementComponent::ConfirmPlacement() {
 
   // ✨ 重要：在销毁预览 Actor 前保存连续放置相关数据
   const int32 PlacedEntryIndex = CurrentPreviewEntryIndex;
-  const bool bGlobalContinuousMode = PlacementConfig && PlacementConfig->bContinuousPlacementMode;
+  const bool bGlobalContinuousMode =
+      PlacementConfig && PlacementConfig->bContinuousPlacementMode;
   const bool bEntryContinuousMode = Entry->bContinuousPlacement;
   const bool bShouldContinue = bGlobalContinuousMode || bEntryContinuousMode;
 
