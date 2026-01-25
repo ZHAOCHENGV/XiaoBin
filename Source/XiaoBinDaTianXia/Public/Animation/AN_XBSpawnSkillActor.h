@@ -12,11 +12,11 @@
 
 #pragma once
 
-
+#include "AN_XBSpawnSkillActor.generated.h"
 #include "Animation/AnimNotifies/AnimNotify.h"
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
-#include "AN_XBSpawnSkillActor.generated.h"
+
 
 class UGameplayAbility;
 class UGameplayEffect;
@@ -135,8 +135,8 @@ struct XIAOBINDATIANXIA_API FXBSkillSpawnConfig {
 
   /** 分布角度（所有生成点在角色前方该角度范围内均匀分布） */
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "多生成配置",
-            meta = (DisplayName = "分布角度", ClampMin = "0.0", ClampMax = "360.0",
-                    EditCondition = "SpawnCount > 1"))
+            meta = (DisplayName = "分布角度", ClampMin = "0.0",
+                    ClampMax = "360.0", EditCondition = "SpawnCount > 1"))
   float SpreadAngle = 45.0f;
 
   /** 生成距离（扇形生成时，距离角色中心的距离） */
@@ -148,52 +148,59 @@ struct XIAOBINDATIANXIA_API FXBSkillSpawnConfig {
   // ========== 指定范围配置 ==========
 
   /** 指定范围目标位置来源 */
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "指定范围配置",
-            meta = (DisplayName = "区域中心",
-                    EditCondition = "SpawnMode == EXBSkillSpawnMode::DesignatedArea",
-                    EditConditionHides))
-  EXBDesignatedAreaTarget DesignatedAreaTarget = EXBDesignatedAreaTarget::EnemyTarget;
+  UPROPERTY(
+      EditAnywhere, BlueprintReadWrite, Category = "指定范围配置",
+      meta = (DisplayName = "区域中心",
+              EditCondition = "SpawnMode == EXBSkillSpawnMode::DesignatedArea",
+              EditConditionHides))
+  EXBDesignatedAreaTarget DesignatedAreaTarget =
+      EXBDesignatedAreaTarget::EnemyTarget;
 
   /** 指定范围形状 */
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "指定范围配置",
-            meta = (DisplayName = "区域形状",
-                    EditCondition = "SpawnMode == EXBSkillSpawnMode::DesignatedArea",
-                    EditConditionHides))
+  UPROPERTY(
+      EditAnywhere, BlueprintReadWrite, Category = "指定范围配置",
+      meta = (DisplayName = "区域形状",
+              EditCondition = "SpawnMode == EXBSkillSpawnMode::DesignatedArea",
+              EditConditionHides))
   EXBDesignatedAreaShape DesignatedAreaShape = EXBDesignatedAreaShape::Circle;
 
   /** 区域半径（圆形时为半径，正方形时为边长的一半） */
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "指定范围配置",
-            meta = (DisplayName = "区域大小", ClampMin = "50.0", ClampMax = "1000.0",
-                    EditCondition = "SpawnMode == EXBSkillSpawnMode::DesignatedArea",
-                    EditConditionHides))
+  UPROPERTY(
+      EditAnywhere, BlueprintReadWrite, Category = "指定范围配置",
+      meta = (DisplayName = "区域大小", ClampMin = "50.0", ClampMax = "1000.0",
+              EditCondition = "SpawnMode == EXBSkillSpawnMode::DesignatedArea",
+              EditConditionHides))
   float AreaRadius = 300.0f;
 
   /** 生成高度（距离地面的高度，0表示不使用高度偏移） */
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "指定范围配置",
-            meta = (DisplayName = "生成高度", ClampMin = "0.0", ClampMax = "2000.0",
-                    EditCondition = "SpawnMode == EXBSkillSpawnMode::DesignatedArea",
-                    EditConditionHides))
+  UPROPERTY(
+      EditAnywhere, BlueprintReadWrite, Category = "指定范围配置",
+      meta = (DisplayName = "生成高度", ClampMin = "0.0", ClampMax = "2000.0",
+              EditCondition = "SpawnMode == EXBSkillSpawnMode::DesignatedArea",
+              EditConditionHides))
   float SpawnHeight = 500.0f;
 
   /** 生成间隔（秒），控制延迟生成的速度 */
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "指定范围配置",
-            meta = (DisplayName = "生成间隔", ClampMin = "0.01", ClampMax = "0.5",
-                    EditCondition = "SpawnMode == EXBSkillSpawnMode::DesignatedArea",
-                    EditConditionHides))
+  UPROPERTY(
+      EditAnywhere, BlueprintReadWrite, Category = "指定范围配置",
+      meta = (DisplayName = "生成间隔", ClampMin = "0.01", ClampMax = "0.5",
+              EditCondition = "SpawnMode == EXBSkillSpawnMode::DesignatedArea",
+              EditConditionHides))
   float SpawnInterval = 0.02f;
 
   /** 投射物俯仰角范围（负值表示向下，0表示水平） */
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "指定范围配置",
-            meta = (DisplayName = "俯仰角范围",
-                    EditCondition = "SpawnMode == EXBSkillSpawnMode::DesignatedArea",
-                    EditConditionHides))
+  UPROPERTY(
+      EditAnywhere, BlueprintReadWrite, Category = "指定范围配置",
+      meta = (DisplayName = "俯仰角范围",
+              EditCondition = "SpawnMode == EXBSkillSpawnMode::DesignatedArea",
+              EditConditionHides))
   FVector2D ArrowPitchRange = FVector2D(-85.0f, -95.0f);
 
   /** 前方偏移距离（当区域中心为前方偏移或自身位置时使用） */
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "指定范围配置",
-            meta = (DisplayName = "前方偏移距离", ClampMin = "0.0",
-                    EditCondition = "SpawnMode == EXBSkillSpawnMode::DesignatedArea && DesignatedAreaTarget != EXBDesignatedAreaTarget::EnemyTarget",
-                    EditConditionHides))
+  UPROPERTY(
+      EditAnywhere, BlueprintReadWrite, Category = "指定范围配置",
+      meta =
+          (DisplayName = "前方偏移距离", EditCondition = "SpawnMode == EXBSkillSpawnMode::DesignatedArea && DesignatedAreaTarget != EXBDesignatedAreaTarget::EnemyTarget",EditConditionHides))
   float AreaForwardDistance = 500.0f;
 
   /** GAS - 触发的 Gameplay Ability 类（可选） */
@@ -311,8 +318,10 @@ protected:
    * @param Damage 伤害值
    * @param Target 目标Actor
    * @param Index 当前索引（用于调试）
+   * @param InitialYaw 初始朝向（在生成开始时获取一次）
    */
   void SpawnDesignatedAreaProjectile(UWorld *World, AActor *OwnerActor,
                                      const FVector &AreaCenter, float Damage,
-                                     AActor *Target, int32 Index) const;
+                                     AActor *Target, int32 Index,
+                                     float InitialYaw) const;
 };

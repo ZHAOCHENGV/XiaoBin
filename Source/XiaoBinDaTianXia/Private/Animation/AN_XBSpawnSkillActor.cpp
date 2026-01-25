@@ -582,6 +582,9 @@ void UAN_XBSpawnSkillActor::StartDesignatedAreaSpawn(UWorld *World,
     }
   }
 
+  // ✨ 新增 - 在生成开始时获取一次施法者朝向，后续生成都使用这个固定值
+  const float InitialYaw = OwnerActor->GetActorRotation().Yaw;
+
   // 使用 Timer 延迟生成每个投射物
   for (int32 i = 0; i < TotalCount; ++i) {
     // 第一个在0秒时生成，其余依次延迟
@@ -591,15 +594,15 @@ void UAN_XBSpawnSkillActor::StartDesignatedAreaSpawn(UWorld *World,
     FTimerHandle TimerHandle;
     FTimerDelegate TimerDelegate;
 
-    // 捕获当前索引和所有必要参数
+    // 捕获当前索引和所有必要参数（包含 InitialYaw）
     TimerDelegate.BindLambda(
-        [this, World, OwnerActor, AreaCenter, Damage, Target, i]() {
+        [this, World, OwnerActor, AreaCenter, Damage, Target, i, InitialYaw]() {
           // 校验 World 和 Owner 仍然有效
           if (!IsValid(OwnerActor) || !World) {
             return;
           }
           SpawnDesignatedAreaProjectile(World, OwnerActor, AreaCenter, Damage,
-                                        Target, i);
+                                        Target, i, InitialYaw);
         });
 
     World->GetTimerManager().SetTimer(TimerHandle, TimerDelegate, Delay, false);
@@ -614,10 +617,11 @@ void UAN_XBSpawnSkillActor::StartDesignatedAreaSpawn(UWorld *World,
  * @param Damage 伤害值
  * @param Target 目标Actor
  * @param Index 当前索引（用于调试）
+ * @param InitialYaw 初始朝向（在生成开始时获取一次）
  */
 void UAN_XBSpawnSkillActor::SpawnDesignatedAreaProjectile(
     UWorld *World, AActor *OwnerActor, const FVector &AreaCenter, float Damage,
-    AActor *Target, int32 Index) const {
+    AActor *Target, int32 Index, float InitialYaw) const {
   if (!World || !OwnerActor || !SpawnConfig.ActorClass) {
     return;
   }
@@ -643,17 +647,15 @@ void UAN_XBSpawnSkillActor::SpawnDesignatedAreaProjectile(
   // 添加高度
   SpawnLocation.Z += SpawnConfig.SpawnHeight;
 
-  // ✨ 修改 - 计算统一斜向下飞行方向
-  // 使用施法者朝向作为基础 Yaw，RotationOffset 作为统一偏移
-  // 这样所有投射物都朝同一方向飞行（从天空斜下方射向地面）
-  const float OwnerYaw = OwnerActor->GetActorRotation().Yaw;
+  // ✨ 修复 - 使用传入的 InitialYaw（生成开始时获取的固定值）
+  // 这样即使角色移动/旋转，所有投射物仍朝同一方向飞行
 
   // 俯仰角使用配置的随机范围（通常是负值，表示向下）
   const float RandomPitch = FMath::RandRange(SpawnConfig.ArrowPitchRange.X,
                                              SpawnConfig.ArrowPitchRange.Y);
 
-  // 基础朝向 = 施法者朝向 + RotationOffset.Yaw（允许微调）
-  const float FinalYaw = OwnerYaw + SpawnConfig.RotationOffset.Yaw;
+  // 基础朝向 = 初始朝向 + RotationOffset.Yaw（允许微调）
+  const float FinalYaw = InitialYaw + SpawnConfig.RotationOffset.Yaw;
 
   // 最终旋转 = 俯仰角 + RotationOffset.Pitch（允许整体调整倾斜角度）
   const float FinalPitch = RandomPitch + SpawnConfig.RotationOffset.Pitch;
