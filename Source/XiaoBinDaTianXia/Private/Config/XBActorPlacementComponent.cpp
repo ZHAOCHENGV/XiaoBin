@@ -419,9 +419,6 @@ AActor *UXBActorPlacementComponent::ConfirmPlacement() {
                *NewActor->GetName());
       }
     }
-
-    // 清理配置状态
-    bHasPendingConfig = false;
   }
 
   // 记录放置数据
@@ -433,15 +430,20 @@ AActor *UXBActorPlacementComponent::ConfirmPlacement() {
   PlacedData.Rotation = PreviewRotation;
   PlacedData.Scale = Entry->DefaultScale;
 
-  // ✨ 新增 - 保存主将配置数据（如果有）
+  // ✨ 修复 - 在清理状态前保存主将配置数据（如果有）
   if (bHasPendingConfig) {
     PlacedData.bHasLeaderConfig = true;
     PlacedData.LeaderConfigData = PendingConfigData;
     UE_LOG(LogXBConfig, Log,
-           TEXT("[放置组件] 保存主将配置: 阵营=%d, 主将行=%s, 士兵数=%d"),
+           TEXT("[放置组件] 保存主将配置: 阵营=%d, 主将行=%s, 士兵数=%d, "
+                "显示名=%s"),
            static_cast<int32>(PendingConfigData.Faction),
            *PendingConfigData.GameConfig.LeaderConfigRowName.ToString(),
-           PendingConfigData.GameConfig.InitialSoldierCount);
+           PendingConfigData.GameConfig.InitialSoldierCount,
+           *PendingConfigData.GameConfig.LeaderDisplayName);
+
+    // ✨ 清理配置状态（移到这里，在记录配置后）
+    bHasPendingConfig = false;
   }
 
   PlacedActors.Add(PlacedData);
@@ -568,7 +570,31 @@ void UXBActorPlacementComponent::RestoreFromSaveData(
     const TArray<FXBPlacedActorData> &SavedData) {
   UWorld *World = GetWorld();
   if (!World) {
+    UE_LOG(LogXBConfig, Error, TEXT("[放置组件-恢复] World 为空，无法恢复"));
     return;
+  }
+
+  // ========== 恢复前日志 ==========
+  UE_LOG(LogXBConfig, Log,
+         TEXT("[放置组件-恢复] 开始恢复，存档中有 %d 个 Actor"),
+         SavedData.Num());
+
+  for (int32 i = 0; i < SavedData.Num(); ++i) {
+    const FXBPlacedActorData &Data = SavedData[i];
+    UE_LOG(LogXBConfig, Log,
+           TEXT("[放置组件-恢复] 存档[%d]: 类=%s, bHasLeaderConfig=%s"), i,
+           *Data.ActorClassPath.ToString(),
+           Data.bHasLeaderConfig ? TEXT("true") : TEXT("false"));
+
+    if (Data.bHasLeaderConfig) {
+      UE_LOG(LogXBConfig, Log,
+             TEXT("[放置组件-恢复]   配置: Faction=%d, 主将行=%s, 显示名=%s, "
+                  "士兵数=%d"),
+             static_cast<int32>(Data.LeaderConfigData.Faction),
+             *Data.LeaderConfigData.GameConfig.LeaderConfigRowName.ToString(),
+             *Data.LeaderConfigData.GameConfig.LeaderDisplayName,
+             Data.LeaderConfigData.GameConfig.InitialSoldierCount);
+    }
   }
 
   // 清空当前已放置的 Actor
@@ -583,7 +609,7 @@ void UXBActorPlacementComponent::RestoreFromSaveData(
   for (const FXBPlacedActorData &SavedItem : SavedData) {
     UClass *ActorClass = SavedItem.ActorClassPath.TryLoadClass<AActor>();
     if (!ActorClass) {
-      UE_LOG(LogXBConfig, Warning, TEXT("[放置组件] 无法加载类: %s"),
+      UE_LOG(LogXBConfig, Warning, TEXT("[放置组件-恢复] 无法加载类: %s"),
              *SavedItem.ActorClassPath.ToString());
       continue;
     }
@@ -1502,14 +1528,18 @@ bool UXBActorPlacementComponent::SavePlacementToSlot(const FString &SlotName) {
   const FString FullSlotName =
       FString::Printf(TEXT("XBPlacement_%s"), *SlotName);
 
-  UXBPlacementSaveGame *SaveGame = Cast<UXBPlacementSaveGame>(
-      UGameplayStatics::LoadGameFromSlot(FullSlotName, 0));
-
-  if (!SaveGame) {
-    SaveGame =
-        Cast<UXBPlacementSaveGame>(UGameplayStatics::CreateSaveGameObject(
-            UXBPlacementSaveGame::StaticClass()));
+  // ✨ 新增 - 检测同名存档是否已存在
+  if (UGameplayStatics::DoesSaveGameExist(FullSlotName, 0)) {
+    UE_LOG(LogXBConfig, Warning,
+           TEXT("[放置组件] 保存失败：同名存档已存在 "
+                "'%s'，请使用其他名称或删除旧存档"),
+           *SlotName);
+    return false;
   }
+
+  UXBPlacementSaveGame *SaveGame =
+      Cast<UXBPlacementSaveGame>(UGameplayStatics::CreateSaveGameObject(
+          UXBPlacementSaveGame::StaticClass()));
 
   if (!SaveGame) {
     UE_LOG(LogXBConfig, Error, TEXT("[放置组件] 保存失败：无法创建存档对象"));
@@ -1521,6 +1551,31 @@ bool UXBActorPlacementComponent::SavePlacementToSlot(const FString &SlotName) {
   SaveData.SaveName = SlotName;
   SaveData.SaveTime = FDateTime::Now();
   SaveData.PlacedActors = PlacedActors;
+
+  // ========== 详细调试日志 ==========
+  UE_LOG(LogXBConfig, Log,
+         TEXT("[放置组件-保存] 开始保存槽位: %s，Actor数量: %d"), *SlotName,
+         PlacedActors.Num());
+
+  for (int32 i = 0; i < PlacedActors.Num(); ++i) {
+    const FXBPlacedActorData &Data = PlacedActors[i];
+    UE_LOG(LogXBConfig, Log,
+           TEXT("[放置组件-保存] Actor[%d]: 类=%s, 位置=(%0.1f, %0.1f, %0.1f), "
+                "bHasLeaderConfig=%s"),
+           i, *Data.ActorClassPath.ToString(), Data.Location.X, Data.Location.Y,
+           Data.Location.Z,
+           Data.bHasLeaderConfig ? TEXT("true") : TEXT("false"));
+
+    if (Data.bHasLeaderConfig) {
+      UE_LOG(LogXBConfig, Log,
+             TEXT("[放置组件-保存]   配置: Faction=%d, 主将行=%s, 显示名=%s, "
+                  "士兵数=%d"),
+             static_cast<int32>(Data.LeaderConfigData.Faction),
+             *Data.LeaderConfigData.GameConfig.LeaderConfigRowName.ToString(),
+             *Data.LeaderConfigData.GameConfig.LeaderDisplayName,
+             Data.LeaderConfigData.GameConfig.InitialSoldierCount);
+    }
+  }
 
   // 添加或更新存档
   bool bFound = false;
