@@ -10,7 +10,9 @@
 
 #pragma once
 
+#include "Config/XBLeaderSpawnConfigData.h"
 #include "CoreMinimal.h"
+#include "GameFramework/SaveGame.h"
 #include "GameplayTagContainer.h"
 #include "UMG.h"
 #include "XBPlacementTypes.generated.h"
@@ -154,6 +156,67 @@ struct FXBPlacedActorData {
   FRotator Rotation = FRotator::ZeroRotator;
 
   /** 放置缩放 */
-  UPROPERTY(BlueprintReadOnly, Category = "放置数据")
+  UPROPERTY(BlueprintReadWrite, Category = "放置数据")
   FVector Scale = FVector::OneVector;
+
+  /** 主将配置数据（仅主将类型有效） */
+  UPROPERTY(BlueprintReadWrite, Category = "放置数据",
+            meta = (DisplayName = "主将配置数据"))
+  FXBLeaderSpawnConfigData LeaderConfigData;
+
+  /** 是否包含主将配置 */
+  UPROPERTY(BlueprintReadWrite, Category = "放置数据",
+            meta = (DisplayName = "包含主将配置"))
+  bool bHasLeaderConfig = false;
+};
+
+// ============ 放置存档数据 ============
+
+/**
+ * @brief 放置存档数据
+ * @note 用于保存配置阶段放置的 Actor 数据
+ */
+USTRUCT(BlueprintType)
+struct FXBPlacementSaveData {
+  GENERATED_BODY()
+
+  /** 存档槽位名称（用于文件系统） */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "放置存档",
+            meta = (DisplayName = "槽位名称"))
+  FString SaveName;
+
+  /** 存档显示名称（用户自定义，用于 UI 显示） */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "放置存档",
+            meta = (DisplayName = "显示名称"))
+  FString DisplayName;
+
+  /** 存档时间 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "放置存档",
+            meta = (DisplayName = "存档时间"))
+  FDateTime SaveTime;
+
+  /** 已放置的 Actor 数据 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "放置存档",
+            meta = (DisplayName = "放置数据"))
+  TArray<FXBPlacedActorData> PlacedActors;
+};
+
+/**
+ * @brief 放置存档类
+ * @note 专门用于保存放置数据的存档
+ */
+UCLASS()
+class XIAOBINDATIANXIA_API UXBPlacementSaveGame : public USaveGame {
+  GENERATED_BODY()
+
+public:
+  /** 放置存档列表 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Save",
+            meta = (DisplayName = "放置存档列表"))
+  TArray<FXBPlacementSaveData> PlacementSaves;
+
+  /** 存档槽位名称列表 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Save",
+            meta = (DisplayName = "槽位名称列表"))
+  TArray<FString> SlotNames;
 };

@@ -233,6 +233,50 @@ public:
             meta = (DisplayName = "设置放置配置"))
   void SetPlacementConfig(UXBPlacementConfigAsset *Config);
 
+  // ============ 存档系统接口 ============
+
+  /**
+   * @brief 保存当前放置数据到指定槽位
+   * @param SlotName 存档槽位名称
+   * @return 是否保存成功
+   */
+  UFUNCTION(BlueprintCallable, Category = "放置系统|存档",
+            meta = (DisplayName = "保存放置数据"))
+  bool SavePlacementToSlot(const FString &SlotName);
+
+  /**
+   * @brief 从指定槽位读取放置数据
+   * @param SlotName 存档槽位名称
+   * @return 是否读取成功
+   */
+  UFUNCTION(BlueprintCallable, Category = "放置系统|存档",
+            meta = (DisplayName = "读取放置数据"))
+  bool LoadPlacementFromSlot(const FString &SlotName);
+
+  /**
+   * @brief 获取所有放置存档槽位名称
+   * @return 槽位名称数组
+   */
+  UFUNCTION(BlueprintCallable, Category = "放置系统|存档",
+            meta = (DisplayName = "获取放置存档列表"))
+  TArray<FString> GetPlacementSaveSlotNames() const;
+
+  /**
+   * @brief 删除指定放置存档
+   * @param SlotName 存档槽位名称
+   * @return 是否删除成功
+   */
+  UFUNCTION(BlueprintCallable, Category = "放置系统|存档",
+            meta = (DisplayName = "删除放置存档"))
+  bool DeletePlacementSave(const FString &SlotName);
+
+  /**
+   * @brief 清除当前所有放置的 Actor
+   */
+  UFUNCTION(BlueprintCallable, Category = "放置系统|存档",
+            meta = (DisplayName = "清除所有放置"))
+  void ClearAllPlacedActors();
+
   // ============ 代理事件 ============
 
   /** 放置状态变更事件 */

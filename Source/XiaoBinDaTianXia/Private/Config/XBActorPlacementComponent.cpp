@@ -1422,3 +1422,213 @@ void UXBActorPlacementComponent::HandleLeaderConfigCancelled() {
   // 清理配置数据
   bHasPendingConfig = false;
 }
+
+// ============ 存档系统实现 ============
+
+/**
+ * @brief 保存当前放置数据到指定槽位
+ */
+bool UXBActorPlacementComponent::SavePlacementToSlot(const FString &SlotName) {
+  if (SlotName.IsEmpty()) {
+    UE_LOG(LogXBConfig, Warning, TEXT("[放置组件] 保存失败：槽位名称为空"));
+    return false;
+  }
+
+  // 获取或创建存档
+  const FString FullSlotName =
+      FString::Printf(TEXT("XBPlacement_%s"), *SlotName);
+
+  UXBPlacementSaveGame *SaveGame = Cast<UXBPlacementSaveGame>(
+      UGameplayStatics::LoadGameFromSlot(FullSlotName, 0));
+
+  if (!SaveGame) {
+    SaveGame =
+        Cast<UXBPlacementSaveGame>(UGameplayStatics::CreateSaveGameObject(
+            UXBPlacementSaveGame::StaticClass()));
+  }
+
+  if (!SaveGame) {
+    UE_LOG(LogXBConfig, Error, TEXT("[放置组件] 保存失败：无法创建存档对象"));
+    return false;
+  }
+
+  // 创建存档数据
+  FXBPlacementSaveData SaveData;
+  SaveData.SaveName = SlotName;
+  SaveData.SaveTime = FDateTime::Now();
+  SaveData.PlacedActors = PlacedActors;
+
+  // 添加或更新存档
+  bool bFound = false;
+  for (FXBPlacementSaveData &Existing : SaveGame->PlacementSaves) {
+    if (Existing.SaveName == SlotName) {
+      Existing = SaveData;
+      bFound = true;
+      break;
+    }
+  }
+
+  if (!bFound) {
+    SaveGame->PlacementSaves.Add(SaveData);
+    SaveGame->SlotNames.AddUnique(SlotName);
+  }
+
+  // 保存到磁盘
+  if (!UGameplayStatics::SaveGameToSlot(SaveGame, FullSlotName, 0)) {
+    UE_LOG(LogXBConfig, Error, TEXT("[放置组件] 保存失败：写入磁盘失败"));
+    return false;
+  }
+
+  // ========== 更新索引文件 ==========
+  const FString IndexSlotName = TEXT("XBPlacement_Index");
+
+  UXBPlacementSaveGame *IndexSave = Cast<UXBPlacementSaveGame>(
+      UGameplayStatics::LoadGameFromSlot(IndexSlotName, 0));
+
+  if (!IndexSave) {
+    IndexSave =
+        Cast<UXBPlacementSaveGame>(UGameplayStatics::CreateSaveGameObject(
+            UXBPlacementSaveGame::StaticClass()));
+  }
+
+  if (IndexSave) {
+    // 添加新槽位名到索引
+    IndexSave->SlotNames.AddUnique(SlotName);
+
+    // 保存索引文件
+    if (UGameplayStatics::SaveGameToSlot(IndexSave, IndexSlotName, 0)) {
+      UE_LOG(LogXBConfig, Log,
+             TEXT("[放置组件] 索引文件已更新，当前槽位数: %d"),
+             IndexSave->SlotNames.Num());
+    } else {
+      UE_LOG(LogXBConfig, Warning, TEXT("[放置组件] 索引文件更新失败"));
+    }
+  }
+
+  UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 保存成功：%s，共 %d 个 Actor"),
+         *SlotName, PlacedActors.Num());
+  return true;
+}
+
+/**
+ * @brief 从指定槽位读取放置数据
+ */
+bool UXBActorPlacementComponent::LoadPlacementFromSlot(
+    const FString &SlotName) {
+  if (SlotName.IsEmpty()) {
+    UE_LOG(LogXBConfig, Warning, TEXT("[放置组件] 读取失败：槽位名称为空"));
+    return false;
+  }
+
+  const FString FullSlotName =
+      FString::Printf(TEXT("XBPlacement_%s"), *SlotName);
+
+  UXBPlacementSaveGame *SaveGame = Cast<UXBPlacementSaveGame>(
+      UGameplayStatics::LoadGameFromSlot(FullSlotName, 0));
+
+  if (!SaveGame) {
+    UE_LOG(LogXBConfig, Warning, TEXT("[放置组件] 读取失败：存档不存在 %s"),
+           *SlotName);
+    return false;
+  }
+
+  // 查找对应的存档数据
+  const FXBPlacementSaveData *FoundData = nullptr;
+  for (const FXBPlacementSaveData &Data : SaveGame->PlacementSaves) {
+    if (Data.SaveName == SlotName) {
+      FoundData = &Data;
+      break;
+    }
+  }
+
+  if (!FoundData) {
+    UE_LOG(LogXBConfig, Warning, TEXT("[放置组件] 读取失败：未找到存档数据 %s"),
+           *SlotName);
+    return false;
+  }
+
+  // 清除当前放置的 Actor
+  ClearAllPlacedActors();
+
+  // 恢复放置的 Actor
+  RestoreFromSaveData(FoundData->PlacedActors);
+
+  UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 读取成功：%s，共恢复 %d 个 Actor"),
+         *SlotName, FoundData->PlacedActors.Num());
+  return true;
+}
+
+/**
+ * @brief 获取所有放置存档槽位名称
+ */
+TArray<FString> UXBActorPlacementComponent::GetPlacementSaveSlotNames() const {
+  TArray<FString> SlotNames;
+
+  // 遍历所有可能的存档槽位
+  // 由于 UE4/5 没有直接列举存档的 API，我们使用索引文件
+  const FString IndexSlotName = TEXT("XBPlacement_Index");
+
+  UXBPlacementSaveGame *IndexSave = Cast<UXBPlacementSaveGame>(
+      UGameplayStatics::LoadGameFromSlot(IndexSlotName, 0));
+
+  if (IndexSave) {
+    SlotNames = IndexSave->SlotNames;
+  }
+
+  return SlotNames;
+}
+
+/**
+ * @brief 删除指定放置存档
+ */
+bool UXBActorPlacementComponent::DeletePlacementSave(const FString &SlotName) {
+  if (SlotName.IsEmpty()) {
+    return false;
+  }
+
+  const FString FullSlotName =
+      FString::Printf(TEXT("XBPlacement_%s"), *SlotName);
+
+  if (!UGameplayStatics::DeleteGameInSlot(FullSlotName, 0)) {
+    UE_LOG(LogXBConfig, Warning, TEXT("[放置组件] 删除存档失败：%s"),
+           *SlotName);
+    return false;
+  }
+
+  UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 已删除存档：%s"), *SlotName);
+
+  // ========== 更新索引文件 ==========
+  const FString IndexSlotName = TEXT("XBPlacement_Index");
+
+  UXBPlacementSaveGame *IndexSave = Cast<UXBPlacementSaveGame>(
+      UGameplayStatics::LoadGameFromSlot(IndexSlotName, 0));
+
+  if (IndexSave) {
+    // 从索引中移除槽位名
+    IndexSave->SlotNames.Remove(SlotName);
+
+    // 保存索引文件
+    if (UGameplayStatics::SaveGameToSlot(IndexSave, IndexSlotName, 0)) {
+      UE_LOG(LogXBConfig, Log,
+             TEXT("[放置组件] 索引文件已更新，剩余槽位数: %d"),
+             IndexSave->SlotNames.Num());
+    }
+  }
+
+  return true;
+}
+
+/**
+ * @brief 清除当前所有放置的 Actor
+ */
+void UXBActorPlacementComponent::ClearAllPlacedActors() {
+  for (FXBPlacedActorData &Data : PlacedActors) {
+    if (Data.PlacedActor.IsValid()) {
+      Data.PlacedActor->Destroy();
+    }
+  }
+
+  PlacedActors.Empty();
+
+  UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 已清除所有放置的 Actor"));
+}

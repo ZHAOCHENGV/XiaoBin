@@ -2,154 +2,170 @@
 
 #pragma once
 
+#include "Army/XBSoldierTypes.h"
 #include "CoreMinimal.h"
 #include "GameFramework/SaveGame.h"
-#include "Army/XBSoldierTypes.h"
 #include "XBSaveGame.generated.h"
 
 /**
  * 场景物件存档数据
  */
 USTRUCT(BlueprintType)
-struct FXBSceneObjectData
-{
-    GENERATED_BODY()
+struct FXBSceneObjectData {
+  GENERATED_BODY()
 
-    /** 物件类型 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "物件类型"))
-    FString ObjectType;
+  /** 物件类型 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "物件类型"))
+  FString ObjectType;
 
-    /** 位置 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "位置"))
-    FVector Location = FVector::ZeroVector;
+  /** 位置 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "位置"))
+  FVector Location = FVector::ZeroVector;
 
-    /** 旋转 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "旋转"))
-    FRotator Rotation = FRotator::ZeroRotator;
+  /** 旋转 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "旋转"))
+  FRotator Rotation = FRotator::ZeroRotator;
 
-    /** 缩放 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "缩放"))
-    FVector Scale = FVector::OneVector;
+  /** 缩放 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "缩放"))
+  FVector Scale = FVector::OneVector;
 
-    /** 额外数据（JSON格式） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "额外数据"))
-    FString ExtraData;
+  /** 额外数据（JSON格式） */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "额外数据"))
+  FString ExtraData;
 };
 
 /**
  * 游戏配置存档数据
  */
 USTRUCT(BlueprintType)
-struct FXBGameConfigData
-{
-    GENERATED_BODY()
-    /** 主将名称 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "自定义主将名称"))
-    FString LeaderDisplayName;
-    
-    /** 主将配置行 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "主将配置行"))
-    FName LeaderConfigRowName;
-    
-    /** 假人主将移动方式 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "假人主将移动方式"))
-    FName LeaderDummyMoveMode;
-    
-    /** 主将生命值倍率 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "主将生命值倍率"))
-    float LeaderHealthMultiplier = 1.0f;
+struct FXBGameConfigData {
+  GENERATED_BODY()
+  /** 主将名称 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite,
+            meta = (DisplayName = "自定义主将名称"))
+  FString LeaderDisplayName;
 
-    /** 主将攻击倍率 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "主将攻击倍率"))
-    float LeaderDamageMultiplier = 1.0f;
+  /** 主将配置行 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite,
+            meta = (DisplayName = "主将配置行"))
+  FName LeaderConfigRowName;
 
-    /** 主将移动速度 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "主将移动速度"))
-    float LeaderMoveSpeed = 600.0f;
+  /** 假人主将移动方式 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite,
+            meta = (DisplayName = "假人主将移动方式"))
+  FName LeaderDummyMoveMode;
 
-    /** 主将冲刺速度倍率 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "主将冲刺速度倍率"))
-    float LeaderSprintSpeedMultiplier = 1.5f;
+  /** 主将生命值倍率 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite,
+            meta = (DisplayName = "主将生命值倍率"))
+  float LeaderHealthMultiplier = 1.0f;
 
-    /** 主将冲刺持续时间 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "主将冲刺持续时间", ClampMin = "0.0"))
-    float LeaderSprintDuration = 1.0f;
+  /** 主将攻击倍率 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite,
+            meta = (DisplayName = "主将攻击倍率"))
+  float LeaderDamageMultiplier = 1.0f;
 
-    /** 主将初始大小 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "主将初始大小"))
-    float LeaderInitialScale = 1.0f;
+  /** 主将移动速度 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite,
+            meta = (DisplayName = "主将移动速度"))
+  float LeaderMoveSpeed = 600.0f;
 
-    /** 主将最大体型大小 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "主将最大体型大小"))
-    float LeaderMaxScale = 3.0f;
+  /** 主将冲刺速度倍率 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite,
+            meta = (DisplayName = "主将冲刺速度倍率"))
+  float LeaderSprintSpeedMultiplier = 1.5f;
 
-    /** 每士兵伤害加成倍率 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "每士兵伤害加成倍率"))
-    float LeaderDamageMultiplierPerSoldier = 0.01f;
+  /** 主将冲刺持续时间 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite,
+            meta = (DisplayName = "主将冲刺持续时间", ClampMin = "0.0"))
+  float LeaderSprintDuration = 1.0f;
 
-    /** 主将死亡掉落士兵数量 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "主将死亡掉落士兵数量"))
-    int32 LeaderDeathDropCount = 5;
+  /** 主将初始大小 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite,
+            meta = (DisplayName = "主将初始大小"))
+  float LeaderInitialScale = 1.0f;
 
-    /** 士兵生命值倍率 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "士兵生命值倍率"))
-    float SoldierHealthMultiplier = 1.0f;
+  /** 主将最大体型大小 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite,
+            meta = (DisplayName = "主将最大体型大小"))
+  float LeaderMaxScale = 3.0f;
 
-    /** 士兵伤害倍率 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "士兵伤害倍率"))
-    float SoldierDamageMultiplier = 1.0f;
+  /** 每士兵伤害加成倍率 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite,
+            meta = (DisplayName = "每士兵伤害加成倍率"))
+  float LeaderDamageMultiplierPerSoldier = 0.01f;
 
-    /** 获取士兵的缩放比例 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "获取士兵的缩放比例"))
-    float SoldierScalePerRecruit = 0.1f;
+  /** 主将死亡掉落士兵数量 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite,
+            meta = (DisplayName = "主将死亡掉落士兵数量"))
+  int32 LeaderDeathDropCount = 5;
 
-    /** 获取士兵的回复效果 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "获取士兵的回复效果"))
-    float SoldierHealthPerRecruit = 50.0f;
+  /** 士兵生命值倍率 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite,
+            meta = (DisplayName = "士兵生命值倍率"))
+  float SoldierHealthMultiplier = 1.0f;
 
-    /** 士兵初始大小 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "士兵初始大小"))
-    float SoldierInitialScale = 1.0f;
+  /** 士兵伤害倍率 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite,
+            meta = (DisplayName = "士兵伤害倍率"))
+  float SoldierDamageMultiplier = 1.0f;
 
-    /** 磁场范围 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "磁场范围"))
-    float MagnetFieldRadius = 300.0f;
+  /** 获取士兵的缩放比例 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite,
+            meta = (DisplayName = "获取士兵的缩放比例"))
+  float SoldierScalePerRecruit = 0.1f;
 
-    /** 初始兵种行 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "初始兵种配置行"))
-    FName InitialSoldierRowName;
+  /** 获取士兵的回复效果 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite,
+            meta = (DisplayName = "获取士兵的回复效果"))
+  float SoldierHealthPerRecruit = 50.0f;
 
-    /** 初始带兵数 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "初始带兵数"))
-    int32 InitialSoldierCount = 0;
-    
-    /** 地图选项 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "地图选项"))
-    FName SelectedMapName;
+  /** 士兵初始大小 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite,
+            meta = (DisplayName = "士兵初始大小"))
+  float SoldierInitialScale = 1.0f;
+
+  /** 磁场范围 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "磁场范围"))
+  float MagnetFieldRadius = 300.0f;
+
+  /** 初始兵种行 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite,
+            meta = (DisplayName = "初始兵种配置行"))
+  FName InitialSoldierRowName;
+
+  /** 初始带兵数 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite,
+            meta = (DisplayName = "初始带兵数"))
+  int32 InitialSoldierCount = 0;
+
+  /** 地图选项 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "地图选项"))
+  FName SelectedMapName;
 };
 
 /**
  * 存档类
  */
 UCLASS()
-class XIAOBINDATIANXIA_API UXBSaveGame : public USaveGame
-{
-    GENERATED_BODY()
+class XIAOBINDATIANXIA_API UXBSaveGame : public USaveGame {
+  GENERATED_BODY()
 
 public:
-    UXBSaveGame();
+  UXBSaveGame();
 
+  // ============ 游戏配置 ============
 
+  /** 游戏配置数据 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Save",
+            meta = (DisplayName = "游戏配置数据"))
+  FXBGameConfigData GameConfig;
 
-    // ============ 游戏配置 ============
+  // ============ 场景数据 ============
 
-    /** 游戏配置数据 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Save", meta = (DisplayName = "游戏配置数据"))
-    FXBGameConfigData GameConfig;
-
-    // ============ 场景数据 ============
-
-    /** 场景物件列表 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Save", meta = (DisplayName = "场景物件列表"))
-    TArray<FXBSceneObjectData> SceneObjects;
+  /** 场景物件列表 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Save",
+            meta = (DisplayName = "场景物件列表"))
+  TArray<FXBSceneObjectData> SceneObjects;
 };
