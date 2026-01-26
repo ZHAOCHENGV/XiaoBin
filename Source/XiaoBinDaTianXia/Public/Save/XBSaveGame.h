@@ -135,6 +135,12 @@ struct FXBGameConfigData {
             meta = (DisplayName = "初始兵种配置行"))
   FName InitialSoldierRowName;
 
+  // ✨ 新增 - 士兵类型选择（用于UI选择，应用配置时自动解析士兵行名）
+  /** 选择的士兵类型（UI选择用，应用配置时会自动根据主将名称解析实际士兵行名） */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite,
+            meta = (DisplayName = "士兵类型"))
+  EXBSoldierType SelectedSoldierType = EXBSoldierType::Infantry;
+
   /** 初始带兵数 */
   UPROPERTY(EditAnywhere, BlueprintReadWrite,
             meta = (DisplayName = "初始带兵数"))

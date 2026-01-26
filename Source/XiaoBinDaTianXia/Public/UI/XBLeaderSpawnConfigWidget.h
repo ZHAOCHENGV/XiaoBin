@@ -12,6 +12,7 @@
 
 #include "Blueprint/UserWidget.h"
 #include "Config/XBLeaderSpawnConfigData.h"
+#include "Army/XBSoldierTypes.h"
 #include "CoreMinimal.h"
 #include "XBLeaderSpawnConfigWidget.generated.h"
 
@@ -117,6 +118,28 @@ public:
   UFUNCTION(BlueprintCallable, Category = "XB|主将配置",
             meta = (DisplayName = "获取士兵配置行列表"))
   TArray<FName> GetSoldierRowNames() const;
+
+  // ✨ 新增 - 士兵类型选择接口（根据主将自动匹配）
+
+  /**
+   * @brief 获取可用士兵类型列表
+   * @return 士兵类型枚举数组
+   * @note 返回 Infantry/Archer/Cavalry 供 UI 选择
+   */
+  UFUNCTION(BlueprintCallable, Category = "XB|主将配置",
+            meta = (DisplayName = "获取士兵类型列表"))
+  TArray<EXBSoldierType> GetSoldierTypes() const;
+
+  /**
+   * @brief 根据主将名称和士兵类型获取对应的士兵行名
+   * @param LeaderRowName 主将行名（如：李世民）
+   * @param SoldierType 士兵类型（如：Cavalry）
+   * @return 匹配的士兵行名（如：李世民_玄甲铁骑），未找到返回 NAME_None
+   * @note 士兵行名格式：{主将名称}_{士兵名称}
+   */
+  UFUNCTION(BlueprintCallable, Category = "XB|主将配置",
+            meta = (DisplayName = "根据类型获取士兵行名"))
+  FName GetSoldierRowNameByType(FName LeaderRowName, EXBSoldierType SoldierType) const;
 
   // ============ 代理事件 ============
 

@@ -136,6 +136,26 @@ public:
             meta = (DisplayName = "获取士兵配置行列表"))
   TArray<FName> GetSoldierRowNames() const;
 
+  // ✨ 新增 - 士兵类型选择接口（根据主将自动匹配）
+
+  /**
+   * @brief 获取可用士兵类型列表
+   * @return 士兵类型枚举数组
+   */
+  UFUNCTION(BlueprintCallable, Category = "XB|Config",
+            meta = (DisplayName = "获取士兵类型列表"))
+  TArray<EXBSoldierType> GetSoldierTypes() const;
+
+  /**
+   * @brief 根据主将名称和士兵类型获取对应的士兵行名
+   * @param LeaderRowName 主将行名
+   * @param SoldierType 士兵类型
+   * @return 匹配的士兵行名，未找到返回 NAME_None
+   */
+  UFUNCTION(BlueprintCallable, Category = "XB|Config",
+            meta = (DisplayName = "根据类型获取士兵行名"))
+  FName GetSoldierRowNameByType(FName LeaderRowName, EXBSoldierType SoldierType) const;
+
 public:
   // ==================== UI 数据 ====================
 

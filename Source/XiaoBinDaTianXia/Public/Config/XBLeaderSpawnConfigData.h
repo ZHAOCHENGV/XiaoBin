@@ -35,6 +35,12 @@ struct XIAOBINDATIANXIA_API FXBLeaderSpawnConfigData {
             meta = (DisplayName = "游戏配置"))
   FXBGameConfigData GameConfig;
 
+  // ✨ 新增 - 士兵类型选择（用于UI选择，确认时自动解析士兵行名）
+  /** 选择的士兵类型（UI选择用，确认时会自动根据主将名称解析实际士兵行名） */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "主将配置",
+            meta = (DisplayName = "士兵类型"))
+  EXBSoldierType SelectedSoldierType = EXBSoldierType::Infantry;
+
   // ==================== 便捷访问方法 ====================
 
   /** 获取主将配置行名 */
