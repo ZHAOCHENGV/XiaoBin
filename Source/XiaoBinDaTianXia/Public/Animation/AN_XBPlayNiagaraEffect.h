@@ -10,10 +10,10 @@
 
 #pragma once
 
-#include "AN_XBPlayNiagaraEffect.generated.h"
+
 #include "Animation/AnimNotifies/AnimNotify.h"
 #include "CoreMinimal.h"
-
+#include "AN_XBPlayNiagaraEffect.generated.h"
 
 class UNiagaraSystem;
 class UFXSystemComponent;
