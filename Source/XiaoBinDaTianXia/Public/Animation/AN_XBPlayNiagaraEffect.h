@@ -95,8 +95,26 @@ public:
 
   /** @brief 要附着的插槽名称 */
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "附着配置",
-            meta = (DisplayName = "插槽名称", AnimNotifyBoneName = "true"))
+            meta = (DisplayName = "插槽名称", AnimNotifyBoneName = "true",
+                    EditCondition = "Attached"))
   FName SocketName;
+
+  /** @brief 是否在地面生成特效（向下检测地面位置） */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "地面配置",
+            meta = (DisplayName = "在地面释放", EditCondition = "!Attached"))
+  bool bSpawnOnGround;
+
+  /** @brief 地面检测类型（用于向下射线检测） */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "地面配置",
+            meta = (DisplayName = "地面检测类型",
+                    EditCondition = "bSpawnOnGround && !Attached"))
+  TArray<TEnumAsByte<EObjectTypeQuery>> GroundTraceTypes;
+
+  /** @brief 地面检测距离（从角色位置向下检测的最大距离） */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "地面配置",
+            meta = (DisplayName = "地面检测距离", ClampMin = "10.0",
+                    EditCondition = "bSpawnOnGround && !Attached"))
+  float GroundTraceDistance;
 
   /** @brief 获取生成的特效组件 */
   UFUNCTION(BlueprintCallable, Category = "AnimNotify")

@@ -14,6 +14,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/World.h"
 #include "GAS/XBAttributeSet.h"
+#include "Kismet/KismetSystemLibrary.h"
 #include "Utils/XBLogCategories.h"
 
 #if WITH_EDITOR
@@ -32,6 +33,11 @@ UAN_XBPlayNiagaraEffect::UAN_XBPlayNiagaraEffect() : Super() {
   bScaleWithCharacter = true;
   CharacterScaleMultiplier = 1.0f;
   bScaleLocationOffset = true;
+  bSpawnOnGround = false;
+  GroundTraceDistance = 500.0f;
+  // 默认检测 WorldStatic 和 WorldDynamic
+  GroundTraceTypes.Add(UEngineTypes::ConvertToObjectType(ECC_WorldStatic));
+  GroundTraceTypes.Add(UEngineTypes::ConvertToObjectType(ECC_WorldDynamic));
 
 #if WITH_EDITORONLY_DATA
   NotifyColor = FColor(192, 255, 99, 255);
@@ -146,11 +152,45 @@ UAN_XBPlayNiagaraEffect::SpawnEffect(USkeletalMeshComponent *MeshComp,
     FRotator SpawnRotation;
 
     if (OwnerActor) {
-      // 使用角色脚底位置（ActorLocation 通常是胶囊体底部）
-      SpawnLocation =
+      // 默认使用角色朝向作为特效旋转 + 旋转偏移
+      SpawnRotation = OwnerActor->GetActorRotation() + RotationOffset;
+
+      // 计算基础位置（角色位置 + 旋转后的偏移）
+      FVector BaseLocation =
           OwnerActor->GetActorLocation() +
           OwnerActor->GetActorRotation().RotateVector(FinalLocationOffset);
-      SpawnRotation = OwnerActor->GetActorRotation() + RotationOffset;
+
+      // ✨ 地面检测功能
+      if (bSpawnOnGround && GroundTraceTypes.Num() > 0) {
+        FHitResult GroundHit;
+        FVector TraceStart = BaseLocation;
+        FVector TraceEnd = BaseLocation - FVector(0, 0, GroundTraceDistance);
+
+        TArray<AActor *> IgnoreActors;
+        IgnoreActors.Add(OwnerActor);
+
+        bool bHitGround = UKismetSystemLibrary::LineTraceSingleForObjects(
+            MeshComp->GetWorld(), TraceStart, TraceEnd, GroundTraceTypes,
+            false, // bTraceComplex
+            IgnoreActors, EDrawDebugTrace::None, GroundHit,
+            true // bIgnoreSelf
+        );
+
+        if (bHitGround) {
+          SpawnLocation = GroundHit.ImpactPoint;
+          UE_LOG(LogXBCombat, Verbose,
+                 TEXT("[地面检测] 命中地面: %s, 位置: (%.1f, %.1f, %.1f)"),
+                 *GroundHit.GetActor()->GetName(), SpawnLocation.X,
+                 SpawnLocation.Y, SpawnLocation.Z);
+        } else {
+          // 未命中地面，使用基础位置
+          SpawnLocation = BaseLocation;
+          UE_LOG(LogXBCombat, Verbose,
+                 TEXT("[地面检测] 未命中地面，使用基础位置"));
+        }
+      } else {
+        SpawnLocation = BaseLocation;
+      }
     } else {
       // 回退到插槽位置
       const FTransform MeshTransform = MeshComp->GetSocketTransform(SocketName);
