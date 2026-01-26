@@ -152,13 +152,19 @@ UAN_XBPlayNiagaraEffect::SpawnEffect(USkeletalMeshComponent *MeshComp,
     FRotator SpawnRotation;
 
     if (OwnerActor) {
-      // 默认使用角色朝向作为特效旋转 + 旋转偏移
-      SpawnRotation = OwnerActor->GetActorRotation() + RotationOffset;
+      // ✨ 使用插槽旋转作为基准（与附着模式保持一致）
+      // 附着模式下 RotationOffset 是相对于插槽的，非附着模式也应如此
+      FTransform SocketTransform = MeshComp->GetSocketTransform(
+          SocketName, ERelativeTransformSpace::RTS_World);
+      FRotator SocketRotation = SocketTransform.Rotator();
+
+      // 应用旋转偏移（相对于插槽旋转）
+      SpawnRotation =
+          (SocketTransform.GetRotation() * RotationOffsetQuat).Rotator();
 
       // 计算基础位置（角色位置 + 旋转后的偏移）
-      FVector BaseLocation =
-          OwnerActor->GetActorLocation() +
-          OwnerActor->GetActorRotation().RotateVector(FinalLocationOffset);
+      FVector BaseLocation = OwnerActor->GetActorLocation() +
+                             SocketRotation.RotateVector(FinalLocationOffset);
 
       // ✨ 地面检测功能
       if (bSpawnOnGround && GroundTraceTypes.Num() > 0) {
