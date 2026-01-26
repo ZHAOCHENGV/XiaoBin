@@ -24,7 +24,6 @@
 #include "Utils/XBLogCategories.h"
 #include "XBCollisionChannels.h"
 
-
 UAN_XBMeleeHit::UAN_XBMeleeHit() {
   DamageTag = FGameplayTag::RequestGameplayTag(FName("Damage.Base"), false);
 }

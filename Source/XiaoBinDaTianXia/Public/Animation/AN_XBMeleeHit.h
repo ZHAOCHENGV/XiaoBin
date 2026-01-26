@@ -11,12 +11,12 @@
 
 #pragma once
 
-#include "AN_XBMeleeHit.generated.h"
+
 #include "Animation/AnimNotifies/AnimNotify.h"
 #include "Army/XBSoldierTypes.h"
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
-
+#include "AN_XBMeleeHit.generated.h"
 
 /**
  * @brief 近战命中检测配置
