@@ -121,7 +121,7 @@ UAN_XBMeleeHit::PerformHitDetection(USkeletalMeshComponent *MeshComp) {
     FQuat EndRotationQuat =
         (CharacterRotation + HitConfig.EndRotationOffset).Quaternion();
     FVector DefaultDirection =
-        EndRotationQuat.RotateVector(FVector(100.0f, 0, 0)); // 朝前方向
+        EndRotationQuat.RotateVector(FVector(0, 0, 0)); // 朝前方向
     FVector RotatedEndOffset =
         EndRotationQuat.RotateVector(HitConfig.EndLocationOffset);
     EndLocation = StartLocation + DefaultDirection + RotatedEndOffset;
