@@ -1374,6 +1374,8 @@ void AXBCharacterBase::AssignTargetsToSoldiers(AXBCharacterBase *EnemyLeader) {
   if (AliveEnemySoldiers.Num() == 0) {
     for (AXBSoldierCharacter *Soldier : AliveSoldiers) {
       Soldier->ReceiveAssignedTarget(EnemyLeader);
+      // 🔧 新增 - 分配目标后立即触发进入战斗，无需等待检查周期
+      Soldier->EnterCombat();
       OnAssignTargetDelegate.Broadcast(Soldier, EnemyLeader);
     }
     return;
@@ -1430,6 +1432,8 @@ void AXBCharacterBase::AssignTargetsToSoldiers(AXBCharacterBase *EnemyLeader) {
       TargetCounts.FindOrAdd(BestTarget)++;
       // 通知士兵接收目标
       Soldier->ReceiveAssignedTarget(BestTarget);
+      // 🔧 新增 - 分配目标后立即触发进入战斗，无需等待检查周期
+      Soldier->EnterCombat();
       // 广播目标分配委托
       OnAssignTargetDelegate.Broadcast(Soldier, BestTarget);
     }
