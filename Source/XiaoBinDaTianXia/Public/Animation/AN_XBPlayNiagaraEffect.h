@@ -82,6 +82,12 @@ public:
                     EditCondition = "bScaleWithCharacter"))
   float CharacterScaleMultiplier;
 
+  /** @brief 位置偏移是否随角色大小自动调整 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "缩放配置",
+            meta = (DisplayName = "位置偏移随角色缩放",
+                    EditCondition = "bScaleWithCharacter"))
+  bool bScaleLocationOffset;
+
   /** @brief 是否附着到骨骼/插槽 */
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "附着配置",
             meta = (DisplayName = "附着到插槽"))

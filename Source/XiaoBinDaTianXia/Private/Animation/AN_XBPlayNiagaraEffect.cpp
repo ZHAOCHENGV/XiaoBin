@@ -16,7 +16,6 @@
 #include "GAS/XBAttributeSet.h"
 #include "Utils/XBLogCategories.h"
 
-
 #if WITH_EDITOR
 #include "Logging/MessageLog.h"
 #include "Misc/UObjectToken.h"
@@ -26,13 +25,13 @@
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraSystem.h"
 
-
 UAN_XBPlayNiagaraEffect::UAN_XBPlayNiagaraEffect() : Super() {
   Attached = true;
   Scale = FVector(1.f);
   bAbsoluteScale = false;
   bScaleWithCharacter = true;
   CharacterScaleMultiplier = 1.0f;
+  bScaleLocationOffset = true;
 
 #if WITH_EDITORONLY_DATA
   NotifyColor = FColor(192, 255, 99, 255);
@@ -112,12 +111,14 @@ UAN_XBPlayNiagaraEffect::SpawnEffect(USkeletalMeshComponent *MeshComp,
     return ReturnComp;
   }
 
+  AActor *OwnerActor = MeshComp ? MeshComp->GetOwner() : nullptr;
+
   // ✨ 核心功能 - 计算最终缩放
   FVector FinalScale = Scale;
+  float CharacterScale = 1.0f;
 
-  if (bScaleWithCharacter && MeshComp) {
-    AActor *OwnerActor = MeshComp->GetOwner();
-    float CharacterScale = GetOwnerScale(OwnerActor);
+  if (bScaleWithCharacter && OwnerActor) {
+    CharacterScale = GetOwnerScale(OwnerActor);
 
     // 在基础Scale上应用角色缩放
     FinalScale = Scale * CharacterScale * CharacterScaleMultiplier;
@@ -128,16 +129,38 @@ UAN_XBPlayNiagaraEffect::SpawnEffect(USkeletalMeshComponent *MeshComp,
            CharacterScale, FinalScale.X, FinalScale.Y, FinalScale.Z);
   }
 
+  // ✨ 计算最终位置偏移（可选随角色缩放）
+  FVector FinalLocationOffset = LocationOffset;
+  if (bScaleWithCharacter && bScaleLocationOffset) {
+    FinalLocationOffset = LocationOffset * CharacterScale;
+  }
+
   if (Attached) {
+    // 附着模式：附着到插槽，跟随角色移动
     ReturnComp = UNiagaraFunctionLibrary::SpawnSystemAttached(
-        Template, MeshComp, SocketName, LocationOffset, RotationOffset,
+        Template, MeshComp, SocketName, FinalLocationOffset, RotationOffset,
         EAttachLocation::KeepRelativeOffset, true);
   } else {
-    const FTransform MeshTransform = MeshComp->GetSocketTransform(SocketName);
+    // ✨ 非附着模式：在角色脚底生成，不跟随角色移动
+    FVector SpawnLocation;
+    FRotator SpawnRotation;
+
+    if (OwnerActor) {
+      // 使用角色脚底位置（ActorLocation 通常是胶囊体底部）
+      SpawnLocation =
+          OwnerActor->GetActorLocation() +
+          OwnerActor->GetActorRotation().RotateVector(FinalLocationOffset);
+      SpawnRotation = OwnerActor->GetActorRotation() + RotationOffset;
+    } else {
+      // 回退到插槽位置
+      const FTransform MeshTransform = MeshComp->GetSocketTransform(SocketName);
+      SpawnLocation = MeshTransform.TransformPosition(FinalLocationOffset);
+      SpawnRotation =
+          (MeshTransform.GetRotation() * RotationOffsetQuat).Rotator();
+    }
+
     ReturnComp = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-        MeshComp->GetWorld(), Template,
-        MeshTransform.TransformPosition(LocationOffset),
-        (MeshTransform.GetRotation() * RotationOffsetQuat).Rotator(),
+        MeshComp->GetWorld(), Template, SpawnLocation, SpawnRotation,
         FVector(1.0f), true);
   }
 
