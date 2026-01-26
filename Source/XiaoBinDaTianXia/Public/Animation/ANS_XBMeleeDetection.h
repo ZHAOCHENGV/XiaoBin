@@ -93,7 +93,7 @@ struct XIAOBINDATIANXIA_API FXBMeleeDetectionConfig
     }
 };
 
-UCLASS(meta = (DisplayName = "XB近战检测"))
+UCLASS(meta = (DisplayName = "XB主将近战检测"))
 class XIAOBINDATIANXIA_API UANS_XBMeleeDetection : public UAnimNotifyState
 {
     GENERATED_BODY()
