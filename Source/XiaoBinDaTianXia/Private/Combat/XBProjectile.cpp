@@ -23,6 +23,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "NiagaraComponent.h"
 #include "NiagaraFunctionLibrary.h"
+#include "XBCollisionChannels.h"
 #include "Soldier/XBSoldierCharacter.h"
 #include "Sound/XBSoundManagerSubsystem.h"
 #include "Utils/XBBlueprintFunctionLibrary.h"
