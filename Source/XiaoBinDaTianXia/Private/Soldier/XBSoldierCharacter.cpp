@@ -1358,6 +1358,11 @@ float AXBSoldierCharacter::GetAvoidanceWeight() const {
  * @note 🔧 修改 - 增加更多状态检查，防止掉落中或已入列的士兵被磁场抢走
  */
 bool AXBSoldierCharacter::CanBeRecruited() const {
+  // ✨ 新增 - 招募锁定状态检查（配置阶段锁定）
+  if (bRecruitmentLocked) {
+    return false;
+  }
+
   // 已招募
   if (bIsRecruited) {
     return false;

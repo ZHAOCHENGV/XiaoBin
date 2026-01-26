@@ -23,6 +23,8 @@
 #include "Game/XBGameMode.h"
 #include "Utils/XBGameplayTags.h"
 #include "Character/Components/XBCombatComponent.h"
+#include "Kismet/GameplayStatics.h"
+#include "Soldier/XBSoldierCharacter.h"
 
 AXBPlayerController::AXBPlayerController()
 {
@@ -681,6 +683,18 @@ void AXBPlayerController::HandleSpawnLeaderInput()
             if (GameMode->SpawnPlayerLeader(this))
             {
                 UE_LOG(LogTemp, Log, TEXT("已确认进入游戏阶段，主将生成完成"));
+
+                // ✨ 新增 - 游戏开始时解锁所有士兵的招募状态
+                TArray<AActor*> AllSoldiers;
+                UGameplayStatics::GetAllActorsOfClass(World, AXBSoldierCharacter::StaticClass(), AllSoldiers);
+                for (AActor* Actor : AllSoldiers)
+                {
+                    if (AXBSoldierCharacter* Soldier = Cast<AXBSoldierCharacter>(Actor))
+                    {
+                        Soldier->SetRecruitmentLocked(false);
+                    }
+                }
+                UE_LOG(LogTemp, Log, TEXT("已解锁 %d 名士兵的招募状态"), AllSoldiers.Num());
             }
             else
             {

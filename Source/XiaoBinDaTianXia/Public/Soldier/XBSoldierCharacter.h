@@ -542,6 +542,32 @@ public:
             meta = (DisplayName = "休眠态无敌"))
   bool bInvulnerableWhenDormant = true;
 
+  // ✨ 新增 - 招募锁定开关（配置阶段禁止磁场招募）
+  /**
+   * @brief 是否锁定招募（锁定时磁场无法招募此士兵）
+   * @note 用于配置阶段，防止放置的士兵被主将立即招募
+   *       游戏开始时调用 SetRecruitmentLocked(false) 解锁
+   */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "状态",
+            meta = (DisplayName = "锁定招募"))
+  bool bRecruitmentLocked = true;
+
+  /**
+   * @brief 设置招募锁定状态
+   * @param bLocked 是否锁定
+   */
+  UFUNCTION(BlueprintCallable, Category = "XB|Soldier",
+            meta = (DisplayName = "设置招募锁定"))
+  void SetRecruitmentLocked(bool bLocked) { bRecruitmentLocked = bLocked; }
+
+  /**
+   * @brief 获取招募锁定状态
+   * @return 是否被锁定
+   */
+  UFUNCTION(BlueprintPure, Category = "XB|Soldier",
+            meta = (DisplayName = "是否招募锁定"))
+  bool IsRecruitmentLocked() const { return bRecruitmentLocked; }
+
   // ==================== AI系统友元 ====================
 
   friend class AXBSoldierAIController;
