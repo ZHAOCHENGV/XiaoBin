@@ -1535,9 +1535,8 @@ bool UXBActorPlacementComponent::SavePlacementToSlot(const FString &SlotName) {
     return false;
   }
 
-  // 获取或创建存档
-  const FString FullSlotName =
-      FString::Printf(TEXT("XBPlacement_%s"), *SlotName);
+  // 🔧 修改 - 使用地图特定的存档路径
+  const FString FullSlotName = BuildPlacementSlotName(SlotName);
 
   // ✨ 新增 - 检测同名存档是否已存在
   if (UGameplayStatics::DoesSaveGameExist(FullSlotName, 0)) {
@@ -1609,8 +1608,8 @@ bool UXBActorPlacementComponent::SavePlacementToSlot(const FString &SlotName) {
     return false;
   }
 
-  // ========== 更新索引文件 ==========
-  const FString IndexSlotName = TEXT("XBPlacement_Index");
+  // 🔧 修改 - 使用地图特定的索引文件名
+  const FString IndexSlotName = GetPlacementIndexSlotName();
 
   UXBPlacementSaveGame *IndexSave = Cast<UXBPlacementSaveGame>(
       UGameplayStatics::LoadGameFromSlot(IndexSlotName, 0));
@@ -1650,8 +1649,8 @@ bool UXBActorPlacementComponent::LoadPlacementFromSlot(
     return false;
   }
 
-  const FString FullSlotName =
-      FString::Printf(TEXT("XBPlacement_%s"), *SlotName);
+  // 🔧 修改 - 使用地图特定的存档路径
+  const FString FullSlotName = BuildPlacementSlotName(SlotName);
 
   UXBPlacementSaveGame *SaveGame = Cast<UXBPlacementSaveGame>(
       UGameplayStatics::LoadGameFromSlot(FullSlotName, 0));
@@ -1695,8 +1694,8 @@ TArray<FString> UXBActorPlacementComponent::GetPlacementSaveSlotNames() const {
   TArray<FString> SlotNames;
 
   // 遍历所有可能的存档槽位
-  // 由于 UE4/5 没有直接列举存档的 API，我们使用索引文件
-  const FString IndexSlotName = TEXT("XBPlacement_Index");
+  // 🔧 修改 - 使用地图特定的索引文件名
+  const FString IndexSlotName = GetPlacementIndexSlotName();
 
   UXBPlacementSaveGame *IndexSave = Cast<UXBPlacementSaveGame>(
       UGameplayStatics::LoadGameFromSlot(IndexSlotName, 0));
@@ -1716,8 +1715,8 @@ bool UXBActorPlacementComponent::DeletePlacementSave(const FString &SlotName) {
     return false;
   }
 
-  const FString FullSlotName =
-      FString::Printf(TEXT("XBPlacement_%s"), *SlotName);
+  // 🔧 修改 - 使用地图特定的存档路径
+  const FString FullSlotName = BuildPlacementSlotName(SlotName);
 
   if (!UGameplayStatics::DeleteGameInSlot(FullSlotName, 0)) {
     UE_LOG(LogXBConfig, Warning, TEXT("[放置组件] 删除存档失败：%s"),
@@ -1727,8 +1726,8 @@ bool UXBActorPlacementComponent::DeletePlacementSave(const FString &SlotName) {
 
   UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 已删除存档：%s"), *SlotName);
 
-  // ========== 更新索引文件 ==========
-  const FString IndexSlotName = TEXT("XBPlacement_Index");
+  // 🔧 修改 - 使用地图特定的索引文件名
+  const FString IndexSlotName = GetPlacementIndexSlotName();
 
   UXBPlacementSaveGame *IndexSave = Cast<UXBPlacementSaveGame>(
       UGameplayStatics::LoadGameFromSlot(IndexSlotName, 0));
@@ -1799,3 +1798,28 @@ void UXBActorPlacementComponent::ClearAllPlacedActors() {
   UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 已清除所有放置的 Actor，共 %d 个"),
          DestroyedCount);
 }
+
+// ============ 地图存档辅助函数 ============
+
+FString UXBActorPlacementComponent::GetCurrentMapName() const {
+  if (UWorld* World = GetWorld()) {
+    // 获取当前地图名称（不含路径和后缀）
+    FString MapName = World->GetMapName();
+    // 移除 UEDPIE 前缀（编辑器 PIE 模式下会有这个前缀）
+    MapName.RemoveFromStart(World->StreamingLevelsPrefix);
+    return MapName;
+  }
+  return TEXT("Default");
+}
+
+FString UXBActorPlacementComponent::BuildPlacementSlotName(const FString& SlotName) const {
+  // 🔧 修改 - 加入地图名称，实现按场景分离存档
+  // 格式: XBPlacement_地图名_槽位名
+  return FString::Printf(TEXT("XBPlacement_%s_%s"), *GetCurrentMapName(), *SlotName);
+}
+
+FString UXBActorPlacementComponent::GetPlacementIndexSlotName() const {
+  // 格式: XBPlacement_Index_地图名
+  return FString::Printf(TEXT("XBPlacement_Index_%s"), *GetCurrentMapName());
+}
+

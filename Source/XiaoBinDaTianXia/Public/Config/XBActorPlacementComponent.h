@@ -434,6 +434,28 @@ private:
   bool TraceForGround(const FVector &InLocation,
                       FVector &OutGroundLocation) const;
 
+  /**
+   * @brief 获取当前地图名称
+   * @return 当前地图名称（不含路径和后缀）
+   * @note 用于按场景分离存档数据
+   */
+  FString GetCurrentMapName() const;
+
+  /**
+   * @brief 构建放置存档完整槽位名称
+   * @param SlotName 逻辑槽位名称
+   * @return 包含地图名称的完整槽位名
+   * @note 格式: XBPlacement_地图名_槽位名
+   */
+  FString BuildPlacementSlotName(const FString& SlotName) const;
+
+  /**
+   * @brief 获取地图特定的索引槽位名称
+   * @return 包含地图名称的索引槽位名
+   * @note 格式: XBPlacement_Index_地图名
+   */
+  FString GetPlacementIndexSlotName() const;
+
   // ============ 内部状态 ============
 
   /** 当前放置状态 */
