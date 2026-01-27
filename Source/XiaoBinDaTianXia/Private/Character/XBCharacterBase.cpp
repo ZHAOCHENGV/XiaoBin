@@ -451,6 +451,13 @@ void AXBCharacterBase::ApplyRuntimeConfig(const FXBGameConfigData &GameConfig,
     RecruitSoldierRowName = GameConfig.InitialSoldierRowName;
   }
 
+  // ✨ 新增 - 士兵数据表（用于生成初始士兵）
+  if (GameConfig.SoldierDataTable) {
+    SoldierDataTable = GameConfig.SoldierDataTable;
+    UE_LOG(LogXBCharacter, Log, TEXT("已设置士兵数据表: %s"),
+           *SoldierDataTable->GetName());
+  }
+
   // ✨ 新增 - 每士兵缩放加成
   if (GameConfig.SoldierScalePerRecruit >= 0.0f) {
     GrowthConfigCache.ScalePerSoldier = GameConfig.SoldierScalePerRecruit;
@@ -541,6 +548,8 @@ void AXBCharacterBase::SpawnInitialSoldiers(int32 DesiredCount) {
     if (FormationComponent) {
       // 🔧 修改 - 直接使用编队槽位位置，确保初始士兵在队列插槽中生成
       SpawnLocation = FormationComponent->GetSlotWorldPosition(SlotIndex);
+      // 🔧 修复 - 编队槽位可能返回 Z=0，使用主将的 Z 坐标
+      SpawnLocation.Z = LeaderLocation.Z;
     } else {
       // 🔧 修改 - 无编队组件时使用环形分布作为兜底，避免重叠
       const float Angle = (360.0f / MissingCount) * i;
@@ -565,8 +574,13 @@ void AXBCharacterBase::SpawnInitialSoldiers(int32 DesiredCount) {
         SpawnClass = AXBSoldierCharacter::StaticClass();
       }
 
+      // 🔧 修复 - 使用 SpawnParameters 允许调整位置避免碰撞
+      FActorSpawnParameters SpawnParams;
+      SpawnParams.SpawnCollisionHandlingOverride = 
+          ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
       Soldier = World->SpawnActor<AXBSoldierCharacter>(
-          SpawnClass, SpawnLocation, FRotator::ZeroRotator);
+          SpawnClass, SpawnLocation, FRotator::ZeroRotator, SpawnParams);
     }
 
     if (!Soldier) {
