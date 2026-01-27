@@ -277,6 +277,19 @@ TArray<EXBSoldierType> UXBConfigWidget::GetSoldierTypes() const {
   return Types;
 }
 
+FText UXBConfigWidget::GetSoldierTypeDisplayName(EXBSoldierType SoldierType) {
+  // 使用 UEnum 反射 API 获取 DisplayName
+  // 这确保打包后也能正确显示中文
+  const UEnum* EnumPtr = StaticEnum<EXBSoldierType>();
+  if (EnumPtr)
+  {
+    return EnumPtr->GetDisplayNameTextByValue(static_cast<int64>(SoldierType));
+  }
+  
+  // 回退：返回枚举名称
+  return FText::FromString(UEnum::GetValueAsString(SoldierType));
+}
+
 FName UXBConfigWidget::GetSoldierRowNameByType(FName LeaderRowName,
                                                EXBSoldierType SoldierType) const {
   UE_LOG(LogTemp, Warning,

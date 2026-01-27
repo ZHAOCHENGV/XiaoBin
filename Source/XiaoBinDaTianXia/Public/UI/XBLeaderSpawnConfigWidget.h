@@ -131,6 +131,16 @@ public:
   TArray<EXBSoldierType> GetSoldierTypes() const;
 
   /**
+   * @brief 获取士兵类型的显示名称（中文）
+   * @param SoldierType 士兵类型枚举
+   * @return 显示名称文本
+   * @note 使用 UEnum 反射 API 获取 DisplayName，确保打包后也能正确显示中文
+   */
+  UFUNCTION(BlueprintPure, Category = "XB|主将配置",
+            meta = (DisplayName = "获取士兵类型显示名称"))
+  static FText GetSoldierTypeDisplayName(EXBSoldierType SoldierType);
+
+  /**
    * @brief 根据主将名称和士兵类型获取对应的士兵行名
    * @param LeaderRowName 主将行名（如：李世民）
    * @param SoldierType 士兵类型（如：Cavalry）

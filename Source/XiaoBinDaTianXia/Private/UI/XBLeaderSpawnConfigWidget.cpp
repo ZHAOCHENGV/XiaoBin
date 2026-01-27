@@ -91,6 +91,9 @@ void UXBLeaderSpawnConfigWidget::OnConfirmClicked() {
   const FName LeaderRowName = ConfigData.GameConfig.LeaderConfigRowName;
   const EXBSoldierType SoldierType = ConfigData.SelectedSoldierType;
   
+  // 🔧 核心修复 - 同步士兵类型到 GameConfig，确保传递完整配置
+  ConfigData.GameConfig.SelectedSoldierType = SoldierType;
+  
   UE_LOG(LogXBConfig, Warning,
          TEXT("[主将配置界面] 准备解析: LeaderRowName=%s, SoldierType=%d"),
          *LeaderRowName.ToString(), static_cast<int32>(SoldierType));
@@ -172,6 +175,19 @@ TArray<EXBSoldierType> UXBLeaderSpawnConfigWidget::GetSoldierTypes() const {
   Types.Add(EXBSoldierType::Archer);
   Types.Add(EXBSoldierType::Cavalry);
   return Types;
+}
+
+FText UXBLeaderSpawnConfigWidget::GetSoldierTypeDisplayName(EXBSoldierType SoldierType) {
+  // 使用 UEnum 反射 API 获取 DisplayName
+  // 这确保打包后也能正确显示中文
+  const UEnum* EnumPtr = StaticEnum<EXBSoldierType>();
+  if (EnumPtr)
+  {
+    return EnumPtr->GetDisplayNameTextByValue(static_cast<int64>(SoldierType));
+  }
+  
+  // 回退：返回枚举名称
+  return FText::FromString(UEnum::GetValueAsString(SoldierType));
 }
 
 FName UXBLeaderSpawnConfigWidget::GetSoldierRowNameByType(
