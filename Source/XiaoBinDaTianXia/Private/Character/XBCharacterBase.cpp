@@ -451,12 +451,7 @@ void AXBCharacterBase::ApplyRuntimeConfig(const FXBGameConfigData &GameConfig,
     RecruitSoldierRowName = GameConfig.InitialSoldierRowName;
   }
 
-  // ✨ 新增 - 士兵数据表（用于生成初始士兵）
-  if (GameConfig.SoldierDataTable) {
-    SoldierDataTable = GameConfig.SoldierDataTable;
-    UE_LOG(LogXBCharacter, Log, TEXT("已设置士兵数据表: %s"),
-           *SoldierDataTable->GetName());
-  }
+
 
   // ✨ 新增 - 每士兵缩放加成
   if (GameConfig.SoldierScalePerRecruit >= 0.0f) {
