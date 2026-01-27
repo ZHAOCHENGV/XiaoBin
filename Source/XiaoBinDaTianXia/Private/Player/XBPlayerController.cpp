@@ -23,6 +23,8 @@
 #include "Game/XBGameMode.h"
 #include "Utils/XBGameplayTags.h"
 #include "Character/Components/XBCombatComponent.h"
+#include "Character/Components/XBMagnetFieldComponent.h"
+#include "Character/XBCharacterBase.h"
 #include "Kismet/GameplayStatics.h"
 #include "Soldier/XBSoldierCharacter.h"
 
@@ -695,6 +697,47 @@ void AXBPlayerController::HandleSpawnLeaderInput()
                     }
                 }
                 UE_LOG(LogTemp, Log, TEXT("已解锁 %d 名士兵的招募状态"), AllSoldiers.Num());
+
+                // ✨ 新增 - 延迟扫描所有主将磁场范围内的士兵
+                // 使用延迟确保所有士兵的招募锁定已解除、主将初始化完成
+                World->GetTimerManager().SetTimer(
+                    MagnetScanTimerHandle,
+                    [this, World]()
+                    {
+                        UE_LOG(LogTemp, Warning, TEXT(">>> 开始扫描所有主将磁场范围内的士兵 <<<"));
+                        
+                        // 获取场景中所有主将（包括玩家主将和假人）
+                        TArray<AActor*> AllLeaders;
+                        UGameplayStatics::GetAllActorsOfClass(World, AXBCharacterBase::StaticClass(), AllLeaders);
+                        
+                        int32 ScannedCount = 0;
+                        for (AActor* Actor : AllLeaders)
+                        {
+                            AXBCharacterBase* Leader = Cast<AXBCharacterBase>(Actor);
+                            if (!Leader || Leader->IsDead())
+                            {
+                                continue;
+                            }
+                            
+                            // 跳过士兵（士兵也继承自 CharacterBase）
+                            if (Cast<AXBSoldierCharacter>(Actor))
+                            {
+                                continue;
+                            }
+                            
+                            if (UXBMagnetFieldComponent* MagnetComp = Leader->GetMagnetFieldComponent())
+                            {
+                                UE_LOG(LogTemp, Log, TEXT(">>> 扫描主将 %s 的磁场 <<<"), *Leader->GetName());
+                                MagnetComp->ScanAndRecruitExistingActors();
+                                ScannedCount++;
+                            }
+                        }
+                        
+                        UE_LOG(LogTemp, Log, TEXT(">>> 已扫描 %d 个主将的磁场 <<<"), ScannedCount);
+                    },
+                    MagnetScanDelay,  // 使用可配置的延迟时间
+                    false  // 不循环
+                );
             }
             else
             {

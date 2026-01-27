@@ -71,6 +71,14 @@ public:
     UFUNCTION(BlueprintCallable, Category = "XB|MagnetField")
     bool IsFieldEnabled() const { return bIsFieldEnabled; }
 
+    /**
+     * @brief 扫描并招募已经在磁场范围内的休眠态士兵
+     * @note  用于解决士兵在游戏开始时就在磁场范围内无法触发 Overlap 事件的问题
+     *        在 SetFieldEnabled(true) 时自动调用
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|MagnetField", meta = (DisplayName = "扫描并招募范围内士兵"))
+    void ScanAndRecruitExistingActors();
+
     UFUNCTION(BlueprintPure, Category = "XB|MagnetField", meta = (DisplayName = "获取磁场统计"))
     const FXBMagnetFieldStats& GetFieldStats() const { return FieldStats; }
 

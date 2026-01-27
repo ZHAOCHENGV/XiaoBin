@@ -175,6 +175,15 @@ protected:
     UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "XB|Camera", meta = (DisplayName = "移动方向跟随镜头"))
     bool bUseCameraForwardForMovement = true;
 
+    // ==================== 磁场扫描配置 ====================
+
+    /**
+     * @brief 生成主将后磁场扫描延迟时间（秒）
+     * @note  用于确保所有初始化完成后再扫描招募范围内的士兵
+     */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "XB|Gameplay", meta = (DisplayName = "磁场扫描延迟", ClampMin = "0.0"))
+    float MagnetScanDelay = 0.2f;
+
 
     UPROPERTY()
     TWeakObjectPtr<AXBPlayerCharacter> CachedPlayerCharacter;
@@ -263,4 +272,7 @@ private:
     // ✨ 新增 - 镜头Pitch状态
     float CurrentCameraPitch = -45.0f;
     float TargetCameraPitch = -45.0f;
+
+    // ✨ 新增 - 磁场扫描计时器句柄
+    FTimerHandle MagnetScanTimerHandle;
 };

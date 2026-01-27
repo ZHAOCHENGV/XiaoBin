@@ -250,6 +250,19 @@ void UXBMagnetFieldComponent::SetFieldEnabled(bool bEnabled)
     UE_LOG(LogTemp, Log, TEXT("磁场组件 %s: 启用状态 = %s"), 
         GetOwner() ? *GetOwner()->GetName() : TEXT("Unknown"),
         bEnabled ? TEXT("是") : TEXT("否"));
+
+    // ✨ 新增 - 启用时扫描并招募已经在范围内的士兵
+    if (bEnabled)
+    {
+        // 使用下一帧延迟执行，确保所有 Actor 的 BeginPlay 都已完成
+        GetWorld()->GetTimerManager().SetTimerForNextTick([WeakThis = TWeakObjectPtr<UXBMagnetFieldComponent>(this)]()
+        {
+            if (WeakThis.IsValid())
+            {
+                WeakThis->ScanAndRecruitExistingActors();
+            }
+        });
+    }
 }
 
 void UXBMagnetFieldComponent::ResetStats()
@@ -330,6 +343,112 @@ void UXBMagnetFieldComponent::ApplyRecruitEffect(AXBCharacterBase* Leader, AXBSo
     EventData.Target = Soldier;
     LeaderASC->HandleGameplayEvent(
         FGameplayTag::RequestGameplayTag(FName("Event.Soldier.Recruited")), &EventData);
+}
+
+/**
+ * @brief 扫描并招募已经在磁场范围内的休眠态士兵
+ * @note  用于解决士兵在游戏开始时就在磁场范围内无法触发 Overlap 事件的问题
+ */
+void UXBMagnetFieldComponent::ScanAndRecruitExistingActors()
+{
+    if (!bIsFieldEnabled)
+    {
+        return;
+    }
+
+    AXBCharacterBase* Leader = Cast<AXBCharacterBase>(GetOwner());
+    if (!Leader || Leader->IsDead())
+    {
+        return;
+    }
+
+    // 获取当前重叠的所有 Actor
+    TArray<AActor*> OverlappingActors;
+    GetOverlappingActors(OverlappingActors, AXBSoldierCharacter::StaticClass());
+
+    UE_LOG(LogTemp, Log, TEXT("磁场: 扫描范围内士兵，找到 %d 个"), OverlappingActors.Num());
+
+    for (AActor* Actor : OverlappingActors)
+    {
+        if (!Actor || Actor == GetOwner())
+        {
+            continue;
+        }
+
+        AXBSoldierCharacter* Soldier = Cast<AXBSoldierCharacter>(Actor);
+        if (!Soldier)
+        {
+            continue;
+        }
+
+        // 🔧 详细的招募检查日志
+        UE_LOG(LogTemp, Log, TEXT("磁场扫描: 检测到士兵 %s"), *Soldier->GetName());
+        UE_LOG(LogTemp, Log, TEXT("  - 状态: %d"), static_cast<int32>(Soldier->GetSoldierState()));
+        UE_LOG(LogTemp, Log, TEXT("  - 阵营: %d"), static_cast<int32>(Soldier->GetFaction()));
+        UE_LOG(LogTemp, Log, TEXT("  - 已招募: %s"), Soldier->IsRecruited() ? TEXT("是") : TEXT("否"));
+        UE_LOG(LogTemp, Log, TEXT("  - CanBeRecruited: %s"), Soldier->CanBeRecruited() ? TEXT("是") : TEXT("否"));
+
+        // 检查是否可招募
+        if (!Soldier->CanBeRecruited())
+        {
+            UE_LOG(LogTemp, Log, TEXT("磁场扫描: 士兵 %s 不可招募，跳过"), *Soldier->GetName());
+            continue;
+        }
+
+        // ==================== 执行招募 ====================
+        
+        UE_LOG(LogTemp, Warning, TEXT(">>> 扫描招募士兵 %s <<<"), *Soldier->GetName());
+
+        // 获取将领的士兵数据表配置
+        UDataTable* SoldierDT = Leader->GetSoldierDataTable();
+        FName SoldierRowName = Leader->GetRecruitSoldierRowName();
+
+        if (SoldierDT && !SoldierRowName.IsNone())
+        {
+            UE_LOG(LogTemp, Log, TEXT("磁场扫描: 使用将领配置初始化士兵 - 数据表: %s, 行: %s"), 
+                *SoldierDT->GetName(), *SoldierRowName.ToString());
+            
+            // 使用将领的配置初始化士兵（改变兵种）
+            Soldier->InitializeFromDataTable(SoldierDT, SoldierRowName, Leader->GetFaction());
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("磁场扫描: 将领未配置士兵数据表，使用士兵原有配置"));
+        }
+
+        // 获取槽位索引
+        int32 SlotIndex = Leader->GetSoldierCount();
+        UE_LOG(LogTemp, Log, TEXT("磁场扫描: 分配槽位索引: %d"), SlotIndex);
+
+        // 执行招募
+        Soldier->OnRecruited(Leader, SlotIndex);
+        
+        // 添加到将领的士兵列表
+        Leader->AddSoldier(Soldier);
+        
+        // 应用招募增益效果
+        ApplyRecruitEffect(Leader, Soldier);
+
+        // 更新统计
+        FieldStats.TotalSoldiersRecruited++;
+        if (UWorld* World = GetWorld())
+        {
+            FieldStats.LastRecruitTime = World->GetTimeSeconds();
+        }
+
+        // 添加到范围内Actor列表
+        ActorsInField.AddUnique(Soldier);
+        FieldStats.ActorsInRange = ActorsInField.Num();
+
+        UE_LOG(LogTemp, Warning, TEXT(">>> 士兵 %s 扫描招募成功，将领当前士兵数: %d <<<"), 
+            *Soldier->GetName(), Leader->GetSoldierCount());
+
+        // 广播事件
+        if (IsActorDetectable(Soldier))
+        {
+            OnActorEnteredField.Broadcast(Soldier);
+        }
+    }
 }
 
 // ==================== 调试系统 ====================

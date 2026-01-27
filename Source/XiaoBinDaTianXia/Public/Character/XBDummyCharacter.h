@@ -175,6 +175,19 @@ private:
   // ✨ 新增 - 受击响应定时器
   FTimerHandle DamageResponseTimerHandle;
 
+  // ✨ 新增 - 磁场扫描配置
+  /**
+   * @brief 磁场扫描延迟时间（秒）
+   * @note  用于确保所有初始化完成后再扫描招募范围内的士兵
+   */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI",
+            meta = (DisplayName = "磁场扫描延迟", ClampMin = "0.0",
+                    AllowPrivateAccess = "true"))
+  float MagnetScanDelay = 0.2f;
+
+  // ✨ 新增 - 磁场扫描计时器句柄
+  FTimerHandle MagnetScanTimerHandle;
+
   // ✨ 新增 - AI调试组件
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "调试",
             meta = (DisplayName = "AI调试组件", AllowPrivateAccess = "true"))

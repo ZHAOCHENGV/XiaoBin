@@ -8,6 +8,7 @@
 #include "Components/SplineComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Soldier/XBSoldierCharacter.h"
+#include "Character/Components/XBMagnetFieldComponent.h"
 #include "TimerManager.h"
 #include "Utils/XBLogCategories.h"
 
@@ -85,6 +86,9 @@ void AXBDummyCharacter::BeginPlay() {
   }
 
   SpawnRotation = GetActorRotation(); // 记录初始朝向
+  
+  // 🔧 注意：磁场扫描已移至 HandleSpawnLeaderInput 统一执行
+  // 确保在招募锁定解除后再扫描所有主将
 }
 
 void AXBDummyCharacter::Tick(float DeltaTime) { Super::Tick(DeltaTime); }
