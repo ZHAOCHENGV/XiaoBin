@@ -137,16 +137,24 @@ void UXBSaveSubsystem::SetCurrentSaveGame(UXBSaveGame* SaveGame)
 
 void UXBSaveSubsystem::InitializeSaveSlotIndex()
 {
-    if (SaveSlotIndex)
+    // 🔧 修改 - 检查地图是否变化，如果变化则重新加载对应的索引
+    const FString CurrentMapName = GetCurrentMapName();
+    if (SaveSlotIndex && CachedMapName == CurrentMapName)
     {
         return;
     }
 
+    // 地图变化，更新缓存并重新加载索引
+    CachedMapName = CurrentMapName;
+    SaveSlotIndex = nullptr;
+
     // ✨ 新增 - 优先加载索引存档，保证槽位列表可持久化
-    if (UGameplayStatics::DoesSaveGameExist(SaveSlotIndexName, 0))
+    // 🔧 修改 - 使用地图特定索引名，实现按场景分离存档列表
+    const FString MapIndexName = GetMapSpecificIndexName();
+    if (UGameplayStatics::DoesSaveGameExist(MapIndexName, 0))
     {
         SaveSlotIndex = Cast<UXBSaveSlotIndex>(
-            UGameplayStatics::LoadGameFromSlot(SaveSlotIndexName, 0));
+            UGameplayStatics::LoadGameFromSlot(MapIndexName, 0));
     }
 
     if (!SaveSlotIndex)
@@ -173,6 +181,9 @@ void UXBSaveSubsystem::InitializeSaveSlotIndex()
 
         SaveSlotIndexToDisk();
     }
+
+    UE_LOG(LogTemp, Log, TEXT("存档索引已加载，地图: %s，槽位数: %d"),
+        *CurrentMapName, SaveSlotIndex->SlotNames.Num());
 }
 
 void UXBSaveSubsystem::SaveSlotIndexToDisk() const
@@ -183,14 +194,37 @@ void UXBSaveSubsystem::SaveSlotIndexToDisk() const
     }
 
     // ✨ 新增 - 保存索引存档，保证槽位列表可被列举
-    if (!UGameplayStatics::SaveGameToSlot(SaveSlotIndex, SaveSlotIndexName, 0))
+    // 🔧 修改 - 使用地图特定索引名
+    const FString MapIndexName = GetMapSpecificIndexName();
+    if (!UGameplayStatics::SaveGameToSlot(SaveSlotIndex, MapIndexName, 0))
     {
-        UE_LOG(LogTemp, Warning, TEXT("保存存档槽位索引失败：%s"), *SaveSlotIndexName);
+        UE_LOG(LogTemp, Warning, TEXT("保存存档槽位索引失败：%s"), *MapIndexName);
     }
 }
 
 FString UXBSaveSubsystem::BuildFullSlotName(const FString& SlotName) const
 {
-    // ✨ 新增 - 统一拼接规则，便于未来调整前缀策略
-    return SaveSlotPrefix + SlotName;
+    // 🔧 修改 - 加入地图名称，实现按场景分离存档
+    // 格式: XBSave_地图名_槽位名
+    return SaveSlotPrefix + GetCurrentMapName() + TEXT("_") + SlotName;
 }
+
+FString UXBSaveSubsystem::GetCurrentMapName() const
+{
+    if (UWorld* World = GetWorld())
+    {
+        // 获取当前地图名称（不含路径和后缀）
+        FString MapName = World->GetMapName();
+        // 移除 UEDPIE 前缀（编辑器 PIE 模式下会有这个前缀）
+        MapName.RemoveFromStart(World->StreamingLevelsPrefix);
+        return MapName;
+    }
+    return TEXT("Default");
+}
+
+FString UXBSaveSubsystem::GetMapSpecificIndexName() const
+{
+    // 格式: XBSaveIndex_地图名
+    return SaveSlotIndexName + TEXT("_") + GetCurrentMapName();
+}
+

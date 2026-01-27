@@ -78,6 +78,9 @@ protected:
 	UPROPERTY(meta = (DisplayName = "存档槽位索引"))
 	TObjectPtr<UXBSaveSlotIndex> SaveSlotIndex;
 
+	/** 缓存的地图名称（用于检测地图切换） */
+	FString CachedMapName;
+
 private:
 	/**
 	 * @brief  初始化存档槽位索引
@@ -98,4 +101,18 @@ private:
 	 * @note   用于避免外部直接依赖前缀格式。
 	 */
 	FString BuildFullSlotName(const FString& SlotName) const;
+
+	/**
+	 * @brief  获取当前地图名称
+	 * @return 当前地图名称（不含路径和后缀）
+	 * @note   用于按场景分离存档数据
+	 */
+	FString GetCurrentMapName() const;
+
+	/**
+	 * @brief  获取地图特定的索引名称
+	 * @return 包含地图名称的索引槽位名
+	 * @note   确保每个地图有独立的存档列表
+	 */
+	FString GetMapSpecificIndexName() const;
 };
