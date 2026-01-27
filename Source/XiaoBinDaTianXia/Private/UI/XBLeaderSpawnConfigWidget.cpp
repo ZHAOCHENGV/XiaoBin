@@ -78,8 +78,8 @@ void UXBLeaderSpawnConfigWidget::OnConfirmClicked() {
          TEXT("[主将配置界面] ConfigData.GameConfig.LeaderConfigRowName = %s"),
          *ConfigData.GameConfig.LeaderConfigRowName.ToString());
   UE_LOG(LogXBConfig, Warning,
-         TEXT("[主将配置界面] ConfigData.SelectedSoldierType = %d"),
-         static_cast<int32>(ConfigData.SelectedSoldierType));
+         TEXT("[主将配置界面] ConfigData.GameConfig.SelectedSoldierType = %d"),
+         static_cast<int32>(ConfigData.GameConfig.SelectedSoldierType));
   UE_LOG(LogXBConfig, Warning,
          TEXT("[主将配置界面] ConfigData.GameConfig.InitialSoldierRowName (解析前) = %s"),
          *ConfigData.GameConfig.InitialSoldierRowName.ToString());
@@ -88,11 +88,9 @@ void UXBLeaderSpawnConfigWidget::OnConfirmClicked() {
          SoldierConfigDataTable ? TEXT("是") : TEXT("否"));
 
   // ✨ 新增 - 根据主将名称和士兵类型自动解析士兵行名
+  // 🔧 修改 - 统一使用 GameConfig.SelectedSoldierType
   const FName LeaderRowName = ConfigData.GameConfig.LeaderConfigRowName;
-  const EXBSoldierType SoldierType = ConfigData.SelectedSoldierType;
-  
-  // 🔧 核心修复 - 同步士兵类型到 GameConfig，确保传递完整配置
-  ConfigData.GameConfig.SelectedSoldierType = SoldierType;
+  const EXBSoldierType SoldierType = ConfigData.GameConfig.SelectedSoldierType;
   
   UE_LOG(LogXBConfig, Warning,
          TEXT("[主将配置界面] 准备解析: LeaderRowName=%s, SoldierType=%d"),
