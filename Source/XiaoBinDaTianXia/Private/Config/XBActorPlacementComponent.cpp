@@ -1003,34 +1003,36 @@ bool UXBActorPlacementComponent::GetHitPlacedActor(AActor *&OutActor) const {
     return false;
   }
 
-  // 射线检测已放置 Actor（使用配置的碰撞通道列表）
+  // 射线检测已放置 Actor（使用 ObjectType 检测多个碰撞类型）
   bool bHit = false;
   
   if (PlacementConfig && PlacementConfig->SelectionTraceChannels.Num() > 0) {
-    // 使用配置的碰撞通道
+    // 构建 ObjectQueryParams，包含配置的所有碰撞通道
+    FCollisionObjectQueryParams ObjectQueryParams;
     for (const TEnumAsByte<ECollisionChannel>& Channel : PlacementConfig->SelectionTraceChannels) {
-      if (World->LineTraceSingleByChannel(HitResult, WorldLocation, TraceEnd,
-                                          Channel, QueryParams)) {
-        bHit = true;
-        break;
-      }
+      ObjectQueryParams.AddObjectTypesToQuery(Channel);
     }
+    
+    // 使用 ObjectType 检测，同时检测所有配置的类型
+    bHit = World->LineTraceSingleByObjectType(HitResult, WorldLocation, TraceEnd,
+                                               ObjectQueryParams, QueryParams);
   } else {
-    // 默认碰撞通道：Leader, Pawn, Visibility
-    bHit =
-        World->LineTraceSingleByChannel(HitResult, WorldLocation, TraceEnd,
-                                        XBCollision::Leader, QueryParams) ||
-        World->LineTraceSingleByChannel(HitResult, WorldLocation, TraceEnd,
-                                        ECC_Pawn, QueryParams) ||
-        World->LineTraceSingleByChannel(HitResult, WorldLocation, TraceEnd,
-                                        ECC_Visibility, QueryParams);
+    // 默认：检测 Leader, Pawn, Visibility, WorldDynamic
+    FCollisionObjectQueryParams DefaultObjectParams;
+    DefaultObjectParams.AddObjectTypesToQuery(XBCollision::Leader);
+    DefaultObjectParams.AddObjectTypesToQuery(ECC_Pawn);
+    DefaultObjectParams.AddObjectTypesToQuery(ECC_WorldDynamic);
+    
+    bHit = World->LineTraceSingleByObjectType(HitResult, WorldLocation, TraceEnd,
+                                               DefaultObjectParams, QueryParams);
   }
 
   if (bHit) {
     AActor *HitActor = HitResult.GetActor();
 
-    UE_LOG(LogXBConfig, Verbose, TEXT("[放置组件] 射线命中 Actor: %s"),
-           HitActor ? *HitActor->GetName() : TEXT("None"));
+    UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 射线命中 Actor: %s, Component: %s"),
+           HitActor ? *HitActor->GetName() : TEXT("None"),
+           HitResult.GetComponent() ? *HitResult.GetComponent()->GetName() : TEXT("None"));
 
     // 检查是否是已放置的 Actor
     for (const FXBPlacedActorData &Data : PlacedActors) {
@@ -1043,9 +1045,11 @@ bool UXBActorPlacementComponent::GetHitPlacedActor(AActor *&OutActor) const {
     }
 
     UE_LOG(
-        LogXBConfig, Verbose,
-        TEXT("[放置组件] 命中的 Actor 不在已放置列表中，PlacedActors 数量: %d"),
-        PlacedActors.Num());
+        LogXBConfig, Log,
+        TEXT("[放置组件] 命中的 Actor 不在已放置列表中，PlacedActors 数量: %d, 命中Actor类: %s"),
+        PlacedActors.Num(), HitActor ? *HitActor->GetClass()->GetName() : TEXT("None"));
+  } else {
+    UE_LOG(LogXBConfig, Verbose, TEXT("[放置组件] 射线未命中任何 Actor"));
   }
 
   return false;
