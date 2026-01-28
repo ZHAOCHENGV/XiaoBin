@@ -737,14 +737,6 @@ void UXBActorPlacementComponent::SetPlacementConfig(
          Config ? *Config->GetName() : TEXT("None"));
 }
 
-TArray<FXBSpawnableActorEntry>
-UXBActorPlacementComponent::GetFilteredSpawnableActorEntries() const {
-  if (!PlacementConfig) {
-    return TArray<FXBSpawnableActorEntry>();
-  }
-  return PlacementConfig->GetFilteredEntries(CurrentMapTag);
-}
-
 TArray<FXBFilteredSpawnableEntry>
 UXBActorPlacementComponent::GetFilteredSpawnableActorEntriesWithIndices() const {
   if (!PlacementConfig) {

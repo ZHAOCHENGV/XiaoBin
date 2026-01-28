@@ -235,20 +235,11 @@ public:
 
   /**
    * @brief 获取过滤后的可放置条目（根据当前地图标签）
-   * @return 过滤后的条目数组
-   * @note 根据 CurrentMapTag 过滤不适用于当前地图的条目
-   */
-  UFUNCTION(BlueprintPure, Category = "放置系统|数据",
-            meta = (DisplayName = "获取过滤后可放置条目"))
-  TArray<FXBSpawnableActorEntry> GetFilteredSpawnableActorEntries() const;
-
-  /**
-   * @brief 获取过滤后的可放置条目（含原始索引）
    * @return 过滤后的条目数组（每个条目包含 Entry 和 OriginalIndex）
    * @note UI 应使用此方法获取列表，使用 OriginalIndex 调用 StartPreview
    */
   UFUNCTION(BlueprintPure, Category = "放置系统|数据",
-            meta = (DisplayName = "获取过滤后可放置条目（含索引）"))
+            meta = (DisplayName = "获取过滤后可放置条目"))
   TArray<FXBFilteredSpawnableEntry> GetFilteredSpawnableActorEntriesWithIndices() const;
 
   /** 当前地图标签（用于过滤可放置条目） */
