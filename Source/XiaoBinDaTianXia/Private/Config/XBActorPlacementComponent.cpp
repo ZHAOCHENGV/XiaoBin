@@ -745,6 +745,39 @@ UXBActorPlacementComponent::GetFilteredSpawnableActorEntries() const {
   return PlacementConfig->GetFilteredEntries(CurrentMapTag);
 }
 
+TArray<FXBFilteredSpawnableEntry>
+UXBActorPlacementComponent::GetFilteredSpawnableActorEntriesWithIndices() const {
+  if (!PlacementConfig) {
+    return TArray<FXBFilteredSpawnableEntry>();
+  }
+  return PlacementConfig->GetFilteredEntriesWithIndices(CurrentMapTag);
+}
+
+bool UXBActorPlacementComponent::AutoDetectCurrentMapTag() {
+  // 获取当前地图名称
+  FString MapName = GetCurrentMapName();
+  if (MapName.IsEmpty()) {
+    UE_LOG(LogXBConfig, Warning, TEXT("[放置组件] 无法获取当前地图名称"));
+    return false;
+  }
+
+  // 构造标签名称：Map.地图名
+  FString TagName = FString::Printf(TEXT("Map.%s"), *MapName);
+
+  // 尝试请求标签
+  CurrentMapTag = FGameplayTag::RequestGameplayTag(FName(*TagName), false);
+
+  if (CurrentMapTag.IsValid()) {
+    UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 已自动设置地图标签: %s"),
+           *CurrentMapTag.ToString());
+    return true;
+  } else {
+    UE_LOG(LogXBConfig, Warning,
+           TEXT("[放置组件] 无法找到对应的地图标签: %s"), *TagName);
+    return false;
+  }
+}
+
 /**
  * @brief 获取鼠标射线检测命中位置
  * @param OutLocation 输出命中位置

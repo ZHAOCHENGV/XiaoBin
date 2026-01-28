@@ -356,3 +356,22 @@ FName UXBConfigWidget::GetSoldierRowNameByType(FName LeaderRowName,
          TEXT("[XBConfigWidget::GetSoldierRowNameByType] 未找到匹配，返回 NAME_None"));
   return NAME_None;
 }
+
+FString UXBConfigWidget::GetMapNameFromTag(const FGameplayTag& MapTag) {
+  if (!MapTag.IsValid()) {
+    return FString();
+  }
+
+  // 获取标签名称（如 "Map.01_草地"）
+  FString TagName = MapTag.ToString();
+
+  // 移除 "Map." 前缀，得到地图名称
+  static const FString MapPrefix = TEXT("Map.");
+  if (TagName.StartsWith(MapPrefix)) {
+    return TagName.RightChop(MapPrefix.Len());
+  }
+
+  // 如果不包含 "Map." 前缀，直接返回
+  return TagName;
+}
+

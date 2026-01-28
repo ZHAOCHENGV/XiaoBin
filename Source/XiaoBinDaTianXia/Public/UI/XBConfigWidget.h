@@ -14,6 +14,7 @@
 
 #include "Blueprint/UserWidget.h"
 #include "CoreMinimal.h"
+#include "GameplayTagContainer.h"
 #include "Save/XBSaveGame.h"
 #include "XBConfigWidget.generated.h"
 
@@ -181,9 +182,20 @@ public:
             meta = (DisplayName = "士兵配置数据表"))
   TObjectPtr<UDataTable> SoldierConfigDataTable;
 
+  /** 地图选项标签（使用 Map 分类下的标签） */
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "配置",
-            meta = (DisplayName = "地图选项"))
-  TArray<FName> MapOptions;
+            meta = (DisplayName = "地图选项", Categories = "Map"))
+  FGameplayTagContainer MapOptions;
+
+  /**
+   * @brief 从地图标签中获取地图名称
+   * @param MapTag 地图标签（如 Map.01_草地）
+   * @return 地图名称（如 01_草地）
+   * @note 移除 "Map." 前缀后返回剩余部分作为地图名称
+   */
+  UFUNCTION(BlueprintPure, Category = "XB|Config",
+            meta = (DisplayName = "从标签获取地图名称"))
+  static FString GetMapNameFromTag(const FGameplayTag& MapTag);
 
   UPROPERTY(BlueprintReadWrite, Category = "配置",
             meta = (DisplayName = "目标主将"))

@@ -242,10 +242,28 @@ public:
             meta = (DisplayName = "获取过滤后可放置条目"))
   TArray<FXBSpawnableActorEntry> GetFilteredSpawnableActorEntries() const;
 
+  /**
+   * @brief 获取过滤后的可放置条目（含原始索引）
+   * @return 过滤后的条目数组（每个条目包含 Entry 和 OriginalIndex）
+   * @note UI 应使用此方法获取列表，使用 OriginalIndex 调用 StartPreview
+   */
+  UFUNCTION(BlueprintPure, Category = "放置系统|数据",
+            meta = (DisplayName = "获取过滤后可放置条目（含索引）"))
+  TArray<FXBFilteredSpawnableEntry> GetFilteredSpawnableActorEntriesWithIndices() const;
+
   /** 当前地图标签（用于过滤可放置条目） */
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "放置配置",
             meta = (DisplayName = "当前地图标签", Categories = "Map"))
   FGameplayTag CurrentMapTag;
+
+  /**
+   * @brief 自动检测并设置当前地图标签
+   * @return 是否成功设置
+   * @note 根据当前地图名称（如 "01_草地"）构造对应标签（如 "Map.01_草地"）
+   */
+  UFUNCTION(BlueprintCallable, Category = "放置系统|数据",
+            meta = (DisplayName = "自动检测地图标签"))
+  bool AutoDetectCurrentMapTag();
 
   // ============ 存档系统接口 ============
 

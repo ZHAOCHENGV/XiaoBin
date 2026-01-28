@@ -139,6 +139,28 @@ struct FXBSpawnableActorEntry {
 };
 
 /**
+ * @brief 过滤后的可放置条目（携带原始索引）
+ * @note 用于 UI 显示过滤后的条目列表，同时保留原始索引用于调用 StartPreview
+ */
+USTRUCT(BlueprintType)
+struct FXBFilteredSpawnableEntry {
+  GENERATED_BODY()
+
+  /** 条目数据 */
+  UPROPERTY(BlueprintReadOnly, Category = "放置配置")
+  FXBSpawnableActorEntry Entry;
+
+  /** 在原始数组中的索引（用于调用 StartPreview） */
+  UPROPERTY(BlueprintReadOnly, Category = "放置配置")
+  int32 OriginalIndex = -1;
+
+  FXBFilteredSpawnableEntry() = default;
+  
+  FXBFilteredSpawnableEntry(const FXBSpawnableActorEntry& InEntry, int32 InIndex)
+      : Entry(InEntry), OriginalIndex(InIndex) {}
+};
+
+/**
  * @brief 已放置 Actor 的运行时数据
  * @note 用于跟踪配置阶段放置的 Actor
  */

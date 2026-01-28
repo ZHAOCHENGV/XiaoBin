@@ -107,4 +107,13 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "放置配置", meta = (DisplayName = "获取过滤后条目"))
 	TArray<FXBSpawnableActorEntry> GetFilteredEntries(const FGameplayTag& CurrentMapTag) const;
+
+	/**
+	 * @brief 获取适用于当前地图的可放置条目（携带原始索引）
+	 * @param CurrentMapTag 当前地图标签
+	 * @return 过滤后的条目数组（每个条目包含 Entry 和 OriginalIndex）
+	 * @note UI 应使用此方法获取条目列表，使用 OriginalIndex 调用 StartPreview
+	 */
+	UFUNCTION(BlueprintCallable, Category = "放置配置", meta = (DisplayName = "获取过滤后条目（含索引）"))
+	TArray<FXBFilteredSpawnableEntry> GetFilteredEntriesWithIndices(const FGameplayTag& CurrentMapTag) const;
 };
