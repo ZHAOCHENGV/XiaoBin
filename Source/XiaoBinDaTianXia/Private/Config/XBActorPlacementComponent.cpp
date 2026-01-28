@@ -1003,14 +1003,28 @@ bool UXBActorPlacementComponent::GetHitPlacedActor(AActor *&OutActor) const {
     return false;
   }
 
-  // 射线检测已放置 Actor（使用多个碰撞通道）
-  bool bHit =
-      World->LineTraceSingleByChannel(HitResult, WorldLocation, TraceEnd,
-                                      XBCollision::Leader, QueryParams) ||
-      World->LineTraceSingleByChannel(HitResult, WorldLocation, TraceEnd,
-                                      ECC_Pawn, QueryParams) ||
-      World->LineTraceSingleByChannel(HitResult, WorldLocation, TraceEnd,
-                                      ECC_Visibility, QueryParams);
+  // 射线检测已放置 Actor（使用配置的碰撞通道列表）
+  bool bHit = false;
+  
+  if (PlacementConfig && PlacementConfig->SelectionTraceChannels.Num() > 0) {
+    // 使用配置的碰撞通道
+    for (const TEnumAsByte<ECollisionChannel>& Channel : PlacementConfig->SelectionTraceChannels) {
+      if (World->LineTraceSingleByChannel(HitResult, WorldLocation, TraceEnd,
+                                          Channel, QueryParams)) {
+        bHit = true;
+        break;
+      }
+    }
+  } else {
+    // 默认碰撞通道：Leader, Pawn, Visibility
+    bHit =
+        World->LineTraceSingleByChannel(HitResult, WorldLocation, TraceEnd,
+                                        XBCollision::Leader, QueryParams) ||
+        World->LineTraceSingleByChannel(HitResult, WorldLocation, TraceEnd,
+                                        ECC_Pawn, QueryParams) ||
+        World->LineTraceSingleByChannel(HitResult, WorldLocation, TraceEnd,
+                                        ECC_Visibility, QueryParams);
+  }
 
   if (bHit) {
     AActor *HitActor = HitResult.GetActor();

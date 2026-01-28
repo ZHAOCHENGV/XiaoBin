@@ -75,6 +75,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "操作配置", meta = (DisplayName = "地面检测偏移", ClampMin = "0.0"))
 	float GroundTraceOffset = 500.0f;
 
+	/** 选中检测碰撞通道列表（用于检测光标下的已放置 Actor） */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "操作配置", meta = (DisplayName = "选中检测碰撞通道"))
+	TArray<TEnumAsByte<ECollisionChannel>> SelectionTraceChannels;
+
 public:
 	/**
 	 * @brief 根据索引获取可放置 Actor 配置
