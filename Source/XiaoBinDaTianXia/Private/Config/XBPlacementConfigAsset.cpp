@@ -32,3 +32,27 @@ const FXBSpawnableActorEntry* UXBPlacementConfigAsset::GetEntryByIndexPtr(int32 
 
 	return &SpawnableActors[Index];
 }
+
+TArray<FXBSpawnableActorEntry> UXBPlacementConfigAsset::GetFilteredEntries(const FGameplayTag& CurrentMapTag) const
+{
+	TArray<FXBSpawnableActorEntry> FilteredEntries;
+
+	for (const FXBSpawnableActorEntry& Entry : SpawnableActors)
+	{
+		// 如果 ApplicableMaps 为空，表示适用于所有地图
+		if (Entry.ApplicableMaps.IsEmpty())
+		{
+			FilteredEntries.Add(Entry);
+			continue;
+		}
+
+		// 检查当前地图标签是否在适用列表中
+		if (CurrentMapTag.IsValid() && Entry.ApplicableMaps.HasTag(CurrentMapTag))
+		{
+			FilteredEntries.Add(Entry);
+		}
+	}
+
+	return FilteredEntries;
+}
+

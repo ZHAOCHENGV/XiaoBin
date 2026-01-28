@@ -98,4 +98,13 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "放置配置", meta = (DisplayName = "获取条目数量"))
 	int32 GetEntryCount() const { return SpawnableActors.Num(); }
+
+	/**
+	 * @brief 获取适用于当前地图的可放置条目
+	 * @param CurrentMapTag 当前地图标签
+	 * @return 过滤后的条目数组
+	 * @note 如果条目的 ApplicableMaps 为空，则适用于所有地图
+	 */
+	UFUNCTION(BlueprintCallable, Category = "放置配置", meta = (DisplayName = "获取过滤后条目"))
+	TArray<FXBSpawnableActorEntry> GetFilteredEntries(const FGameplayTag& CurrentMapTag) const;
 };

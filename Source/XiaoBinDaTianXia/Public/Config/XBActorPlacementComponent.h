@@ -233,6 +233,20 @@ public:
             meta = (DisplayName = "设置放置配置"))
   void SetPlacementConfig(UXBPlacementConfigAsset *Config);
 
+  /**
+   * @brief 获取过滤后的可放置条目（根据当前地图标签）
+   * @return 过滤后的条目数组
+   * @note 根据 CurrentMapTag 过滤不适用于当前地图的条目
+   */
+  UFUNCTION(BlueprintPure, Category = "放置系统|数据",
+            meta = (DisplayName = "获取过滤后可放置条目"))
+  TArray<FXBSpawnableActorEntry> GetFilteredSpawnableActorEntries() const;
+
+  /** 当前地图标签（用于过滤可放置条目） */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "放置配置",
+            meta = (DisplayName = "当前地图标签", Categories = "Map"))
+  FGameplayTag CurrentMapTag;
+
   // ============ 存档系统接口 ============
 
   /**

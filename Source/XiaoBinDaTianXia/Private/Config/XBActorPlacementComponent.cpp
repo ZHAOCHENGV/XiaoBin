@@ -338,6 +338,10 @@ AActor *UXBActorPlacementComponent::ConfirmPlacement() {
   FVector FinalLocation = PreviewActor.IsValid()
                               ? PreviewActor->GetActorLocation()
                               : PreviewLocation;
+  
+  // ✨ 新增 - 应用配置的位置偏移
+  FinalLocation += Entry->LocationOffset;
+  
   NewActor->SetActorLocation(FinalLocation);
 
   // ✨ 新增 - 生成后立即禁用磁场组件（防止用默认配置招募士兵）
@@ -731,6 +735,14 @@ void UXBActorPlacementComponent::SetPlacementConfig(
   PlacementConfig = Config;
   UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 已设置放置配置: %s"),
          Config ? *Config->GetName() : TEXT("None"));
+}
+
+TArray<FXBSpawnableActorEntry>
+UXBActorPlacementComponent::GetFilteredSpawnableActorEntries() const {
+  if (!PlacementConfig) {
+    return TArray<FXBSpawnableActorEntry>();
+  }
+  return PlacementConfig->GetFilteredEntries(CurrentMapTag);
 }
 
 /**

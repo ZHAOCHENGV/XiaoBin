@@ -109,6 +109,16 @@ struct FXBSpawnableActorEntry {
             meta = (DisplayName = "连续放置"))
   bool bContinuousPlacement = false;
 
+  /** 生成位置偏移（相对于放置点） */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "放置配置",
+            meta = (DisplayName = "位置偏移"))
+  FVector LocationOffset = FVector::ZeroVector;
+
+  /** 适用地图标签（仅当设置后有效，为空时适用所有地图） */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "放置配置",
+            meta = (DisplayName = "适用地图", Categories = "Map"))
+  FGameplayTagContainer ApplicableMaps;
+
   /** 是否需要放置前配置（主将类型） */
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "放置配置",
             meta = (DisplayName = "放置前配置"))
@@ -124,7 +134,8 @@ struct FXBSpawnableActorEntry {
       : DefaultScale(FVector::OneVector),
         DefaultRotation(FRotator::ZeroRotator), bSnapToGround(true),
         RotationMode(EXBPlacementRotationMode::Manual), bAllowMove(true),
-        bContinuousPlacement(false) {}
+        bContinuousPlacement(false), LocationOffset(FVector::ZeroVector),
+        bRequiresConfig(false) {}
 };
 
 /**
