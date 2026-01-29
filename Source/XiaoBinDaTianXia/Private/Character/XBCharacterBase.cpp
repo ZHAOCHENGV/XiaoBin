@@ -1608,16 +1608,37 @@ void AXBCharacterBase::SetHiddenInBush(bool bEnableHidden) {
     }
   }
 
-  // 🔧 修改 - 设置覆层材质（草丛隐身效果）
+  // 🔧 修改 - 通过材质参数控制隐身效果
   if (USkeletalMeshComponent *MeshComp = GetMesh()) {
-    if (!CachedOverlayMaterial) {
-      CachedOverlayMaterial = MeshComp->GetOverlayMaterial();
-    }
-
     if (bEnableHidden) {
-      if (BushOverlayMaterial) {
-        MeshComp->SetOverlayMaterial(BushOverlayMaterial);
+      // 缓存原始材质并创建动态材质实例
+      if (BushDynamicMaterials.Num() == 0) {
+        const int32 NumMaterials = MeshComp->GetNumMaterials();
+        CachedOriginalMaterials.Reserve(NumMaterials);
+        BushDynamicMaterials.Reserve(NumMaterials);
+
+        for (int32 i = 0; i < NumMaterials; ++i) {
+          UMaterialInterface *OriginalMaterial = MeshComp->GetMaterial(i);
+          CachedOriginalMaterials.Add(OriginalMaterial);
+
+          if (OriginalMaterial) {
+            UMaterialInstanceDynamic *DynMat =
+                MeshComp->CreateDynamicMaterialInstance(i, OriginalMaterial);
+            BushDynamicMaterials.Add(DynMat);
+          } else {
+            BushDynamicMaterials.Add(nullptr);
+          }
+        }
       }
+
+      // 设置隐身参数值
+      for (UMaterialInstanceDynamic *DynMat : BushDynamicMaterials) {
+        if (DynMat) {
+          DynMat->SetScalarParameterValue(BushHiddenParameterName,
+                                          BushHiddenParameterValue);
+        }
+      }
+
       // 🔧 修改 - 草丛中对非友军不可见，仅对本地玩家做可见性过滤
       bool bShouldHideForLocal = false;
       if (APawn *LocalPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0)) {
@@ -1631,9 +1652,18 @@ void AXBCharacterBase::SetHiddenInBush(bool bEnableHidden) {
         HealthBarComponent->SetHealthBarVisible(!bShouldHideForLocal);
       }
     } else {
-      // 🔧 修改 - 离开草丛时清理覆层材质
-      MeshComp->SetOverlayMaterial(nullptr);
-      CachedOverlayMaterial = nullptr;
+      // 🔧 修改 - 恢复原始材质或设置正常参数值
+      if (CachedOriginalMaterials.Num() > 0) {
+        const int32 NumCached = CachedOriginalMaterials.Num();
+        for (int32 i = 0; i < NumCached; ++i) {
+          if (CachedOriginalMaterials[i]) {
+            MeshComp->SetMaterial(i, CachedOriginalMaterials[i]);
+          }
+        }
+        CachedOriginalMaterials.Empty();
+        BushDynamicMaterials.Empty();
+      }
+
       MeshComp->SetVisibility(true, true);
       if (HealthBarComponent) {
         HealthBarComponent->SetHealthBarVisible(true);

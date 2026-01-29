@@ -538,8 +538,20 @@ protected:
 
     // ==================== 草丛隐身 ====================
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "草丛", meta = (DisplayName = "草丛覆层材质"))
-    TObjectPtr<UMaterialInterface> BushOverlayMaterial;
+    /** 草丛隐身时修改的材质参数名称 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "草丛", 
+              meta = (DisplayName = "隐身材质参数名"))
+    FName BushHiddenParameterName = FName("HiddenAlpha");
+
+    /** 隐身状态时的参数值（通常为半透明） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "草丛", 
+              meta = (DisplayName = "隐身参数值", ClampMin = "0.0", ClampMax = "1.0"))
+    float BushHiddenParameterValue = 0.5f;
+
+    /** 正常状态时的参数值 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "草丛", 
+              meta = (DisplayName = "正常参数值", ClampMin = "0.0", ClampMax = "1.0"))
+    float BushVisibleParameterValue = 1.0f;
 
     UPROPERTY(BlueprintReadOnly, Category = "草丛", meta = (DisplayName = "是否草丛隐身"))
     bool bIsHiddenInBush = false;
@@ -557,8 +569,13 @@ protected:
     UPROPERTY()
     TEnumAsByte<ECollisionResponse> CachedSoldierCollisionResponse = ECR_Block;
 
+    /** 动态材质实例数组（隐身时创建） */
     UPROPERTY()
-    TObjectPtr<UMaterialInterface> CachedOverlayMaterial;
+    TArray<TObjectPtr<UMaterialInstanceDynamic>> BushDynamicMaterials;
+
+    /** 原始材质数组（用于恢复） */
+    UPROPERTY()
+    TArray<TObjectPtr<UMaterialInterface>> CachedOriginalMaterials;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "掉落", meta = (DisplayName = "士兵掉落配置"))
     FXBSoldierDropConfig SoldierDropConfig;
