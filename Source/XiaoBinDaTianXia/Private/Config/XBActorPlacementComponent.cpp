@@ -21,6 +21,7 @@
 #include "GameFramework/Character.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
+#include "Kismet/KismetSystemLibrary.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Save/XBSaveGame.h"
 #include "UI/XBLeaderSpawnConfigWidget.h"
@@ -517,6 +518,33 @@ void UXBActorPlacementComponent::CancelOperation() {
   }
 }
 
+void UXBActorPlacementComponent::ClearAllSelectionAndHover() {
+  // 清理悬停状态并恢复材质
+  if (HoveredActor.IsValid()) {
+    ApplyHoverMaterial(HoveredActor.Get(), false);
+    HoveredActor.Reset();
+  }
+
+  // 清理选中状态并恢复材质
+  if (SelectedActor.IsValid()) {
+    RestoreCachedMaterials(SelectedActor.Get());
+    SelectedActor.Reset();
+  }
+
+  // 确保所有缓存的材质都恢复
+  for (auto &Pair : OriginalMaterialsCache) {
+    if (Pair.Key.IsValid()) {
+      RestoreCachedMaterials(Pair.Key.Get());
+    }
+  }
+  OriginalMaterialsCache.Empty();
+
+  // 重置状态
+  SetPlacementState(EXBPlacementState::Idle);
+
+  UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 已清理所有选中和悬停状态"));
+}
+
 bool UXBActorPlacementComponent::DeleteSelectedActor() {
   if (CurrentState != EXBPlacementState::Editing) {
     return false;
@@ -776,7 +804,7 @@ bool UXBActorPlacementComponent::AutoDetectCurrentMapTag() {
  * @param OutNormal 输出命中面法线
  * @return 是否命中
  * @note  用于预览位置更新和放置位置确定
- *        使用 ECC_Visibility 通道检测地面/障碍物
+ *        使用 GroundTraceObjectTypes 配置的对象类型检测
  *        自动忽略 Owner Actor 和预览 Actor
  */
 bool UXBActorPlacementComponent::GetMouseHitLocation(FVector &OutLocation,
@@ -803,22 +831,32 @@ bool UXBActorPlacementComponent::GetMouseHitLocation(FVector &OutLocation,
       PlacementConfig ? PlacementConfig->TraceDistance : 50000.0f;
   const FVector TraceEnd = WorldLocation + WorldDirection * TraceDistance;
 
-  FHitResult HitResult;
-  FCollisionQueryParams QueryParams;
-  QueryParams.AddIgnoredActor(GetOwner());
-
-  // 忽略预览 Actor
+  // 构建忽略 Actor 列表
+  TArray<AActor *> ActorsToIgnore;
+  ActorsToIgnore.Add(GetOwner()->GetOwner()); // Owner 的 Owner（Pawn）
+  if (GetOwner()) {
+    ActorsToIgnore.Add(GetOwner());
+  }
   if (PreviewActor.IsValid()) {
-    QueryParams.AddIgnoredActor(PreviewActor.Get());
+    ActorsToIgnore.Add(PreviewActor.Get());
   }
 
-  UWorld *World = GetWorld();
-  if (!World) {
-    return false;
+  FHitResult HitResult;
+
+  // 使用 LineTraceSingleForObjects 进行检测
+  // 如果未配置 ObjectTypes，默认检测 WorldStatic 和 WorldDynamic
+  TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes = GroundTraceObjectTypes;
+  if (ObjectTypes.Num() == 0) {
+    ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_WorldStatic));
+    ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_WorldDynamic));
   }
 
-  if (World->LineTraceSingleByChannel(HitResult, WorldLocation, TraceEnd,
-                                      ECC_Visibility, QueryParams)) {
+  const bool bHit = UKismetSystemLibrary::LineTraceSingleForObjects(
+      GetOwner(), WorldLocation, TraceEnd, ObjectTypes, false, ActorsToIgnore,
+      TraceDebugType, HitResult, true, TraceDebugHitColor.ToFColor(true),
+      TraceDebugMissColor.ToFColor(true), TraceDebugDuration);
+
+  if (bHit) {
     OutLocation = HitResult.Location;
     OutNormal = HitResult.ImpactNormal;
     return true;

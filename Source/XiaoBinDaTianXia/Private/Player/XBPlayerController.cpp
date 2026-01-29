@@ -678,6 +678,12 @@ void AXBPlayerController::HandleSpawnLeaderInput()
                 return;
             }
 
+            // ✨ 新增 - 清理放置组件的选中和悬停状态，恢复所有 Actor 原始材质
+            if (UXBActorPlacementComponent* PlacementComp = CachedConfigPawn->GetPlacementComponent())
+            {
+                PlacementComp->ClearAllSelectionAndHover();
+            }
+
             // ✨ 新增 - 在生成主将之前触发配置确认事件，让蓝图有机会执行预处理逻辑
             CachedConfigPawn->OnConfigConfirmed.Broadcast();
             UE_LOG(LogTemp, Log, TEXT("[PlayerController] 配置确认事件已广播"));

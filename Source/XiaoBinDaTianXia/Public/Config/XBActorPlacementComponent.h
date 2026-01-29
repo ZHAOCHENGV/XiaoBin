@@ -109,6 +109,14 @@ public:
   void CancelOperation();
 
   /**
+   * @brief 清理所有选中和悬停状态，恢复 Actor 原始材质
+   * @note 游戏开始时调用，确保所有 Actor 恢复正常显示
+   */
+  UFUNCTION(BlueprintCallable, Category = "放置系统",
+            meta = (DisplayName = "清理选中和悬停状态"))
+  void ClearAllSelectionAndHover();
+
+  /**
    * @brief 删除当前选中的 Actor
    * @return 是否成功删除
    */
@@ -382,6 +390,33 @@ protected:
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "放置配置",
             meta = (DisplayName = "放置配置"))
   TObjectPtr<UXBPlacementConfigAsset> PlacementConfig;
+
+  // ============ 射线检测配置 ============
+
+  /** 地面检测使用的对象类型 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "放置配置|射线检测",
+            meta = (DisplayName = "地面检测对象类型"))
+  TArray<TEnumAsByte<EObjectTypeQuery>> GroundTraceObjectTypes;
+
+  /** 射线检测调试绘制类型 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "放置配置|射线检测",
+            meta = (DisplayName = "调试绘制类型"))
+  TEnumAsByte<EDrawDebugTrace::Type> TraceDebugType = EDrawDebugTrace::None;
+
+  /** 调试绘制持续时间（秒） */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "放置配置|射线检测",
+            meta = (DisplayName = "调试绘制时间", EditCondition = "TraceDebugType != EDrawDebugTrace::None"))
+  float TraceDebugDuration = 2.0f;
+
+  /** 调试绘制颜色 - 命中 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "放置配置|射线检测",
+            meta = (DisplayName = "命中颜色", EditCondition = "TraceDebugType != EDrawDebugTrace::None"))
+  FLinearColor TraceDebugHitColor = FLinearColor::Green;
+
+  /** 调试绘制颜色 - 未命中 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "放置配置|射线检测",
+            meta = (DisplayName = "未命中颜色", EditCondition = "TraceDebugType != EDrawDebugTrace::None"))
+  FLinearColor TraceDebugMissColor = FLinearColor::Red;
 
 private:
   // ============ 内部方法 ============
