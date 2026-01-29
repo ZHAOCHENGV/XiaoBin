@@ -28,6 +28,7 @@
 #include "UI/XBWorldHealthBarComponent.h"
 #include "Utils/XBLogCategories.h"
 #include "XBCollisionChannels.h"
+#include "Environment/XBBushVolume.h"
 
 /**
  * @brief 构造函数
@@ -1853,15 +1854,33 @@ void UXBActorPlacementComponent::ClearAllPlacedActors() {
   }
 
   int32 DestroyedCount = 0;
+  int32 SkippedCount = 0;
 
   // 首先清除 PlacedActors 数组中记录的 Actor
   for (FXBPlacedActorData &Data : PlacedActors) {
     if (Data.PlacedActor.IsValid()) {
-      Data.PlacedActor->Destroy();
+      AActor *PlacedActor = Data.PlacedActor.Get();
+
+      // ✨ 新增 - 检查是否需要排除存档（如 AXBBushVolume）
+      if (AXBBushVolume *BushVolume = Cast<AXBBushVolume>(PlacedActor)) {
+        if (BushVolume->ShouldExcludeFromSave()) {
+          UE_LOG(LogXBConfig, Log,
+                 TEXT("[放置组件] 跳过排除存档的 Actor: %s"),
+                 *PlacedActor->GetName());
+          ++SkippedCount;
+          continue;
+        }
+      }
+
+      PlacedActor->Destroy();
       ++DestroyedCount;
     }
   }
-  PlacedActors.Empty();
+
+  // 从数组中移除已销毁的 Actor（保留排除存档的）
+  PlacedActors.RemoveAll([](const FXBPlacedActorData &Data) {
+    return !Data.PlacedActor.IsValid();
+  });
 
   // 然后根据配置搜索场景中所有匹配的 Actor 并删除
   if (PlacementConfig) {
@@ -1878,6 +1897,17 @@ void UXBActorPlacementComponent::ClearAllPlacedActors() {
 
       for (AActor *FoundActor : FoundActors) {
         if (FoundActor && !FoundActor->IsPendingKillPending()) {
+          // ✨ 新增 - 检查是否需要排除存档（如 AXBBushVolume）
+          if (AXBBushVolume *BushVolume = Cast<AXBBushVolume>(FoundActor)) {
+            if (BushVolume->ShouldExcludeFromSave()) {
+              UE_LOG(LogXBConfig, Log,
+                     TEXT("[放置组件] 跳过排除存档的场景 Actor: %s"),
+                     *FoundActor->GetName());
+              ++SkippedCount;
+              continue;
+            }
+          }
+
           UE_LOG(LogXBConfig, Log,
                  TEXT("[放置组件] 清除场景中的 Actor: %s (类: %s)"),
                  *FoundActor->GetName(), *Entry.ActorClass->GetName());
@@ -1888,8 +1918,9 @@ void UXBActorPlacementComponent::ClearAllPlacedActors() {
     }
   }
 
-  UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 已清除所有放置的 Actor，共 %d 个"),
-         DestroyedCount);
+  UE_LOG(LogXBConfig, Log,
+         TEXT("[放置组件] 已清除放置的 Actor，销毁 %d 个，跳过 %d 个（排除存档）"),
+         DestroyedCount, SkippedCount);
 }
 
 // ============ 地图存档辅助函数 ============
