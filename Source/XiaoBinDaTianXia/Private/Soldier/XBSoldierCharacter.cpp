@@ -323,6 +323,25 @@ void AXBSoldierCharacter::FullInitialize(UDataTable *DataTable, FName RowName,
     }
   }
 
+  // 🔧 修复 - 重置草丛隐身材质状态，恢复原始材质
+  if (bIsHiddenInBush || BushDynamicMaterials.Num() > 0) {
+    if (USkeletalMeshComponent *MeshComp = GetMesh()) {
+      if (CachedOriginalMaterials.Num() > 0) {
+        const int32 NumCached = CachedOriginalMaterials.Num();
+        for (int32 i = 0; i < NumCached; ++i) {
+          if (CachedOriginalMaterials[i]) {
+            MeshComp->SetMaterial(i, CachedOriginalMaterials[i]);
+          }
+        }
+      }
+      MeshComp->SetVisibility(true, true);
+    }
+    bIsHiddenInBush = false;
+  }
+  CachedOriginalMaterials.Empty();
+  BushDynamicMaterials.Empty();
+  bCachedBushCollisionResponse = false;
+
   // 1. 基础数据初始化
   InitializeFromDataTable(DataTable, RowName, InFaction);
 
@@ -2297,6 +2316,25 @@ void AXBSoldierCharacter::ResetForPooling() {
   DropElapsedTime = 0.0f;
   DropTargetLeader = nullptr;
   bAutoRecruitOnLanding = true;
+
+  // 🔧 修复 - 重置草丛隐身材质状态，恢复原始材质
+  if (bIsHiddenInBush) {
+    if (USkeletalMeshComponent *MeshComp = GetMesh()) {
+      if (CachedOriginalMaterials.Num() > 0) {
+        const int32 NumCached = CachedOriginalMaterials.Num();
+        for (int32 i = 0; i < NumCached; ++i) {
+          if (CachedOriginalMaterials[i]) {
+            MeshComp->SetMaterial(i, CachedOriginalMaterials[i]);
+          }
+        }
+      }
+      MeshComp->SetVisibility(true, true);
+    }
+    bIsHiddenInBush = false;
+  }
+  CachedOriginalMaterials.Empty();
+  BushDynamicMaterials.Empty();
+  bCachedBushCollisionResponse = false;
 
   GetWorldTimerManager().ClearTimer(DelayedAIStartTimerHandle);
 
