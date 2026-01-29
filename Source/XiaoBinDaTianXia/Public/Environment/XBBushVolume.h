@@ -65,4 +65,21 @@ private:
 
     UPROPERTY()
     TSet<TWeakObjectPtr<AXBCharacterBase>> OverlappingLeaders;
+
+public:
+    /**
+     * @brief 存档排除标记
+     * @note 为 true 时，存档系统将跳过此 Actor 的保存/读取/删除操作
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "存档",
+              meta = (DisplayName = "排除存档"))
+    bool bExcludeFromSave = false;
+
+    /**
+     * @brief 检查是否应该排除存档
+     * @return 是否排除
+     */
+    UFUNCTION(BlueprintPure, Category = "存档",
+              meta = (DisplayName = "是否排除存档"))
+    bool ShouldExcludeFromSave() const { return bExcludeFromSave; }
 };

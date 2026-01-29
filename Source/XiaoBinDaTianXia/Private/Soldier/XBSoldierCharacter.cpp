@@ -1223,6 +1223,15 @@ void AXBSoldierCharacter::ApplyVisualConfig() {
 
   USkeletalMesh *SoldierMesh = DataAccessor->GetSkeletalMesh();
   if (SoldierMesh) {
+    // ✨ 新增 - 设置新网格体之前，清理草丛隐身相关的材质缓存
+    // 避免旧网格体的动态材质残留到新网格体上
+    if (bIsHiddenInBush) {
+      // 如果当前在草丛中，先恢复原始材质再设置新网格体
+      bIsHiddenInBush = false;
+    }
+    CachedOriginalMaterials.Empty();
+    BushDynamicMaterials.Empty();
+
     GetMesh()->SetSkeletalMesh(SoldierMesh);
 
     // ✨ 新增 - 自适应胶囊体大小
