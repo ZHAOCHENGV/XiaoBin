@@ -1223,10 +1223,9 @@ void AXBSoldierCharacter::ApplyVisualConfig() {
 
   USkeletalMesh *SoldierMesh = DataAccessor->GetSkeletalMesh();
   if (SoldierMesh) {
-    // 🔧 修复 - 设置新网格体之前，必须先恢复原始材质
-    // 如果只清空缓存数组而不恢复材质，旧网格体的动态材质会残留到新网格体上
+    // 🔧 修复 - 设置新网格体之前，必须先彻底清理旧材质状态
     if (USkeletalMeshComponent *MeshComp = GetMesh()) {
-      // 如果有缓存的原始材质，先恢复
+      // 1. 如果有缓存的原始材质，先恢复（这步是必要的，防止动态材质残留）
       if (CachedOriginalMaterials.Num() > 0) {
         const int32 NumCached = CachedOriginalMaterials.Num();
         for (int32 i = 0; i < NumCached; ++i) {
@@ -1235,6 +1234,10 @@ void AXBSoldierCharacter::ApplyVisualConfig() {
           }
         }
       }
+      
+      // 2. 清空所有材质覆盖（OverrideMaterials），强制回到默认状态
+      MeshComp->EmptyOverrideMaterials();
+      
       // 确保网格体可见
       MeshComp->SetVisibility(true, true);
     }
@@ -1244,7 +1247,34 @@ void AXBSoldierCharacter::ApplyVisualConfig() {
     CachedOriginalMaterials.Empty();
     BushDynamicMaterials.Empty();
 
+    // 设置新网格体
     GetMesh()->SetSkeletalMesh(SoldierMesh);
+    
+    // 🔧 修复 - 设置新网格体后，延迟刷新材质，确保使用新网格体的默认材质
+    // 这是解决材质覆盖 BUG 的关键：在下一帧再次清理并刷新材质
+    if (UWorld* World = GetWorld()) {
+      TWeakObjectPtr<AXBSoldierCharacter> WeakThis(this);
+      TWeakObjectPtr<USkeletalMesh> WeakMesh(SoldierMesh);
+      World->GetTimerManager().SetTimerForNextTick([WeakThis, WeakMesh]() {
+        if (WeakThis.IsValid() && WeakMesh.IsValid()) {
+          if (USkeletalMeshComponent* MeshComp = WeakThis->GetMesh()) {
+            // 再次清空材质覆盖
+            MeshComp->EmptyOverrideMaterials();
+            
+            // 强制从 SkeletalMesh 获取默认材质并重新设置
+            const TArray<FSkeletalMaterial>& Materials = WeakMesh->GetMaterials();
+            for (int32 i = 0; i < Materials.Num(); ++i) {
+              if (Materials[i].MaterialInterface) {
+                MeshComp->SetMaterial(i, Materials[i].MaterialInterface);
+              }
+            }
+            
+            UE_LOG(LogXBSoldier, Verbose, TEXT("士兵 %s: 材质刷新完成，共 %d 个材质槽"),
+                   *WeakThis->GetName(), Materials.Num());
+          }
+        }
+      });
+    }
 
     // ✨ 新增 - 自适应胶囊体大小
     // 1. 获取网格体边界
