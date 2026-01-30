@@ -1223,12 +1223,24 @@ void AXBSoldierCharacter::ApplyVisualConfig() {
 
   USkeletalMesh *SoldierMesh = DataAccessor->GetSkeletalMesh();
   if (SoldierMesh) {
-    // ✨ 新增 - 设置新网格体之前，清理草丛隐身相关的材质缓存
-    // 避免旧网格体的动态材质残留到新网格体上
-    if (bIsHiddenInBush) {
-      // 如果当前在草丛中，先恢复原始材质再设置新网格体
-      bIsHiddenInBush = false;
+    // 🔧 修复 - 设置新网格体之前，必须先恢复原始材质
+    // 如果只清空缓存数组而不恢复材质，旧网格体的动态材质会残留到新网格体上
+    if (USkeletalMeshComponent *MeshComp = GetMesh()) {
+      // 如果有缓存的原始材质，先恢复
+      if (CachedOriginalMaterials.Num() > 0) {
+        const int32 NumCached = CachedOriginalMaterials.Num();
+        for (int32 i = 0; i < NumCached; ++i) {
+          if (CachedOriginalMaterials[i]) {
+            MeshComp->SetMaterial(i, CachedOriginalMaterials[i]);
+          }
+        }
+      }
+      // 确保网格体可见
+      MeshComp->SetVisibility(true, true);
     }
+    
+    // 重置草丛隐身状态
+    bIsHiddenInBush = false;
     CachedOriginalMaterials.Empty();
     BushDynamicMaterials.Empty();
 
