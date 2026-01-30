@@ -2,13 +2,12 @@
 
 /**
  * @file XBRoadCollisionGenerator.h
- * @brief 道路碰撞生成器 - 沿样条线两侧生成碰撞墙
+ * @brief 道路碰撞生成器 - 沿样条线生成碰撞墙
  *
  * @note 使用方法:
  *       1. 将此 Actor 拖入场景
- *       2. 编辑 Spline 组件的点，沿道路绘制路径
- *       3. 调整参数（宽度、间距、高度等）
- *       4. 点击 "生成碰撞" 按钮生成碰撞体
+ *       2. 编辑 Spline 组件的点，沿道路边缘绘制路径
+ *       3. 拖拽样条线时碰撞体会实时更新
  */
 
 #pragma once
@@ -19,11 +18,10 @@
 
 class USplineComponent;
 class UBoxComponent;
-class UInstancedStaticMeshComponent;
 
 /**
  * @brief 道路碰撞生成器
- * @note 基于样条线在道路两侧自动生成碰撞墙
+ * @note 基于样条线自动生成碰撞墙，拖拽样条线时实时更新
  */
 UCLASS(BlueprintType, Blueprintable, meta = (DisplayName = "XB Road Collision Generator"))
 class XIAOBINDATIANXIA_API AXBRoadCollisionGenerator : public AActor
@@ -35,23 +33,15 @@ public:
 
     // ============ 核心组件 ============
 
-    /** 样条线组件 - 定义道路中心线 */
+    /** 样条线组件 - 定义碰撞生成路径 */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "样条线"))
     TObjectPtr<USplineComponent> SplineComponent;
-
-    /** 预览网格实例组件 - 可视化碰撞位置 */
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件", meta = (DisplayName = "预览网格"))
-    TObjectPtr<UInstancedStaticMeshComponent> PreviewMeshComponent;
 
     // ============ 生成参数 ============
 
     /** 碰撞体间距（沿样条线方向） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "生成参数", meta = (DisplayName = "碰撞间距", ClampMin = "10.0", ClampMax = "1000.0"))
     float CollisionSpacing = 100.0f;
-
-    /** 道路半宽（碰撞体距中心线的距离） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "生成参数", meta = (DisplayName = "道路半宽", ClampMin = "10.0"))
-    float RoadHalfWidth = 200.0f;
 
     /** 碰撞体高度 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "生成参数", meta = (DisplayName = "碰撞高度", ClampMin = "10.0"))
@@ -71,25 +61,9 @@ public:
 
     // ============ 生成选项 ============
 
-    /** 是否生成左侧碰撞 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "生成选项", meta = (DisplayName = "生成左侧"))
-    bool bGenerateLeftSide = false;
-
-    /** 是否生成右侧碰撞 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "生成选项", meta = (DisplayName = "生成右侧"))
-    bool bGenerateRightSide = true;
-
-    /** 是否显示预览网格 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "生成选项", meta = (DisplayName = "显示预览"))
-    bool bShowPreview = true;
-
     /** 是否在编辑时自动生成碰撞（拖拽样条线实时更新） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "生成选项", meta = (DisplayName = "自动生成碰撞"))
     bool bAutoGenerateCollision = true;
-
-    /** 预览网格资源 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "生成选项", meta = (DisplayName = "预览网格资源"))
-    TObjectPtr<UStaticMesh> PreviewMesh;
 
     // ============ 碰撞配置 ============
 
@@ -117,12 +91,6 @@ public:
     void ClearCollision();
 
     /**
-     * @brief 更新预览显示
-     */
-    UFUNCTION(BlueprintCallable, CallInEditor, Category = "道路碰撞", meta = (DisplayName = "更新预览"))
-    void UpdatePreview();
-
-    /**
      * @brief 获取已生成的碰撞体数量
      */
     UFUNCTION(BlueprintPure, Category = "道路碰撞", meta = (DisplayName = "获取碰撞数量"))
@@ -144,9 +112,8 @@ private:
      * @brief 在指定位置创建碰撞盒
      * @param Location 世界位置
      * @param Tangent 样条线切线方向
-     * @param bIsLeftSide 是否为左侧
      */
-    void CreateCollisionBox(const FVector& Location, const FVector& Tangent, bool bIsLeftSide);
+    void CreateCollisionBox(const FVector& Location, const FVector& Tangent);
 
     /**
      * @brief 计算采样点信息
