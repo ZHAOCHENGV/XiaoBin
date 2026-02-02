@@ -318,6 +318,108 @@ AActor *UXBActorPlacementComponent::ConfirmPlacement() {
     return nullptr;
   }
 
+  // ========== 批量放置逻辑 ==========
+  // 如果配置了批量放置，则生成网格布局的多个 Actor
+  if (Entry->bBatchPlacement && Entry->BatchGridSize.X > 0 && Entry->BatchGridSize.Y > 0) {
+    UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 开始批量放置: %dx%d, 间距: %.1f"),
+           Entry->BatchGridSize.X, Entry->BatchGridSize.Y, Entry->BatchSpacing);
+
+    FActorSpawnParameters SpawnParams;
+    SpawnParams.SpawnCollisionHandlingOverride =
+        ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
+    // 计算网格中心偏移（使放置点为网格中心）
+    const float HalfWidth = (Entry->BatchGridSize.X - 1) * Entry->BatchSpacing * 0.5f;
+    const float HalfHeight = (Entry->BatchGridSize.Y - 1) * Entry->BatchSpacing * 0.5f;
+
+    AActor* FirstActor = nullptr;
+    int32 SpawnedCount = 0;
+
+    for (int32 GridX = 0; GridX < Entry->BatchGridSize.X; ++GridX) {
+      for (int32 GridY = 0; GridY < Entry->BatchGridSize.Y; ++GridY) {
+        // 计算相对于中心的偏移
+        FVector GridOffset(
+            GridX * Entry->BatchSpacing - HalfWidth,
+            GridY * Entry->BatchSpacing - HalfHeight,
+            0.0f);
+
+        // 应用预览旋转到偏移（保持网格随旋转方向变化）
+        FVector RotatedOffset = PreviewRotation.RotateVector(GridOffset);
+        FVector SpawnLocation = PreviewLocation + RotatedOffset;
+
+        // 地面贴合检测
+        if (Entry->bSnapToGround) {
+          FVector GroundLocation;
+          if (TraceForGround(SpawnLocation, GroundLocation)) {
+            SpawnLocation = GroundLocation;
+          }
+        }
+
+        // 应用位置偏移
+        SpawnLocation += Entry->LocationOffset;
+
+        // 根据旋转模式计算每个 Actor 的旋转
+        FRotator ActorRotation = PreviewRotation;
+        if (Entry->RotationMode == EXBPlacementRotationMode::Random) {
+          ActorRotation = Entry->DefaultRotation;
+          ActorRotation.Yaw = FMath::FRandRange(0.0f, 360.0f);
+        }
+
+        // 生成 Actor
+        AActor* GridActor = World->SpawnActor<AActor>(
+            Entry->ActorClass, SpawnLocation, ActorRotation, SpawnParams);
+
+        if (GridActor) {
+          GridActor->SetActorScale3D(Entry->DefaultScale);
+          SpawnedCount++;
+
+          // 记录第一个生成的 Actor 作为返回值
+          if (!FirstActor) {
+            FirstActor = GridActor;
+          }
+
+          // 记录放置数据
+          FXBPlacedActorData PlacedData;
+          PlacedData.PlacedActor = GridActor;
+          PlacedData.EntryIndex = CurrentPreviewEntryIndex;
+          PlacedData.ActorClassPath = FSoftClassPath(Entry->ActorClass);
+          PlacedData.Location = SpawnLocation;
+          PlacedData.Rotation = ActorRotation;
+          PlacedData.Scale = Entry->DefaultScale;
+          PlacedActors.Add(PlacedData);
+        }
+      }
+    }
+
+    UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 批量放置完成，共生成 %d 个 Actor"),
+           SpawnedCount);
+
+    // 缓存连续放置相关数据
+    const int32 PlacedEntryIndex = CurrentPreviewEntryIndex;
+    const bool bGlobalContinuousMode =
+        PlacementConfig && PlacementConfig->bContinuousPlacementMode;
+    const bool bEntryContinuousMode = Entry->bContinuousPlacement;
+    const bool bShouldContinue = bGlobalContinuousMode || bEntryContinuousMode;
+
+    // 销毁预览 Actor
+    DestroyPreviewActor();
+
+    // 广播事件（使用第一个 Actor）
+    if (FirstActor) {
+      OnActorPlaced.Broadcast(FirstActor, PlacedEntryIndex);
+    }
+
+    // 连续放置模式
+    if (bShouldContinue) {
+      StartPreview(PlacedEntryIndex);
+    } else {
+      SetPlacementState(EXBPlacementState::Idle);
+    }
+
+    return FirstActor;
+  }
+
+  // ========== 单个放置逻辑（原有逻辑） ==========
   // 生成实际 Actor
   FActorSpawnParameters SpawnParams;
   SpawnParams.SpawnCollisionHandlingOverride =
@@ -888,19 +990,85 @@ void UXBActorPlacementComponent::UpdatePreviewLocation() {
       PreviewLocation = HitLocation;
     }
 
-    // ✨ 修改 - 使用 CalculateActorBottomOffset 计算偏移，支持角色类型特殊处理
-    const float ZOffset = CalculateActorBottomOffset(PreviewActor.Get());
-    FVector AdjustedLocation = PreviewLocation;
-    AdjustedLocation.Z += ZOffset;
-
-    PreviewActor->SetActorLocation(AdjustedLocation);
     bIsPreviewLocationValid = true;
 
-    // 更新预览材质颜色
-    ApplyPreviewMaterial(PreviewActor.Get(), true);
+    // ========== 批量预览位置更新 ==========
+    if (Entry && Entry->bBatchPlacement && BatchPreviewActors.Num() > 0) {
+      // 计算网格中心偏移
+      const float HalfWidth = (Entry->BatchGridSize.X - 1) * Entry->BatchSpacing * 0.5f;
+      const float HalfHeight = (Entry->BatchGridSize.Y - 1) * Entry->BatchSpacing * 0.5f;
+
+      int32 ActorIndex = 0;
+      for (int32 GridX = 0; GridX < Entry->BatchGridSize.X; ++GridX) {
+        for (int32 GridY = 0; GridY < Entry->BatchGridSize.Y; ++GridY) {
+          if (ActorIndex >= BatchPreviewActors.Num()) {
+            break;
+          }
+
+          TWeakObjectPtr<AActor>& BatchActor = BatchPreviewActors[ActorIndex];
+          if (!BatchActor.IsValid()) {
+            ActorIndex++;
+            continue;
+          }
+
+          // 计算相对于中心的偏移
+          FVector GridOffset(
+              GridX * Entry->BatchSpacing - HalfWidth,
+              GridY * Entry->BatchSpacing - HalfHeight,
+              0.0f);
+
+          // 应用预览旋转到偏移
+          FVector RotatedOffset = PreviewRotation.RotateVector(GridOffset);
+          FVector SpawnLocation = PreviewLocation + RotatedOffset;
+
+          // 地面贴合检测（每个网格点单独检测）
+          if (Entry->bSnapToGround) {
+            FVector GridGroundLocation;
+            if (TraceForGround(SpawnLocation, GridGroundLocation)) {
+              SpawnLocation = GridGroundLocation;
+            }
+          }
+
+          // 计算 Z 偏移
+          const float ZOffset = CalculateActorBottomOffset(BatchActor.Get());
+          SpawnLocation.Z += ZOffset;
+
+          // 设置旋转（随机模式下每个 Actor 旋转不同，这里保持预览时的一致性）
+          FRotator ActorRotation = PreviewRotation;
+
+          BatchActor->SetActorLocation(SpawnLocation);
+          BatchActor->SetActorRotation(ActorRotation);
+
+          // 更新预览材质
+          ApplyPreviewMaterial(BatchActor.Get(), true);
+
+          ActorIndex++;
+        }
+      }
+    } else {
+      // ========== 单个预览位置更新（原有逻辑） ==========
+      const float ZOffset = CalculateActorBottomOffset(PreviewActor.Get());
+      FVector AdjustedLocation = PreviewLocation;
+      AdjustedLocation.Z += ZOffset;
+
+      PreviewActor->SetActorLocation(AdjustedLocation);
+
+      // 更新预览材质颜色
+      ApplyPreviewMaterial(PreviewActor.Get(), true);
+    }
   } else {
     bIsPreviewLocationValid = false;
-    ApplyPreviewMaterial(PreviewActor.Get(), false);
+    
+    // 批量预览时更新所有 Actor 材质
+    if (BatchPreviewActors.Num() > 0) {
+      for (TWeakObjectPtr<AActor>& BatchActor : BatchPreviewActors) {
+        if (BatchActor.IsValid()) {
+          ApplyPreviewMaterial(BatchActor.Get(), false);
+        }
+      }
+    } else {
+      ApplyPreviewMaterial(PreviewActor.Get(), false);
+    }
   }
 }
 
@@ -920,11 +1088,48 @@ bool UXBActorPlacementComponent::CreatePreviewActor(int32 EntryIndex) {
     return false;
   }
 
-  // 生成预览 Actor
   FActorSpawnParameters SpawnParams;
   SpawnParams.SpawnCollisionHandlingOverride =
       ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
+  // ========== 批量预览逻辑 ==========
+  if (Entry->bBatchPlacement && Entry->BatchGridSize.X > 0 && Entry->BatchGridSize.Y > 0) {
+    UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 创建批量预览: %dx%d"),
+           Entry->BatchGridSize.X, Entry->BatchGridSize.Y);
+
+    // 清理旧的批量预览 Actor
+    for (TWeakObjectPtr<AActor>& BatchActor : BatchPreviewActors) {
+      if (BatchActor.IsValid()) {
+        BatchActor->Destroy();
+      }
+    }
+    BatchPreviewActors.Empty();
+
+    // 创建网格预览 Actor
+    for (int32 GridX = 0; GridX < Entry->BatchGridSize.X; ++GridX) {
+      for (int32 GridY = 0; GridY < Entry->BatchGridSize.Y; ++GridY) {
+        AActor* GridPreview = World->SpawnActor<AActor>(
+            Entry->ActorClass, FVector::ZeroVector,
+            Entry->DefaultRotation, SpawnParams);
+
+        if (GridPreview) {
+          GridPreview->SetActorEnableCollision(false);
+          GridPreview->SetActorScale3D(Entry->DefaultScale);
+          ApplyPreviewMaterial(GridPreview, true);
+          BatchPreviewActors.Add(GridPreview);
+        }
+      }
+    }
+
+    // 将第一个 Actor 作为主预览 Actor（用于兼容现有逻辑）
+    if (BatchPreviewActors.Num() > 0 && BatchPreviewActors[0].IsValid()) {
+      PreviewActor = BatchPreviewActors[0];
+    }
+
+    return BatchPreviewActors.Num() > 0;
+  }
+
+  // ========== 单个预览逻辑（原有逻辑） ==========
   AActor *NewPreview =
       World->SpawnActor<AActor>(Entry->ActorClass, FVector::ZeroVector,
                                 Entry->DefaultRotation, SpawnParams);
@@ -948,6 +1153,15 @@ bool UXBActorPlacementComponent::CreatePreviewActor(int32 EntryIndex) {
 }
 
 void UXBActorPlacementComponent::DestroyPreviewActor() {
+  // 清理批量预览 Actor
+  for (TWeakObjectPtr<AActor>& BatchActor : BatchPreviewActors) {
+    if (BatchActor.IsValid()) {
+      BatchActor->Destroy();
+    }
+  }
+  BatchPreviewActors.Empty();
+
+  // 清理主预览 Actor（如果不在批量列表中）
   if (PreviewActor.IsValid()) {
     PreviewActor->Destroy();
     PreviewActor.Reset();

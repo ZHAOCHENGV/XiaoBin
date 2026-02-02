@@ -303,16 +303,6 @@ void AXBPlayerController::BindInputActions()
             &AXBPlayerController::HandlePlacementRotateInput);
     }
 
-    // ✨ 新增 - 重开游戏输入绑定
-    if (InputConfig->RestartGameAction)
-    {
-        EnhancedInput->BindAction(
-            InputConfig->RestartGameAction,
-            ETriggerEvent::Started,
-            this,
-            &AXBPlayerController::HandleRestartGameInput);
-    }
-
     UE_LOG(LogTemp, Log, TEXT("输入操作已成功绑定!!!"));
 }
 
@@ -834,42 +824,4 @@ void AXBPlayerController::HandlePlacementRotateInput(const FInputActionValue& In
     {
         PlacementComp->RotateActor(RotateValue);
     }
-}
-
-/**
- * @brief 处理重开游戏输入
- * @return 无
- * @note   详细流程分析: 解析地图标签 -> 获取地图名称 -> 加载关卡
- *         性能/架构注意事项: 此操作会重置整个游戏状态，仅在用户明确按键时触发
- */
-void AXBPlayerController::HandleRestartGameInput()
-{
-    // 校验关卡标签是否有效
-    if (!RestartLevelTag.IsValid())
-    {
-        UE_LOG(LogTemp, Warning, TEXT("重开游戏失败：未配置重开关卡标签"));
-        return;
-    }
-
-    // 从标签中解析地图名称（移除 "Map." 前缀）
-    FString TagName = RestartLevelTag.ToString();
-    static const FString MapPrefix = TEXT("Map.");
-    FString MapName;
-    if (TagName.StartsWith(MapPrefix))
-    {
-        MapName = TagName.RightChop(MapPrefix.Len());
-    }
-    else
-    {
-        MapName = TagName;
-    }
-
-    if (MapName.IsEmpty())
-    {
-        UE_LOG(LogTemp, Warning, TEXT("重开游戏失败：地图名称解析失败"));
-        return;
-    }
-
-    UE_LOG(LogTemp, Log, TEXT("重开游戏：加载关卡 %s"), *MapName);
-    UGameplayStatics::OpenLevel(this, FName(*MapName));
 }

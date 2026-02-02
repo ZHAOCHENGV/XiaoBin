@@ -130,12 +130,30 @@ struct FXBSpawnableActorEntry {
                     EditCondition = "bRequiresConfig"))
   TSubclassOf<UUserWidget> ConfigWidgetClass;
 
+  // ============ 批量放置配置 ============
+
+  /** 是否支持批量网格放置（环境场景等） */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "放置配置|批量",
+            meta = (DisplayName = "批量放置"))
+  bool bBatchPlacement = false;
+
+  /** 批量放置网格尺寸（X行 × Y列） */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "放置配置|批量",
+            meta = (DisplayName = "网格尺寸", EditCondition = "bBatchPlacement"))
+  FIntPoint BatchGridSize = FIntPoint(5, 5);
+
+  /** 批量放置间距（相邻 Actor 之间的距离） */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "放置配置|批量",
+            meta = (DisplayName = "网格间距", EditCondition = "bBatchPlacement", ClampMin = "10.0"))
+  float BatchSpacing = 200.0f;
+
   FXBSpawnableActorEntry()
       : DefaultScale(FVector::OneVector),
         DefaultRotation(FRotator::ZeroRotator), bSnapToGround(true),
         RotationMode(EXBPlacementRotationMode::Manual), bAllowMove(true),
         bContinuousPlacement(false), LocationOffset(FVector::ZeroVector),
-        bRequiresConfig(false) {}
+        bRequiresConfig(false), bBatchPlacement(false),
+        BatchGridSize(FIntPoint(5, 5)), BatchSpacing(200.0f) {}
 };
 
 /**

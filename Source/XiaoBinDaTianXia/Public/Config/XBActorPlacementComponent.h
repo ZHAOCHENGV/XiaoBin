@@ -526,6 +526,10 @@ private:
   UPROPERTY()
   TWeakObjectPtr<AActor> PreviewActor;
 
+  /** 批量预览 Actor 数组（网格放置时使用） */
+  UPROPERTY()
+  TArray<TWeakObjectPtr<AActor>> BatchPreviewActors;
+
   /** 当前选中的 Actor */
   UPROPERTY()
   TWeakObjectPtr<AActor> SelectedActor;

@@ -117,10 +117,6 @@ public:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XB|Input|Extended", meta = (DisplayName = "生成主将"))
     TObjectPtr<UInputAction> SpawnLeaderAction;
 
-	/** 重开游戏 (Bool: 可配置按键，默认 F5) */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XB|Input|Extended", meta = (DisplayName = "重开游戏"))
-	TObjectPtr<UInputAction> RestartGameAction;
-
     // ============ 配置阶段放置 ============
 
     /** 放置点击 (Bool: Left Mouse Button) */

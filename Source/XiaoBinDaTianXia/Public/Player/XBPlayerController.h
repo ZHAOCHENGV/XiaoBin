@@ -184,15 +184,6 @@ protected:
     UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "XB|Gameplay", meta = (DisplayName = "磁场扫描延迟", ClampMin = "0.0"))
     float MagnetScanDelay = 0.2f;
 
-    // ==================== 重开游戏配置 ====================
-
-    /**
-     * @brief 重开游戏时加载的配置关卡标签
-     * @note  使用 Map 分类下的 GameplayTag，如 Map.01_草地
-     */
-    UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "XB|Gameplay", meta = (DisplayName = "重开配置关卡", Categories = "Map"))
-    FGameplayTag RestartLevelTag;
-
 
     UPROPERTY()
     TWeakObjectPtr<AXBPlayerCharacter> CachedPlayerCharacter;
@@ -222,9 +213,6 @@ protected:
     void HandlePlacementCancelInput();
     void HandlePlacementDeleteInput();
     void HandlePlacementRotateInput(const FInputActionValue& InputValue);
-
-    // ✨ 新增 - 重开游戏输入回调
-    void HandleRestartGameInput();
 
 private:
     // ==================== 镜头状态 ====================
