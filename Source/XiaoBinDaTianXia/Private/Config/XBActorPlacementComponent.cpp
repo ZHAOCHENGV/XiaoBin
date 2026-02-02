@@ -247,6 +247,9 @@ bool UXBActorPlacementComponent::StartPreview(int32 EntryIndex) {
       UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 需要配置面板，缓存索引: %d"),
              PendingConfigEntryIndex);
 
+      // 设置配置界面正在显示标志，禁用悬停检测
+      bIsConfigUIShowing = true;
+
       // 广播请求显示配置面板事件
       OnRequestShowConfigPanel.Broadcast(PendingConfigEntryIndex,
                                          Entry->ConfigWidgetClass);
@@ -1435,6 +1438,11 @@ bool UXBActorPlacementComponent::TraceForGround(
 // ============ 悬停与高亮相关实现 ============
 
 void UXBActorPlacementComponent::UpdateHoverState() {
+  // 如果配置界面正在显示，跳过悬停检测
+  if (bIsConfigUIShowing) {
+    return;
+  }
+
   // 获取当前光标下的已放置 Actor
   AActor *NewHovered = nullptr;
   GetHitPlacedActor(NewHovered);
@@ -1809,8 +1817,9 @@ void UXBActorPlacementComponent::HandleLeaderConfigConfirmed(
   PendingConfigData = ConfigData;
   bHasPendingConfig = true;
 
-  // 清理 Widget 引用
+  // 清理 Widget 引用，恢复悬停检测
   CurrentConfigWidget.Reset();
+  bIsConfigUIShowing = false;
 
   // 创建预览 Actor（跟随光标）
   if (CreatePreviewActor(EntryIndex)) {
@@ -1850,6 +1859,9 @@ void UXBActorPlacementComponent::HandleLeaderConfigCancelled() {
 
   // 取消待配置状态
   CancelPendingConfig();
+
+  // 恢复悬停检测
+  bIsConfigUIShowing = false;
 
   // 清理 Widget 引用
   CurrentConfigWidget.Reset();
@@ -1893,8 +1905,9 @@ void UXBActorPlacementComponent::HandleBatchConfigConfirmed(
   PendingBatchConfigData = ConfigData;
   bHasPendingBatchConfig = true;
 
-  // 清理 Widget 引用
+  // 清理 Widget 引用，恢复悬停检测
   CurrentBatchConfigWidget.Reset();
+  bIsConfigUIShowing = false;
 
   // 获取并更新条目配置
   if (!PlacementConfig) {
@@ -1938,8 +1951,9 @@ void UXBActorPlacementComponent::HandleBatchConfigCancelled() {
   // 取消待配置状态
   CancelPendingConfig();
 
-  // 清理 Widget 引用
+  // 清理 Widget 引用，恢复悬停检测
   CurrentBatchConfigWidget.Reset();
+  bIsConfigUIShowing = false;
 
   // 清理配置数据
   bHasPendingBatchConfig = false;

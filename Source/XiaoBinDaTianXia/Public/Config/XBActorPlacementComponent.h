@@ -619,6 +619,9 @@ private:
   /** 是否有待应用的批量配置数据 */
   bool bHasPendingBatchConfig = false;
 
+  /** 配置界面是否正在显示（禁用悬停检测） */
+  bool bIsConfigUIShowing = false;
+
   // ============ 悬停相关内部方法 ============
 
   /**
