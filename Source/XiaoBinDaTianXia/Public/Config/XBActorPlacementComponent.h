@@ -12,6 +12,7 @@
 
 #include "Components/ActorComponent.h"
 #include "CoreMinimal.h"
+#include "XBBatchPlacementConfigData.h"
 #include "XBLeaderSpawnConfigData.h"
 #include "XBPlacementTypes.h"
 #include "XBActorPlacementComponent.generated.h"
@@ -21,7 +22,9 @@ class UMaterialInterface;
 class UMaterialInstanceDynamic;
 class UUserWidget;
 class UXBLeaderSpawnConfigWidget;
+class UXBBatchPlacementConfigWidget;
 struct FXBLeaderSpawnConfigData;
+struct FXBBatchPlacementConfigData;
 
 // ============ 代理声明 ============
 
@@ -372,6 +375,15 @@ public:
             meta = (DisplayName = "设置配置界面"))
   void SetConfigWidget(UXBLeaderSpawnConfigWidget *Widget);
 
+  /**
+   * @brief 设置当前批量配置界面引用
+   * @param Widget 批量配置界面指针
+   * @note 蓝图端创建 Widget 后调用此函数绑定事件
+   */
+  UFUNCTION(BlueprintCallable, Category = "放置系统",
+            meta = (DisplayName = "设置批量配置界面"))
+  void SetBatchConfigWidget(UXBBatchPlacementConfigWidget *Widget);
+
 protected:
   // ============ 事件处理 ============
 
@@ -383,6 +395,14 @@ protected:
   /** 处理配置取消事件 */
   UFUNCTION()
   void HandleLeaderConfigCancelled();
+
+  /** 处理批量配置确认事件 */
+  UFUNCTION()
+  void HandleBatchConfigConfirmed(int32 EntryIndex, FXBBatchPlacementConfigData ConfigData);
+
+  /** 处理批量配置取消事件 */
+  UFUNCTION()
+  void HandleBatchConfigCancelled();
 
   // ============ 配置引用 ============
 
@@ -586,6 +606,18 @@ private:
 
   /** 是否有待应用的配置数据 */
   bool bHasPendingConfig = false;
+
+  // ============ 待配置状态（批量放置类型） ============
+
+  /** 当前批量配置界面引用 */
+  UPROPERTY()
+  TWeakObjectPtr<UXBBatchPlacementConfigWidget> CurrentBatchConfigWidget;
+
+  /** 待应用的批量配置数据 */
+  FXBBatchPlacementConfigData PendingBatchConfigData;
+
+  /** 是否有待应用的批量配置数据 */
+  bool bHasPendingBatchConfig = false;
 
   // ============ 悬停相关内部方法 ============
 

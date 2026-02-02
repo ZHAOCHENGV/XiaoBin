@@ -24,6 +24,7 @@
 #include "Kismet/KismetSystemLibrary.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Save/XBSaveGame.h"
+#include "UI/XBBatchPlacementConfigWidget.h"
 #include "UI/XBLeaderSpawnConfigWidget.h"
 #include "UI/XBWorldHealthBarComponent.h"
 #include "Utils/XBLogCategories.h"
@@ -209,27 +210,49 @@ bool UXBActorPlacementComponent::StartPreview(int32 EntryIndex) {
     return false;
   }
 
-  // ✨ 新增 - 检测是否需要放置前配置（主将类型）
+  // ✨ 新增 - 检测是否需要放置前配置
   // 如果需要配置，则不创建预览，直接弹出配置界面
-  if (Entry->bRequiresConfig) {
-    // 缓存待配置状态
-    PendingConfigEntryIndex = EntryIndex;
-    // 位置在配置确认后再获取（用户点击位置）
-    PendingConfigLocation = FVector::ZeroVector;
-    PendingConfigRotation = Entry->DefaultRotation;
+  // 🔧 修复 - 如果是批量放置且已有配置数据，则跳过配置界面直接创建预览
+  if (Entry->bRequiresConfig)
+    {
+    // 检查是否已有批量配置数据（连续放置模式）
+    if (Entry->bBatchPlacement && bHasPendingBatchConfig)
+      {
+      UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 已有批量配置数据，跳过配置界面"));
+      // 不弹出配置界面，继续创建预览
+      }
+    else
+      {
+      // 缓存待配置状态
+      PendingConfigEntryIndex = EntryIndex;
+      // 位置在配置确认后再获取（用户点击位置）
+      PendingConfigLocation = FVector::ZeroVector;
+      PendingConfigRotation = Entry->DefaultRotation;
 
-    // 🔧 修复 - 确保状态为 Idle，因为此时没有实际的预览 Actor
-    // 这修复了连续放置后悬停检测失效的问题
-    SetPlacementState(EXBPlacementState::Idle);
+      // ✨ 先清理悬停和选中状态，避免配置界面显示时光标仍在选中 Actor
+      // 必须在 SetPlacementState 之前调用，确保材质正确恢复
+      if (HoveredActor.IsValid()) {
+        ApplyHoverMaterial(HoveredActor.Get(), false);
+        HoveredActor.Reset();
+      }
+      if (SelectedActor.IsValid()) {
+        RestoreCachedMaterials(SelectedActor.Get());
+        SelectedActor.Reset();
+        UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 已清理选中的 Actor"));
+      }
 
-    UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 需要配置面板，缓存索引: %d"),
-           PendingConfigEntryIndex);
+      // 🔧 修复 - 确保状态为 Idle，因为此时没有实际的预览 Actor
+      SetPlacementState(EXBPlacementState::Idle);
 
-    // 广播请求显示配置面板事件
-    OnRequestShowConfigPanel.Broadcast(PendingConfigEntryIndex,
-                                       Entry->ConfigWidgetClass);
-    return true; // 返回 true 表示处理成功（但没有创建预览）
-  }
+      UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 需要配置面板，缓存索引: %d"),
+             PendingConfigEntryIndex);
+
+      // 广播请求显示配置面板事件
+      OnRequestShowConfigPanel.Broadcast(PendingConfigEntryIndex,
+                                         Entry->ConfigWidgetClass);
+      return true; // 返回 true 表示处理成功（但没有创建预览）
+     }
+   }
 
   // 销毁旧的预览 Actor
   DestroyPreviewActor();
@@ -610,6 +633,9 @@ void UXBActorPlacementComponent::CancelOperation() {
   case EXBPlacementState::Previewing:
     DestroyPreviewActor();
     SetPlacementState(EXBPlacementState::Idle);
+    // 清除批量配置数据，重新选择时会再次弹出配置界面
+    bHasPendingBatchConfig = false;
+    UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 取消预览，已清除批量配置数据"));
     break;
 
   case EXBPlacementState::Editing:
@@ -1830,6 +1856,93 @@ void UXBActorPlacementComponent::HandleLeaderConfigCancelled() {
 
   // 清理配置数据
   bHasPendingConfig = false;
+}
+
+// ============ 批量配置界面绑定实现 ============
+
+void UXBActorPlacementComponent::SetBatchConfigWidget(
+    UXBBatchPlacementConfigWidget *Widget) {
+  // 解绑旧 Widget
+  if (CurrentBatchConfigWidget.IsValid()) {
+    CurrentBatchConfigWidget->OnConfigConfirmed.RemoveDynamic(
+        this, &UXBActorPlacementComponent::HandleBatchConfigConfirmed);
+    CurrentBatchConfigWidget->OnConfigCancelled.RemoveDynamic(
+        this, &UXBActorPlacementComponent::HandleBatchConfigCancelled);
+  }
+
+  CurrentBatchConfigWidget = Widget;
+
+  // 绑定新 Widget 事件
+  if (Widget) {
+    Widget->OnConfigConfirmed.AddDynamic(
+        this, &UXBActorPlacementComponent::HandleBatchConfigConfirmed);
+    Widget->OnConfigCancelled.AddDynamic(
+        this, &UXBActorPlacementComponent::HandleBatchConfigCancelled);
+
+    UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 已绑定批量配置界面事件"));
+  }
+}
+
+void UXBActorPlacementComponent::HandleBatchConfigConfirmed(
+    int32 EntryIndex, FXBBatchPlacementConfigData ConfigData) {
+  UE_LOG(LogXBConfig, Log,
+         TEXT("[放置组件] 收到批量配置确认，索引: %d，网格: %dx%d，间距: %.1f"),
+         EntryIndex, ConfigData.GridSize.X, ConfigData.GridSize.Y, ConfigData.Spacing);
+
+  // 保存批量配置数据
+  PendingBatchConfigData = ConfigData;
+  bHasPendingBatchConfig = true;
+
+  // 清理 Widget 引用
+  CurrentBatchConfigWidget.Reset();
+
+  // 获取并更新条目配置
+  if (!PlacementConfig) {
+    UE_LOG(LogXBConfig, Warning, TEXT("[放置组件] PlacementConfig 无效"));
+    bHasPendingBatchConfig = false;
+    return;
+  }
+
+  FXBSpawnableActorEntry* Entry = 
+      const_cast<FXBSpawnableActorEntry*>(PlacementConfig->GetEntryByIndexPtr(EntryIndex));
+  if (!Entry || !Entry->ActorClass) {
+    UE_LOG(LogXBConfig, Warning, TEXT("[放置组件] 条目无效，索引: %d"), EntryIndex);
+    bHasPendingBatchConfig = false;
+    return;
+  }
+
+  // 应用用户配置的网格尺寸和间距到条目
+  Entry->BatchGridSize = ConfigData.GridSize;
+  Entry->BatchSpacing = ConfigData.Spacing;
+
+  // 创建预览 Actor（批量预览）
+  if (CreatePreviewActor(EntryIndex)) {
+    CurrentPreviewEntryIndex = EntryIndex;
+    SetPlacementState(EXBPlacementState::Previewing);
+
+    UE_LOG(LogXBConfig, Log,
+           TEXT("[放置组件] 批量配置确认后进入预览模式，索引: %d"), EntryIndex);
+  } else {
+    UE_LOG(LogXBConfig, Warning,
+           TEXT("[放置组件] 批量配置确认后创建预览失败，索引: %d"), EntryIndex);
+    bHasPendingBatchConfig = false;
+  }
+
+  // 清理待配置状态
+  PendingConfigEntryIndex = -1;
+}
+
+void UXBActorPlacementComponent::HandleBatchConfigCancelled() {
+  UE_LOG(LogXBConfig, Log, TEXT("[放置组件] 批量配置已取消"));
+
+  // 取消待配置状态
+  CancelPendingConfig();
+
+  // 清理 Widget 引用
+  CurrentBatchConfigWidget.Reset();
+
+  // 清理配置数据
+  bHasPendingBatchConfig = false;
 }
 
 // ============ 存档系统实现 ============
