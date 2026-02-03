@@ -19,6 +19,7 @@
 
 class UGameplayAbility;
 class UGameplayEffect;
+class UNiagaraSystem;
 
 /**
  * @brief 技能生成位置模式
@@ -201,6 +202,22 @@ struct XIAOBINDATIANXIA_API FXBSkillSpawnConfig {
       meta =
           (DisplayName = "前方偏移距离", EditCondition = "SpawnMode == EXBSkillSpawnMode::DesignatedArea && DesignatedAreaTarget != EXBDesignatedAreaTarget::EnemyTarget",EditConditionHides))
   float AreaForwardDistance = 500.0f;
+
+  /** 范围指示特效（Niagara 系统，在技能生成前显示范围预警） */
+  UPROPERTY(
+      EditAnywhere, BlueprintReadWrite, Category = "指定范围配置",
+      meta = (DisplayName = "范围指示特效",
+              EditCondition = "SpawnMode == EXBSkillSpawnMode::DesignatedArea",
+              EditConditionHides))
+  TObjectPtr<UNiagaraSystem> AreaIndicatorEffect;
+
+  /** 范围指示特效持续时间（秒，特效显示后多久停用） */
+  UPROPERTY(
+      EditAnywhere, BlueprintReadWrite, Category = "指定范围配置",
+      meta = (DisplayName = "指示特效持续时间", ClampMin = "0.1", ClampMax = "10.0",
+              EditCondition = "SpawnMode == EXBSkillSpawnMode::DesignatedArea && AreaIndicatorEffect != nullptr",
+              EditConditionHides))
+  float AreaIndicatorDuration = 1.0f;
 
   /** GAS - 触发的 Gameplay Ability 类（可选） */
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GAS配置",

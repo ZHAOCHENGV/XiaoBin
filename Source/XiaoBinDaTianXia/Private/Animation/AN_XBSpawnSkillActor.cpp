@@ -15,6 +15,8 @@
 #include "Combat/XBProjectile.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "DrawDebugHelpers.h"
+#include "NiagaraComponent.h"
+#include "NiagaraFunctionLibrary.h"
 #include "Soldier/XBSoldierCharacter.h"
 #include "Utils/XBLogCategories.h"
 
@@ -536,6 +538,59 @@ void UAN_XBSpawnSkillActor::StartDesignatedAreaSpawn(UWorld *World,
               "个投射物，形状=%s，区域中心=%s，大小=%.1f，高度=%.1f"),
          TotalCount, *ShapeName, *AreaCenter.ToString(), SpawnConfig.AreaRadius,
          SpawnConfig.SpawnHeight);
+
+  // ✨ 新增 - 生成范围指示特效
+  if (SpawnConfig.AreaIndicatorEffect) {
+    // 使用射线检测获取地面位置，确保特效贴合地面
+    FVector IndicatorLocation = AreaCenter;
+    
+    FHitResult HitResult;
+    FVector TraceStart = AreaCenter + FVector(0.0f, 0.0f, 500.0f); // 从上方发射
+    FVector TraceEnd = AreaCenter - FVector(0.0f, 0.0f, 2000.0f);   // 向下检测
+    
+    FCollisionQueryParams QueryParams;
+    QueryParams.bTraceComplex = false;
+    QueryParams.AddIgnoredActor(OwnerActor);
+    
+    // 只检测静态场景（WorldStatic 通道）
+    if (World->LineTraceSingleByChannel(HitResult, TraceStart, TraceEnd,
+                                         ECC_WorldStatic, QueryParams)) {
+      // 使用地面位置（稍微抬高一点避免穿模）
+      IndicatorLocation = HitResult.ImpactPoint + FVector(0.0f, 0.0f, 5.0f);
+    }
+    
+    // 在地面位置生成 Niagara 特效
+    UNiagaraComponent* IndicatorComp = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+        World,
+        SpawnConfig.AreaIndicatorEffect,
+        IndicatorLocation,
+        FRotator::ZeroRotator,
+        FVector(1.0f),  // 缩放可以根据 AreaRadius 调整
+        true,  // bAutoDestroy
+        true,  // bAutoActivate
+        ENCPoolMethod::None,
+        true   // bPreCullCheck
+    );
+
+    if (IndicatorComp) {
+      // 设置定时器在指定时间后停用特效
+      FTimerHandle IndicatorTimerHandle;
+      FTimerDelegate IndicatorTimerDelegate;
+      IndicatorTimerDelegate.BindLambda([IndicatorComp]() {
+        if (IsValid(IndicatorComp)) {
+          IndicatorComp->Deactivate();
+          IndicatorComp->DestroyComponent();
+        }
+      });
+      World->GetTimerManager().SetTimer(
+          IndicatorTimerHandle, IndicatorTimerDelegate,
+          SpawnConfig.AreaIndicatorDuration, false);
+
+      UE_LOG(LogXBCombat, Log,
+             TEXT("AN_XBSpawnSkillActor [指定范围]: 生成范围指示特效，位置=%s，持续时间=%.2f秒"),
+             *IndicatorLocation.ToString(), SpawnConfig.AreaIndicatorDuration);
+    }
+  }
 
   // 调试绘制区域范围
   if (SpawnConfig.bEnableDebugDraw) {
