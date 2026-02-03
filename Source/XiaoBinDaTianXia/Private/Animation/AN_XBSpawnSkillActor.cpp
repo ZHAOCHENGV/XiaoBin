@@ -541,31 +541,39 @@ void UAN_XBSpawnSkillActor::StartDesignatedAreaSpawn(UWorld *World,
 
   // ✨ 新增 - 生成范围指示特效
   if (SpawnConfig.AreaIndicatorEffect) {
-    // 使用射线检测获取地面位置，确保特效贴合地面
-    FVector IndicatorLocation = AreaCenter;
+    // 根据施法者位置和旋转计算特效位置
+    FVector OwnerLocation = OwnerActor->GetActorLocation();
+    FRotator OwnerRotation = OwnerActor->GetActorRotation();
     
+    // 将相对偏移转换为世界坐标（X=前方，Y=右侧，Z=高度）
+    FVector WorldOffset = OwnerRotation.RotateVector(SpawnConfig.AreaIndicatorOffset);
+    FVector IndicatorLocation = OwnerLocation + WorldOffset;
+    
+    // 使用射线检测获取地面位置，确保特效贴合地面
     FHitResult HitResult;
-    FVector TraceStart = AreaCenter + FVector(0.0f, 0.0f, 500.0f); // 从上方发射
-    FVector TraceEnd = AreaCenter - FVector(0.0f, 0.0f, 2000.0f);   // 向下检测
+    FVector TraceStart = IndicatorLocation + FVector(0.0f, 0.0f, 500.0f);
+    FVector TraceEnd = IndicatorLocation - FVector(0.0f, 0.0f, 2000.0f);
     
     FCollisionQueryParams QueryParams;
     QueryParams.bTraceComplex = false;
     QueryParams.AddIgnoredActor(OwnerActor);
     
-    // 只检测静态场景（WorldStatic 通道）
+    // 只检测静态场景
     if (World->LineTraceSingleByChannel(HitResult, TraceStart, TraceEnd,
                                          ECC_WorldStatic, QueryParams)) {
-      // 使用地面位置（稍微抬高一点避免穿模）
       IndicatorLocation = HitResult.ImpactPoint + FVector(0.0f, 0.0f, 5.0f);
     }
     
-    // 在地面位置生成 Niagara 特效
+    // 计算特效旋转（施法者旋转 + 旋转偏移）
+    FRotator IndicatorRotation = OwnerRotation + SpawnConfig.AreaIndicatorRotation;
+    
+    // 在计算出的位置生成 Niagara 特效
     UNiagaraComponent* IndicatorComp = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
         World,
         SpawnConfig.AreaIndicatorEffect,
         IndicatorLocation,
-        FRotator::ZeroRotator,
-        FVector(1.0f),  // 缩放可以根据 AreaRadius 调整
+        IndicatorRotation,
+        FVector(1.0f),
         true,  // bAutoDestroy
         true,  // bAutoActivate
         ENCPoolMethod::None,

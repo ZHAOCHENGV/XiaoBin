@@ -211,6 +211,22 @@ struct XIAOBINDATIANXIA_API FXBSkillSpawnConfig {
               EditConditionHides))
   TObjectPtr<UNiagaraSystem> AreaIndicatorEffect;
 
+  /** 范围指示特效位置偏移（相对于施法者，X=前方，Y=右侧，Z=高度） */
+  UPROPERTY(
+      EditAnywhere, BlueprintReadWrite, Category = "指定范围配置",
+      meta = (DisplayName = "指示特效位置偏移",
+              EditCondition = "SpawnMode == EXBSkillSpawnMode::DesignatedArea && AreaIndicatorEffect != nullptr",
+              EditConditionHides))
+  FVector AreaIndicatorOffset = FVector(500.0f, 0.0f, 0.0f);
+
+  /** 范围指示特效旋转偏移（相对于施法者旋转） */
+  UPROPERTY(
+      EditAnywhere, BlueprintReadWrite, Category = "指定范围配置",
+      meta = (DisplayName = "指示特效旋转偏移",
+              EditCondition = "SpawnMode == EXBSkillSpawnMode::DesignatedArea && AreaIndicatorEffect != nullptr",
+              EditConditionHides))
+  FRotator AreaIndicatorRotation = FRotator::ZeroRotator;
+
   /** 范围指示特效持续时间（秒，特效显示后多久停用） */
   UPROPERTY(
       EditAnywhere, BlueprintReadWrite, Category = "指定范围配置",

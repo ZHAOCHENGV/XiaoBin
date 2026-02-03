@@ -43,6 +43,7 @@
 #include "Soldier/Component/XBSoldierFollowComponent.h"
 #include "Soldier/Component/XBSoldierPoolSubsystem.h"
 #include "TimerManager.h"
+#include "Particles/ParticleSystemComponent.h"
 #include "Utils/XBBlueprintFunctionLibrary.h"
 #include "Utils/XBLogCategories.h"
 #include "XBCollisionChannels.h"
@@ -84,6 +85,12 @@ AXBSoldierCharacter::AXBSoldierCharacter() {
       CreateDefaultSubobject<UNiagaraComponent>(TEXT("ZzzEffectComponent"));
   ZzzEffectComponent->SetupAttachment(RootComponent);
   ZzzEffectComponent->SetAutoActivate(false);
+
+  // ✨ 新增 - 招募特效组件（Cascade 粒子）
+  RecruitedEffectComponent =
+      CreateDefaultSubobject<UParticleSystemComponent>(TEXT("RecruitedEffectComponent"));
+  RecruitedEffectComponent->SetupAttachment(RootComponent);
+  RecruitedEffectComponent->bAutoActivate = false;
 
   // ==================== 移动组件配置 ====================
   if (UCharacterMovementComponent *MovementComp = GetCharacterMovement()) {
@@ -1569,6 +1576,12 @@ void AXBSoldierCharacter::OnRecruited(AActor *NewLeader, int32 SlotIndex) {
 
   // 广播事件
   OnSoldierRecruited.Broadcast(this, NewLeader);
+
+  // ✨ 新增 - 播放招募特效
+  if (RecruitedEffectComponent && RecruitedEffectComponent->Template) {
+    RecruitedEffectComponent->Activate(true);
+    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 播放招募特效"), *GetName());
+  }
 
   UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 招募完成，立即开始移动到槽位 %d"),
          *GetName(), SlotIndex);

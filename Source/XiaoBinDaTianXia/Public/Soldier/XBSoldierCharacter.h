@@ -46,6 +46,7 @@ class UAbilitySystemComponent;
 class UXBAbilitySystemComponent;
 class UGameplayAbility;
 class UMaterialInterface;
+class UParticleSystemComponent;
 struct FXBGameConfigData;
 
 // ============================================
@@ -521,6 +522,11 @@ public:
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件",
             meta = (DisplayName = "Zzz特效"))
   TObjectPtr<UNiagaraComponent> ZzzEffectComponent;
+
+  /** 招募特效组件（Cascade 粒子，被招募时激活） */
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件",
+            meta = (DisplayName = "招募特效组件"))
+  TObjectPtr<UParticleSystemComponent> RecruitedEffectComponent;
 
   // ==================== 公开访问的战斗状态 ====================
 
