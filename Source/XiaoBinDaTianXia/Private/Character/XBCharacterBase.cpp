@@ -85,6 +85,18 @@ AXBCharacterBase::AXBCharacterBase() {
       FGameplayTag::RequestGameplayTag(FName("Sound.Leader.Recruit"), false);
   SoldierDropSoundTag = FGameplayTag::RequestGameplayTag(
       FName("Sound.Leader.SoldierDrop"), false);
+
+  // ✨ 新增 - 创建冲刺特效组件（默认不激活，可在编辑器中调整位置和旋转）
+  SprintNiagaraComponent = CreateDefaultSubobject<UNiagaraComponent>(
+      TEXT("SprintNiagaraComponent"));
+  SprintNiagaraComponent->SetupAttachment(RootComponent);
+  SprintNiagaraComponent->bAutoActivate = false;
+
+  // ✨ 新增 - 创建冲刺拖尾特效组件（Cascade 粒子）
+  SprintTrailParticleComponent = CreateDefaultSubobject<UParticleSystemComponent>(
+      TEXT("SprintTrailParticleComponent"));
+  SprintTrailParticleComponent->SetupAttachment(RootComponent);
+  SprintTrailParticleComponent->bAutoActivate = false;
 }
 
 /**
@@ -716,6 +728,13 @@ void AXBCharacterBase::UpdateSprint(float DeltaTime) {
   if (bIsSprinting && bAutoSprintMove && CMC->MovementMode == MOVE_Walking) {
     const FVector ForwardDirection = GetActorForwardVector();
     AddMovementInput(ForwardDirection, 1.0f);
+  }
+
+  // ✨ 新增 - 如果正在冲刺但没有移动输入（且不是自动前进模式），则停止冲刺
+  if (bIsSprinting && !bAutoSprintMove && 
+      GetLastMovementInputVector().IsNearlyZero() && 
+      GetVelocity().Size2D() < 10.0f) {
+    StopSprint();
   }
 }
 
@@ -2157,44 +2176,73 @@ void AXBCharacterBase::StopSprintSound() {
 // ==================== 冲刺特效实现 ====================
 
 /**
- * @brief 播放冲刺 Niagara 特效
- * @note 附加到角色骨骼网格的指定插槽，冲刺期间持续播放
+ * @brief 播放冲刺 Niagara 特效（冲刺特效 + 拖尾特效）
+ * @note 组件在构造函数中创建，可在蓝图编辑器中配置特效资产和调整位置/旋转
+ *       支持重复激活：即使正在播放也会重新激活特效
+ *       拖尾特效可配置延迟启动时间
  */
 void AXBCharacterBase::PlaySprintVFX() {
-  if (!SprintNiagaraSystem) {
-    return;
-  }
-
-  // 如果已有组件且处于激活状态，不重复创建
-  if (SprintNiagaraComponent && SprintNiagaraComponent->IsActive()) {
-    return;
-  }
-
-  // 创建并附加 Niagara 组件
-  SprintNiagaraComponent = UNiagaraFunctionLibrary::SpawnSystemAttached(
-      SprintNiagaraSystem,
-      GetMesh(),
-      SprintNiagaraSocketName,
-      FVector::ZeroVector,
-      FRotator::ZeroRotator,
-      EAttachLocation::SnapToTarget,
-      false // bAutoDestroy = false，手动管理生命周期
-  );
-
+  // 激活冲刺特效（使用 bReset=true 支持重复激活）
   if (SprintNiagaraComponent) {
     SprintNiagaraComponent->Activate(true);
-    UE_LOG(LogXBCharacter, Log, TEXT("%s: 播放冲刺特效"), *GetName());
   }
+
+  // 清理之前的拖尾延迟计时器
+  GetWorldTimerManager().ClearTimer(SprintTrailDelayTimerHandle);
+
+  // 激活拖尾特效（Cascade 粒子），支持延迟启动
+  if (SprintTrailParticleComponent) {
+    if (SprintTrailDelayTime > 0.0f) {
+      // 延迟启动拖尾
+      GetWorldTimerManager().SetTimer(
+          SprintTrailDelayTimerHandle,
+          [this]() {
+            if (SprintTrailParticleComponent && bIsSprinting) {
+              SprintTrailParticleComponent->Activate(true);
+            }
+          },
+          SprintTrailDelayTime, false);
+    } else {
+      // 立即启动
+      SprintTrailParticleComponent->Activate(true);
+    }
+  }
+
+  UE_LOG(LogXBCharacter, Log, TEXT("%s: 播放冲刺特效"), *GetName());
 }
 
 /**
- * @brief 停止冲刺 Niagara 特效
+ * @brief 停止冲刺特效
+ * @note SprintVFXFadeOutTime > 0 时让粒子自然消失，= 0 时立即强制清除
  */
 void AXBCharacterBase::StopSprintVFX() {
-  if (SprintNiagaraComponent) {
-    SprintNiagaraComponent->Deactivate();
-    UE_LOG(LogXBCharacter, Log, TEXT("%s: 停止冲刺特效"), *GetName());
+  // 清理拖尾延迟计时器
+  GetWorldTimerManager().ClearTimer(SprintTrailDelayTimerHandle);
+
+  // 停止 Niagara 特效
+  if (SprintNiagaraComponent && SprintNiagaraComponent->IsActive()) {
+    if (SprintVFXFadeOutTime > 0.0f) {
+      // 使用普通 Deactivate，让 Niagara 系统按自身设置自然消失
+      SprintNiagaraComponent->Deactivate();
+    } else {
+      // 立即强制停止
+      SprintNiagaraComponent->DeactivateImmediate();
+    }
   }
+
+  // 停止 Cascade 拖尾特效
+  if (SprintTrailParticleComponent && SprintTrailParticleComponent->IsActive()) {
+    if (SprintVFXFadeOutTime > 0.0f) {
+      // 使用 DeactivateSystem 让粒子自然消失（不再发射新粒子，现有粒子继续生命周期）
+      SprintTrailParticleComponent->DeactivateSystem();
+    } else {
+      // 立即强制清除所有粒子
+      SprintTrailParticleComponent->DeactivateSystem();
+      SprintTrailParticleComponent->KillParticlesForced();
+    }
+  }
+
+  UE_LOG(LogXBCharacter, Log, TEXT("%s: 停止冲刺特效"), *GetName());
 }
 
 /**

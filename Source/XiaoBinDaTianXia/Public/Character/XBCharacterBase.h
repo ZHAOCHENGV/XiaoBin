@@ -39,6 +39,7 @@ struct FXBGameConfigData;
 class UAudioComponent;
 class UNiagaraSystem;
 class UNiagaraComponent;
+class UParticleSystemComponent;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCharacterDeath, AXBCharacterBase*, DeadCharacter);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCombatStateChanged, bool, bInCombat);
@@ -636,25 +637,34 @@ protected:
 
     // ==================== 冲刺特效配置 ====================
 
-    /** 冲刺特效（Niagara 系统） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|VFX",
-              meta = (DisplayName = "冲刺特效"))
-    TObjectPtr<UNiagaraSystem> SprintNiagaraSystem;
-
-    /** 特效附加的骨骼插槽名称（为空则附加到 Root） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|VFX",
-              meta = (DisplayName = "冲刺特效插槽"))
-    FName SprintNiagaraSocketName = NAME_None;
-
-    /** 冲刺特效组件实例 */
-    UPROPERTY()
+    /** 冲刺特效组件（默认不激活，冲刺时激活） */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "XB|VFX",
+              meta = (DisplayName = "冲刺特效组件"))
     TObjectPtr<UNiagaraComponent> SprintNiagaraComponent;
+
+    /** 冲刺拖尾特效组件（Cascade 粒子，默认不激活，冲刺时激活） */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "XB|VFX",
+              meta = (DisplayName = "冲刺拖尾特效组件"))
+    TObjectPtr<UParticleSystemComponent> SprintTrailParticleComponent;
+
+    /** 拖尾特效延迟启动时间（秒） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|VFX",
+              meta = (DisplayName = "拖尾延迟启动时间", ClampMin = "0.0"))
+    float SprintTrailDelayTime = 0.0f;
+
+    /** 特效消失时间（秒，0 表示立即停止） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|VFX",
+              meta = (DisplayName = "特效消失时间", ClampMin = "0.0"))
+    float SprintVFXFadeOutTime = 0.0f;
 
     /** 开始播放冲刺特效 */
     void PlaySprintVFX();
 
     /** 停止冲刺特效 */
     void StopSprintVFX();
+
+    /** 拖尾延迟启动计时器 */
+    FTimerHandle SprintTrailDelayTimerHandle;
 
     // ==================== 死亡系统 ====================
 
