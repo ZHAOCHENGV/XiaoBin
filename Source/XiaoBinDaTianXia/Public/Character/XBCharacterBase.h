@@ -37,6 +37,8 @@ class UXBFormationComponent;
 class UMaterialInterface;
 struct FXBGameConfigData;
 class UAudioComponent;
+class UNiagaraSystem;
+class UNiagaraComponent;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCharacterDeath, AXBCharacterBase*, DeadCharacter);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCombatStateChanged, bool, bInCombat);
@@ -631,6 +633,28 @@ protected:
 
     /** 播放死亡音效 */
     void PlayDeathSound();
+
+    // ==================== 冲刺特效配置 ====================
+
+    /** 冲刺特效（Niagara 系统） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|VFX",
+              meta = (DisplayName = "冲刺特效"))
+    TObjectPtr<UNiagaraSystem> SprintNiagaraSystem;
+
+    /** 特效附加的骨骼插槽名称（为空则附加到 Root） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|VFX",
+              meta = (DisplayName = "冲刺特效插槽"))
+    FName SprintNiagaraSocketName = NAME_None;
+
+    /** 冲刺特效组件实例 */
+    UPROPERTY()
+    TObjectPtr<UNiagaraComponent> SprintNiagaraComponent;
+
+    /** 开始播放冲刺特效 */
+    void PlaySprintVFX();
+
+    /** 停止冲刺特效 */
+    void StopSprintVFX();
 
     // ==================== 死亡系统 ====================
 

@@ -34,6 +34,8 @@
 #include "Soldier/XBSoldierCharacter.h"
 #include "Sound/XBSoundManagerSubsystem.h"
 #include "TimerManager.h"
+#include "NiagaraComponent.h"
+#include "NiagaraFunctionLibrary.h"
 #include "UI/XBWorldHealthBarComponent.h"
 #include "Utils/XBBlueprintFunctionLibrary.h"
 #include "Utils/XBLogCategories.h"
@@ -630,6 +632,9 @@ void AXBCharacterBase::StartSprint() {
   // ✨ 新增 - 播放冲刺音效
   PlaySprintSound();
 
+  // ✨ 新增 - 播放冲刺特效
+  PlaySprintVFX();
+
   SetSoldiersEscaping(true);
   OnSprintStateChanged.Broadcast(true);
 }
@@ -650,6 +655,9 @@ void AXBCharacterBase::StopSprint() {
 
   // ✨ 新增 - 停止冲刺音效
   StopSprintSound();
+
+  // ✨ 新增 - 停止冲刺特效
+  StopSprintVFX();
 
   SetSoldiersEscaping(false);
   OnSprintStateChanged.Broadcast(false);
@@ -2144,6 +2152,49 @@ void AXBCharacterBase::StopSprintSound() {
   }
   // 注意：不立即置空，让 FadeOut 完成后自动销毁（bAutoDestroy = true）
   SprintAudioComponent = nullptr;
+}
+
+// ==================== 冲刺特效实现 ====================
+
+/**
+ * @brief 播放冲刺 Niagara 特效
+ * @note 附加到角色骨骼网格的指定插槽，冲刺期间持续播放
+ */
+void AXBCharacterBase::PlaySprintVFX() {
+  if (!SprintNiagaraSystem) {
+    return;
+  }
+
+  // 如果已有组件且处于激活状态，不重复创建
+  if (SprintNiagaraComponent && SprintNiagaraComponent->IsActive()) {
+    return;
+  }
+
+  // 创建并附加 Niagara 组件
+  SprintNiagaraComponent = UNiagaraFunctionLibrary::SpawnSystemAttached(
+      SprintNiagaraSystem,
+      GetMesh(),
+      SprintNiagaraSocketName,
+      FVector::ZeroVector,
+      FRotator::ZeroRotator,
+      EAttachLocation::SnapToTarget,
+      false // bAutoDestroy = false，手动管理生命周期
+  );
+
+  if (SprintNiagaraComponent) {
+    SprintNiagaraComponent->Activate(true);
+    UE_LOG(LogXBCharacter, Log, TEXT("%s: 播放冲刺特效"), *GetName());
+  }
+}
+
+/**
+ * @brief 停止冲刺 Niagara 特效
+ */
+void AXBCharacterBase::StopSprintVFX() {
+  if (SprintNiagaraComponent) {
+    SprintNiagaraComponent->Deactivate();
+    UE_LOG(LogXBCharacter, Log, TEXT("%s: 停止冲刺特效"), *GetName());
+  }
 }
 
 /**
