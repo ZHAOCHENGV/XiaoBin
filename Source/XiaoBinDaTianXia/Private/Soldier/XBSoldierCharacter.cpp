@@ -92,6 +92,18 @@ AXBSoldierCharacter::AXBSoldierCharacter() {
   RecruitedEffectComponent->SetupAttachment(RootComponent);
   RecruitedEffectComponent->bAutoActivate = false;
 
+  // ✨ 新增 - 掉落特效组件（Cascade 粒子）
+  DropEffectComponent =
+      CreateDefaultSubobject<UParticleSystemComponent>(TEXT("DropEffectComponent"));
+  DropEffectComponent->SetupAttachment(RootComponent);
+  DropEffectComponent->bAutoActivate = false;
+
+  // ✨ 新增 - 掉落拖尾组件（Cascade 粒子）
+  DropTrailComponent =
+      CreateDefaultSubobject<UParticleSystemComponent>(TEXT("DropTrailComponent"));
+  DropTrailComponent->SetupAttachment(RootComponent);
+  DropTrailComponent->bAutoActivate = false;
+
   // ==================== 移动组件配置 ====================
   if (UCharacterMovementComponent *MovementComp = GetCharacterMovement()) {
     MovementComp->bOrientRotationToMovement = true;
@@ -449,8 +461,21 @@ void AXBSoldierCharacter::StartDropFlight(const FVector &StartLocation,
   // 隐藏 Zzz 特效
   SetZzzEffectEnabled(false);
 
-  // 显示角色
-  SetActorHiddenInGame(false);
+  // ✨ 新增 - 掉落时隐藏网格，激活掉落特效
+  if (USkeletalMeshComponent* MeshComp = GetMesh()) {
+    MeshComp->SetVisibility(false, true);
+  }
+  if (DropEffectComponent && DropEffectComponent->Template) {
+    DropEffectComponent->Activate(true);
+    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 激活掉落特效"), *GetName());
+  }
+  if (DropTrailComponent && DropTrailComponent->Template) {
+    DropTrailComponent->Activate(true);
+    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 激活掉落拖尾"), *GetName());
+  }
+
+  // 隐藏角色（整体）- 保留掉落特效可见
+  // SetActorHiddenInGame(false);  // 已移除，改用网格隐藏
 
   // ✨ 新增 - 启用调试绘制帮助调参
   if (ActiveDropArcConfig.bEnableDebugDraw) {
@@ -636,6 +661,19 @@ void AXBSoldierCharacter::OnDropLanded() {
   // 播放落地特效
   if (bPlayDropLandingEffect) {
     PlayLandingEffect();
+  }
+
+  // ✨ 新增 - 落地后停用掉落特效和拖尾，显示网格
+  if (DropEffectComponent && DropEffectComponent->IsActive()) {
+    DropEffectComponent->Deactivate();
+    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 停用掉落特效"), *GetName());
+  }
+  if (DropTrailComponent && DropTrailComponent->IsActive()) {
+    DropTrailComponent->DeactivateSystem();
+    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 停用掉落拖尾"), *GetName());
+  }
+  if (USkeletalMeshComponent* MeshComp = GetMesh()) {
+    MeshComp->SetVisibility(true, true);
   }
 
   // ✨ Step 3: 延迟处理入列，等物理稳定
