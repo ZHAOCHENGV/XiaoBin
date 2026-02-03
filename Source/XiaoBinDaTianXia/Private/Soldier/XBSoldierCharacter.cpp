@@ -426,10 +426,7 @@ void AXBSoldierCharacter::StartDropFlight(const FVector &StartLocation,
   DropTargetLeader = TargetLeader;
   bAutoRecruitOnLanding = ActiveDropArcConfig.bAutoRecruitOnLanding;
 
-  // 保存落地特效资源
-  if (!ActiveDropArcConfig.LandingEffect.IsNull()) {
-    DropLandingEffectAsset = ActiveDropArcConfig.LandingEffect;
-  }
+
 
   // 重置计时器
   DropElapsedTime = 0.0f;
@@ -934,25 +931,14 @@ void AXBSoldierCharacter::RequestRelocateToSlot(bool bForceRecruitTransition) {
 }
 
 void AXBSoldierCharacter::PlayLandingEffect() {
-  if (DropLandingEffectAsset.IsNull()) {
-    return;
+  // 激活招募特效组件（Cascade 粒子）
+  if (RecruitedEffectComponent && RecruitedEffectComponent->Template) {
+    RecruitedEffectComponent->Activate(true);
+    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 激活落地招募特效"), *GetName());
+  } else {
+    UE_LOG(LogXBSoldier, Warning,
+           TEXT("士兵 %s: 落地招募特效组件或模板无效"), *GetName());
   }
-
-  UNiagaraSystem *EffectSystem = DropLandingEffectAsset.LoadSynchronous();
-  if (!EffectSystem) {
-    return;
-  }
-
-  UWorld *World = GetWorld();
-  if (!World) {
-    return;
-  }
-
-  UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-      World, EffectSystem, DropTargetLocation, FRotator::ZeroRotator,
-      FVector::OneVector, true, true, ENCPoolMethod::AutoRelease);
-
-  UE_LOG(LogXBSoldier, Verbose, TEXT("士兵 %s 播放落地特效"), *GetName());
 }
 
 // ==================== 休眠系统实现 ====================

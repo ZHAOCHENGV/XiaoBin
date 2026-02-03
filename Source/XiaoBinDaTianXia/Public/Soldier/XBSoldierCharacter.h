@@ -763,9 +763,7 @@ protected:
   UPROPERTY(BlueprintReadOnly, Category = "XB|Soldier|Drop")
   bool bAutoRecruitOnLanding = true;
 
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Soldier|Drop",
-            meta = (DisplayName = "落地特效"))
-  TSoftObjectPtr<UNiagaraSystem> DropLandingEffectAsset;
+
 
   // ✨ 新增 - 当前抛物线配置（用于蓝图调试）
   UPROPERTY(BlueprintReadOnly, Category = "XB|Soldier|Drop",
