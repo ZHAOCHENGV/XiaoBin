@@ -9,6 +9,7 @@
  *       1. ❌ 删除 TryRecruitVillager 方法（不再需要）
  *       2. ❌ 删除 对象池相关的招募逻辑
  *       3. 🔧 简化 直接招募场景中的休眠态士兵
+ *       4. ✨ 新增 招募范围贴花可视化组件（替代粒子特效）
  */
 
 #pragma once
@@ -20,6 +21,8 @@
 class UGameplayEffect;
 class AXBCharacterBase;
 class AXBSoldierCharacter;
+class UDecalComponent;
+class UMaterialInterface;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FXBOnActorEnteredField, AActor*, Actor);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FXBOnActorExitedField, AActor*, Actor);
@@ -85,6 +88,27 @@ public:
     UFUNCTION(BlueprintCallable, Category = "XB|MagnetField", meta = (DisplayName = "重置统计"))
     void ResetStats();
 
+    // ============ 范围贴花系统 ============
+
+    /**
+     * @brief 设置范围贴花显示状态
+     * @param bEnabled 是否启用贴花显示
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|MagnetField", meta = (DisplayName = "设置范围贴花显示"))
+    void SetRangeDecalEnabled(bool bEnabled);
+
+    /**
+     * @brief 获取范围贴花显示状态
+     */
+    UFUNCTION(BlueprintPure, Category = "XB|MagnetField", meta = (DisplayName = "范围贴花是否显示"))
+    bool IsRangeDecalEnabled() const;
+
+    /**
+     * @brief 刷新贴花大小（根据当前磁场半径）
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|MagnetField", meta = (DisplayName = "刷新贴花大小"))
+    void UpdateRangeDecalSize();
+
     // ============ 调试系统 ============
 
     UFUNCTION(BlueprintCallable, Category = "XB|MagnetField|Debug", meta = (DisplayName = "启用调试绘制"))
@@ -116,6 +140,20 @@ protected:
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XB|MagnetField", meta = (DisplayName = "可检测 Actor 类型列表"))
     TArray<TSubclassOf<AActor>> DetectableActorClasses;
+
+    // ============ 范围贴花配置 ============
+
+    /** 范围贴花组件（用于可视化招募范围） */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "XB|MagnetField|Decal", meta = (DisplayName = "范围贴花组件"))
+    TObjectPtr<UDecalComponent> RangeDecalComponent;
+
+    /** 范围贴花材质 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|Decal", meta = (DisplayName = "范围贴花材质"))
+    TObjectPtr<UMaterialInterface> RangeDecalMaterial;
+
+    /** 贴花高度偏移（防止Z-fighting） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|Decal", meta = (DisplayName = "贴花高度偏移"))
+    float DecalHeightOffset = 5.0f;
 
     // ============ 调试配置 ============
 
@@ -178,3 +216,4 @@ protected:
 
     void ApplyRecruitEffect(AXBCharacterBase* Leader, AXBSoldierCharacter* Soldier);
 };
+

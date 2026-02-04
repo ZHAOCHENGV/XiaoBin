@@ -81,10 +81,11 @@ AXBSoldierCharacter::AXBSoldierCharacter() {
       TEXT("AbilitySystemComponent"));
   MeleeHitAbilityClass = UXBGameplayAbility_Attack::StaticClass();
 
+  // Zzz 特效组件（Cascade 粒子）
   ZzzEffectComponent =
-      CreateDefaultSubobject<UNiagaraComponent>(TEXT("ZzzEffectComponent"));
+      CreateDefaultSubobject<UParticleSystemComponent>(TEXT("ZzzEffectComponent"));
   ZzzEffectComponent->SetupAttachment(RootComponent);
-  ZzzEffectComponent->SetAutoActivate(false);
+  ZzzEffectComponent->bAutoActivate = false;
 
   // ✨ 新增 - 招募特效组件（Cascade 粒子）
   RecruitedEffectComponent =
@@ -168,17 +169,12 @@ void AXBSoldierCharacter::BeginPlay() {
 
   // 🔧 修改 - 近战GA授予由 RefreshMeleeHitAbilityFromData 统一处理
 
-  if (!ZzzEffectAsset.IsNull() && ZzzEffectComponent) {
-    if (UNiagaraSystem *LoadedEffect = ZzzEffectAsset.LoadSynchronous()) {
-      ZzzEffectComponent->SetAsset(LoadedEffect);
-    }
+  // 加载 Zzz 特效资源（Cascade 粒子）- 不自动激活，由休眠系统控制
+  if (ZzzEffectAsset && ZzzEffectComponent) {
+    ZzzEffectComponent->SetTemplate(ZzzEffectAsset);
+    // 默认不激活，只有休眠态才显示
+    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: Zzz特效已加载"), *GetName());
   }
-
-  if (ZzzEffectComponent) {
-    ZzzEffectComponent->SetRelativeLocation(DormantConfig.ZzzEffectOffset);
-  }
-
-  LoadDormantAnimations();
 
   if (IsDataAccessorValid()) {
     CurrentHealth = DataAccessor->GetMaxHealth();
@@ -186,21 +182,13 @@ void AXBSoldierCharacter::BeginPlay() {
     CurrentHealth = 100.0f;
   }
 
-  if (bStartAsDormant) {
-    Faction = EXBFaction::Neutral;
-    EnterDormantState(DormantConfig.DormantType);
-
-    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 初始化为休眠态，阵营: 中立"),
-           *GetName());
-  } else {
-    GetWorldTimerManager().SetTimerForNextTick(
-        [this]() { EnableMovementAndTick(); });
-  }
+  // 启用移动和Tick
+  GetWorldTimerManager().SetTimerForNextTick(
+      [this]() { EnableMovementAndTick(); });
 
   UE_LOG(LogXBSoldier, Log,
-         TEXT("士兵 %s BeginPlay - 阵营: %d, 状态: %d, 休眠: %s"), *GetName(),
-         static_cast<int32>(Faction), static_cast<int32>(CurrentState),
-         bStartAsDormant ? TEXT("是") : TEXT("否"));
+         TEXT("士兵 %s BeginPlay - 阵营: %d, 状态: %d"), *GetName(),
+         static_cast<int32>(Faction), static_cast<int32>(CurrentState));
 }
 
 UAbilitySystemComponent *
@@ -945,7 +933,8 @@ void AXBSoldierCharacter::PlayLandingEffect() {
 
 void AXBSoldierCharacter::EnterDormantState(EXBDormantType DormantType) {
   if (CurrentState == EXBSoldierState::Dormant) {
-    SetDormantType(DormantType);
+    // 已在休眠态，仅更新休眠类型
+    CurrentDormantType = DormantType;
     return;
   }
 
@@ -999,20 +988,6 @@ void AXBSoldierCharacter::ExitDormantState() {
   UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 退出休眠态"), *GetName());
 }
 
-void AXBSoldierCharacter::SetDormantVisualConfig(
-    const FXBDormantVisualConfig &NewConfig) {
-  DormantConfig = NewConfig;
-
-  if (ZzzEffectComponent) {
-    ZzzEffectComponent->SetRelativeLocation(DormantConfig.ZzzEffectOffset);
-  }
-
-  if (CurrentState == EXBSoldierState::Dormant) {
-    UpdateDormantAnimation();
-    UpdateZzzEffect();
-  }
-}
-
 void AXBSoldierCharacter::SetZzzEffectEnabled(bool bEnabled) {
   if (!ZzzEffectComponent) {
     return;
@@ -1023,28 +998,6 @@ void AXBSoldierCharacter::SetZzzEffectEnabled(bool bEnabled) {
   } else {
     ZzzEffectComponent->Deactivate();
   }
-}
-
-void AXBSoldierCharacter::SetDormantType(EXBDormantType NewType) {
-  if (CurrentDormantType == NewType) {
-    return;
-  }
-
-  CurrentDormantType = NewType;
-
-  if (CurrentState == EXBSoldierState::Dormant) {
-    if (NewType == EXBDormantType::Hidden) {
-      SetActorHiddenInGame(true);
-      SetZzzEffectEnabled(false);
-    } else {
-      SetActorHiddenInGame(false);
-      UpdateDormantAnimation();
-      UpdateZzzEffect();
-    }
-  }
-
-  UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s 休眠类型切换为: %d"), *GetName(),
-         static_cast<int32>(NewType));
 }
 
 void AXBSoldierCharacter::EnableActiveComponents() {
@@ -1126,9 +1079,8 @@ void AXBSoldierCharacter::UpdateDormantAnimation() {
 }
 
 void AXBSoldierCharacter::UpdateZzzEffect() {
-  bool bShouldShowZzz = (CurrentDormantType == EXBDormantType::Sleeping) &&
-                        DormantConfig.bShowZzzEffect;
-
+  // 休眠类型为睡眠时显示 Zzz 特效
+  bool bShouldShowZzz = (CurrentDormantType == EXBDormantType::Sleeping);
   SetZzzEffectEnabled(bShouldShowZzz);
 }
 
@@ -1143,16 +1095,6 @@ void AXBSoldierCharacter::PlayAnimationSequence(UAnimSequence *Animation,
     MeshComp->PlayAnimation(Animation, bLoop);
   } else {
     MeshComp->Stop();
-  }
-}
-
-void AXBSoldierCharacter::LoadDormantAnimations() {
-  if (!DormantConfig.SleepingAnimation.IsNull()) {
-    LoadedSleepingAnimation = DormantConfig.SleepingAnimation.LoadSynchronous();
-  }
-
-  if (!DormantConfig.StandingAnimation.IsNull()) {
-    LoadedStandingAnimation = DormantConfig.StandingAnimation.LoadSynchronous();
   }
 }
 
@@ -1567,6 +1509,9 @@ void AXBSoldierCharacter::OnRecruited(AActor *NewLeader, int32 SlotIndex) {
   if (CurrentState == EXBSoldierState::Dormant) {
     ExitDormantState();
   }
+
+  // 关闭 Zzz 特效（招募后不显示）
+  SetZzzEffectEnabled(false);
 
   // 设置阵营
   AXBCharacterBase *LeaderChar = Cast<AXBCharacterBase>(NewLeader);

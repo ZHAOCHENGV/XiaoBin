@@ -21,6 +21,7 @@
 #include "Data/XBSoldierDataTable.h"
 #include "Engine/DataTable.h"
 #include "DrawDebugHelpers.h"
+#include "Components/DecalComponent.h"
 
 UXBMagnetFieldComponent::UXBMagnetFieldComponent()
 {
@@ -31,6 +32,7 @@ UXBMagnetFieldComponent::UXBMagnetFieldComponent()
     SetGenerateOverlapEvents(false);
     InitSphereRadius(300.0f);
     SetHiddenInGame(true);
+    // 贴花组件将在 BeginPlay 中动态创建
 }
 
 void UXBMagnetFieldComponent::InitializeComponent()
@@ -61,6 +63,21 @@ void UXBMagnetFieldComponent::BeginPlay()
     }
 
     SetGenerateOverlapEvents(bIsFieldEnabled);
+
+    // 动态创建范围贴花组件
+    if (!RangeDecalComponent && RangeDecalMaterial)
+    {
+        RangeDecalComponent = NewObject<UDecalComponent>(GetOwner(), TEXT("RangeDecalComponent"));
+        if (RangeDecalComponent)
+        {
+            RangeDecalComponent->SetupAttachment(this);
+            RangeDecalComponent->SetRelativeRotation(FRotator(-90.0f, 0.0f, 0.0f));
+            RangeDecalComponent->SetVisibility(false);
+            RangeDecalComponent->SetDecalMaterial(RangeDecalMaterial);
+            RangeDecalComponent->RegisterComponent();
+            UpdateRangeDecalSize();
+        }
+    }
 
     if (bDrawDebug)
     {
@@ -240,12 +257,17 @@ void UXBMagnetFieldComponent::OnSphereEndOverlap(UPrimitiveComponent* Overlapped
 void UXBMagnetFieldComponent::SetFieldRadius(float NewRadius)
 {
     SetSphereRadius(NewRadius);
+    // 同步更新贴花大小
+    UpdateRangeDecalSize();
 }
 
 void UXBMagnetFieldComponent::SetFieldEnabled(bool bEnabled)
 {
     bIsFieldEnabled = bEnabled;
     SetGenerateOverlapEvents(bEnabled);
+    
+    // 同步贴花显示状态
+    SetRangeDecalEnabled(bEnabled);
     
     UE_LOG(LogTemp, Log, TEXT("磁场组件 %s: 启用状态 = %s"), 
         GetOwner() ? *GetOwner()->GetName() : TEXT("Unknown"),
@@ -269,6 +291,47 @@ void UXBMagnetFieldComponent::ResetStats()
 {
     FieldStats = FXBMagnetFieldStats();
     UE_LOG(LogTemp, Log, TEXT("磁场统计已重置"));
+}
+
+void UXBMagnetFieldComponent::SetRangeDecalEnabled(bool bEnabled)
+{
+    if (!RangeDecalComponent)
+    {
+        return;
+    }
+
+    RangeDecalComponent->SetVisibility(bEnabled);
+    
+    if (bEnabled)
+    {
+        UpdateRangeDecalSize();
+        UE_LOG(LogTemp, Log, TEXT("磁场范围贴花已启用"));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Log, TEXT("磁场范围贴花已禁用"));
+    }
+}
+
+bool UXBMagnetFieldComponent::IsRangeDecalEnabled() const
+{
+    return RangeDecalComponent && RangeDecalComponent->IsVisible();
+}
+
+void UXBMagnetFieldComponent::UpdateRangeDecalSize()
+{
+    if (!RangeDecalComponent)
+    {
+        return;
+    }
+
+    // 贴花大小根据磁场半径设置
+    // DecalSize: X=深度, Y=半径X, Z=半径Y
+    const float Radius = GetScaledSphereRadius();
+    RangeDecalComponent->DecalSize = FVector(500.0f, Radius, Radius);
+    RangeDecalComponent->SetRelativeLocation(FVector(0.0f, 0.0f, DecalHeightOffset));
+    
+    UE_LOG(LogTemp, Verbose, TEXT("磁场贴花大小已更新: 半径=%.1f"), Radius);
 }
 
 bool UXBMagnetFieldComponent::IsActorDetectable(AActor* Actor) const

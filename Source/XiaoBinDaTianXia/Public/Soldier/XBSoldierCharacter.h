@@ -149,22 +149,8 @@ public:
   bool IsDormant() const { return CurrentState == EXBSoldierState::Dormant; }
 
   UFUNCTION(BlueprintCallable, Category = "XB|Soldier|Dormant",
-            meta = (DisplayName = "设置休眠配置"))
-  void SetDormantVisualConfig(const FXBDormantVisualConfig &NewConfig);
-
-  UFUNCTION(BlueprintPure, Category = "XB|Soldier|Dormant",
-            meta = (DisplayName = "获取休眠配置"))
-  const FXBDormantVisualConfig &GetDormantVisualConfig() const {
-    return DormantConfig;
-  }
-
-  UFUNCTION(BlueprintCallable, Category = "XB|Soldier|Dormant",
             meta = (DisplayName = "设置Zzz特效"))
   void SetZzzEffectEnabled(bool bEnabled);
-
-  UFUNCTION(BlueprintCallable, Category = "XB|Soldier|Dormant",
-            meta = (DisplayName = "切换休眠类型"))
-  void SetDormantType(EXBDormantType NewType);
 
   UFUNCTION(BlueprintPure, Category = "XB|Soldier|Dormant",
             meta = (DisplayName = "获取休眠类型"))
@@ -521,7 +507,7 @@ public:
 
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件",
             meta = (DisplayName = "Zzz特效"))
-  TObjectPtr<UNiagaraComponent> ZzzEffectComponent;
+  TObjectPtr<UParticleSystemComponent> ZzzEffectComponent;
 
   /** 招募特效组件（Cascade 粒子，被招募时激活） */
   UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件",
@@ -716,23 +702,15 @@ protected:
             meta = (DisplayName = "行为接口"))
   TObjectPtr<UXBSoldierBehaviorInterface> BehaviorInterface;
 
-  // ==================== 休眠配置 ====================
+  // ==================== Zzz 特效配置 ====================
 
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Soldier|Dormant",
-            meta = (DisplayName = "休眠配置"))
-  FXBDormantVisualConfig DormantConfig;
-
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Soldier|Dormant",
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Soldier|Effect",
             meta = (DisplayName = "Zzz特效资源"))
-  TSoftObjectPtr<UNiagaraSystem> ZzzEffectAsset;
+  TObjectPtr<UParticleSystem> ZzzEffectAsset;
 
   UPROPERTY(BlueprintReadOnly, Category = "状态",
             meta = (DisplayName = "休眠类型"))
   EXBDormantType CurrentDormantType = EXBDormantType::Sleeping;
-
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Soldier|Dormant",
-            meta = (DisplayName = "初始休眠态"))
-  bool bStartAsDormant = false;
 
   // ==================== 掉落飞行状态 ====================
 
