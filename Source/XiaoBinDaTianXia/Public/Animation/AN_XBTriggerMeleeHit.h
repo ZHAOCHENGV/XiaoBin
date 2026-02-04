@@ -45,4 +45,8 @@ protected:
     /** 命中音效标签（命中敌人时播放） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "音效", meta = (DisplayName = "命中音效", Categories = "Sound"))
     FGameplayTag HitSoundTag;
+
+    /** 命中特效（Cascade 粒子，在敌人位置播放） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "特效", meta = (DisplayName = "命中特效"))
+    TObjectPtr<UParticleSystem> HitEffect;
 };

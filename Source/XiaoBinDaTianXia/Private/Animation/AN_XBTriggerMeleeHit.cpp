@@ -12,6 +12,8 @@
 #include "Character/XBCharacterBase.h"
 #include "Utils/XBLogCategories.h"
 #include "Sound/XBSoundManagerSubsystem.h"
+#include "Kismet/GameplayStatics.h"
+#include "Particles/ParticleSystem.h"
 
 UAN_XBTriggerMeleeHit::UAN_XBTriggerMeleeHit()
 {
@@ -90,6 +92,33 @@ void UAN_XBTriggerMeleeHit::Notify(USkeletalMeshComponent* MeshComp, UAnimSequen
                     }
                 }
             }
+        }
+
+        // ✨ 新增 - 在攻击者与被击者之间的命中位置播放特效
+        if (HitEffect && EventData.Target)
+        {
+            // 计算攻击者指向被击者的方向
+            FVector AttackerLocation = OwnerActor->GetActorLocation();
+            FVector TargetLocation = EventData.Target->GetActorLocation();
+            FVector DirectionToTarget = (TargetLocation - AttackerLocation).GetSafeNormal();
+            
+            // 命中位置：被击者朝向攻击者方向偏移（模拟近战武器接触点）
+            // 偏移距离约为被击者半径，在被击者前方生成特效
+            constexpr float HitOffsetDistance = 50.0f;
+            FVector HitLocation = TargetLocation - DirectionToTarget * HitOffsetDistance;
+            
+            // 特效朝向：面向攻击者到被击者的方向
+            FRotator HitRotation = DirectionToTarget.Rotation();
+            
+            UGameplayStatics::SpawnEmitterAtLocation(
+                OwnerActor->GetWorld(),
+                HitEffect,
+                HitLocation,
+                HitRotation,
+                FVector::OneVector,
+                true,
+                EPSCPoolMethod::AutoRelease);
+            UE_LOG(LogXBCombat, Verbose, TEXT("播放近战命中特效于 %s 前方"), *EventData.Target->GetName());
         }
 
         ASC->HandleGameplayEvent(EventTag, &EventData);
