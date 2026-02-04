@@ -793,6 +793,9 @@ void AXBSoldierCharacter::AutoRecruitToLeader() {
   // 配置并启动跟随
   SetupFollowingAndStartMoving(Leader, SlotIndex);
 
+  // ✨ 新增 - 应用自动入列速度加成
+  ApplyAutoRecruitSpeedBoost();
+
   OnSoldierRecruited.Broadcast(this, Leader);
 
   UE_LOG(LogXBSoldier, Log, TEXT("========================================"));
@@ -802,6 +805,67 @@ void AXBSoldierCharacter::AutoRecruitToLeader() {
          Leader->GetSoldierCount());
   UE_LOG(LogXBSoldier, Log, TEXT("========================================"));
   UE_LOG(LogXBSoldier, Log, TEXT(""));
+}
+
+/**
+ * @brief 应用自动入列速度加成
+ * @note 在落地自动入列时调用，临时提升移动速度
+ */
+void AXBSoldierCharacter::ApplyAutoRecruitSpeedBoost() {
+  // 检查是否配置了速度加成
+  const float SpeedMultiplier = ActiveDropArcConfig.AutoRecruitSpeedMultiplier;
+  const float BoostDuration = ActiveDropArcConfig.SpeedBoostDuration;
+  
+  if (SpeedMultiplier <= 1.0f) {
+    return; // 无加成
+  }
+  
+  UCharacterMovementComponent* MoveComp = GetCharacterMovement();
+  if (!MoveComp) {
+    return;
+  }
+  
+  // 缓存基础速度
+  CachedBaseSpeed = GetMoveSpeed();
+  
+  // 应用加成速度
+  float BoostedSpeed = CachedBaseSpeed * SpeedMultiplier;
+  MoveComp->MaxWalkSpeed = BoostedSpeed;
+  
+  UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 应用入列速度加成 %.1f -> %.1f (%.1fx, 持续 %.1fs)"),
+         *GetName(), CachedBaseSpeed, BoostedSpeed, SpeedMultiplier, BoostDuration);
+  
+  // 如果设置了持续时间，启动计时器移除加成
+  if (BoostDuration > 0.0f) {
+    GetWorldTimerManager().ClearTimer(SpeedBoostTimerHandle);
+    GetWorldTimerManager().SetTimer(
+        SpeedBoostTimerHandle, this,
+        &AXBSoldierCharacter::RemoveAutoRecruitSpeedBoost,
+        BoostDuration, false);
+  }
+}
+
+/**
+ * @brief 移除自动入列速度加成
+ * @note 在速度加成时间结束时调用
+ */
+void AXBSoldierCharacter::RemoveAutoRecruitSpeedBoost() {
+  if (CachedBaseSpeed <= 0.0f) {
+    return; // 无有效缓存
+  }
+  
+  UCharacterMovementComponent* MoveComp = GetCharacterMovement();
+  if (!MoveComp) {
+    return;
+  }
+  
+  // 恢复基础速度
+  MoveComp->MaxWalkSpeed = CachedBaseSpeed;
+  
+  UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 入列速度加成已移除，恢复为 %.1f"),
+         *GetName(), CachedBaseSpeed);
+  
+  CachedBaseSpeed = 0.0f;
 }
 
 /**

@@ -179,8 +179,16 @@ struct FXBDropArcConfig
     bool bAutoRecruitOnLanding = true;
 
     /** @brief 落地后自动入列延迟 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "抛物线", meta = (DisplayName = "落地自动入列延迟", ClampMin = "0.0"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "抛物线", meta = (DisplayName = "落地自动入列延迟", ClampMin = "0.0", EditCondition = "bAutoRecruitOnLanding"))
     float AutoRecruitDelay = 0.1f;
+
+    /** @brief 落地后入列速度加成（倍率，如2.0表示2倍速度） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "抛物线", meta = (DisplayName = "入列速度加成", ClampMin = "1.0", EditCondition = "bAutoRecruitOnLanding"))
+    float AutoRecruitSpeedMultiplier = 1.5f;
+
+    /** @brief 入列速度加成持续时间（秒，0表示永久） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "抛物线", meta = (DisplayName = "速度加成持续时间", ClampMin = "0.0", EditCondition = "bAutoRecruitOnLanding"))
+    float SpeedBoostDuration = 3.0f;
 
     /** @brief 启用抛物线调试绘制 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "抛物线", meta = (DisplayName = "启用调试绘制"))

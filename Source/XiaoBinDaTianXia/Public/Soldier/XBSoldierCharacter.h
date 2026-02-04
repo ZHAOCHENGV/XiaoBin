@@ -974,6 +974,18 @@ protected:
    */
   void AutoRecruitToLeader();
 
+  /**
+   * @brief 应用自动入列速度加成
+   * @note 在落地自动入列时调用，临时提升移动速度
+   */
+  void ApplyAutoRecruitSpeedBoost();
+
+  /**
+   * @brief 移除自动入列速度加成
+   * @note 在速度加成时间结束时调用
+   */
+  void RemoveAutoRecruitSpeedBoost();
+
 private:
   void SpawnAndPossessAIController();
   void InitializeAI();
@@ -981,6 +993,10 @@ private:
 
   // ✨ 新增 - 自动反击计时器
   float AutoEngageCheckTimer = 0.0f;
+
+  // ✨ 新增 - 速度加成计时器
+  FTimerHandle SpeedBoostTimerHandle;
+  float CachedBaseSpeed = 0.0f;
 
   UPROPERTY()
   TObjectPtr<UAnimSequence> LoadedSleepingAnimation;
