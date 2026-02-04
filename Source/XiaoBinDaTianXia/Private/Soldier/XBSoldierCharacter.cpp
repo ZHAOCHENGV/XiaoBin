@@ -130,6 +130,40 @@ AXBSoldierCharacter::AXBSoldierCharacter() {
   AIControllerClass = nullptr;
 }
 
+void AXBSoldierCharacter::OnConstruction(const FTransform& Transform) {
+  Super::OnConstruction(Transform);
+
+#if WITH_EDITORONLY_DATA
+  // 编辑器预览：根据数据表初始化网格体
+  if (bEnableEditorPreview && PreviewDataTable && !PreviewRowName.IsNone()) {
+    ApplyEditorPreview();
+  }
+#endif
+}
+
+#if WITH_EDITOR
+void AXBSoldierCharacter::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) {
+  Super::PostEditChangeProperty(PropertyChangedEvent);
+
+  const FName PropertyName = PropertyChangedEvent.GetPropertyName();
+  
+  // 相关属性变更时刷新预览
+  if (PropertyName == GET_MEMBER_NAME_CHECKED(AXBSoldierCharacter, bEnableEditorPreview) ||
+      PropertyName == GET_MEMBER_NAME_CHECKED(AXBSoldierCharacter, PreviewDataTable) ||
+      PropertyName == GET_MEMBER_NAME_CHECKED(AXBSoldierCharacter, PreviewRowName)) {
+    
+    if (bEnableEditorPreview && PreviewDataTable && !PreviewRowName.IsNone()) {
+      ApplyEditorPreview();
+    } else {
+      // 关闭预览时清除网格体
+      if (USkeletalMeshComponent* MeshComp = GetMesh()) {
+        MeshComp->SetSkeletalMesh(nullptr);
+      }
+    }
+  }
+}
+#endif
+
 void AXBSoldierCharacter::PostInitializeComponents() {
   Super::PostInitializeComponents();
 
@@ -1288,6 +1322,74 @@ void AXBSoldierCharacter::ApplyVisualConfig() {
     SetActorScale3D(FVector(MeshScale));
   }
 }
+
+#if WITH_EDITORONLY_DATA
+void AXBSoldierCharacter::ApplyEditorPreview() {
+  if (!PreviewDataTable || PreviewRowName.IsNone()) {
+    return;
+  }
+
+  // 从数据表获取行数据
+  static const FString ContextString(TEXT("AXBSoldierCharacter::ApplyEditorPreview"));
+  FXBSoldierTableRow* RowData = PreviewDataTable->FindRow<FXBSoldierTableRow>(PreviewRowName, ContextString);
+  if (!RowData) {
+    UE_LOG(LogXBSoldier, Warning, TEXT("士兵编辑器预览: 行 %s 不存在于数据表"), *PreviewRowName.ToString());
+    return;
+  }
+
+  // 获取网格体（同步加载软引用）
+  USkeletalMesh* PreviewMesh = RowData->VisualConfig.SkeletalMesh.LoadSynchronous();
+  if (!PreviewMesh) {
+    UE_LOG(LogXBSoldier, Warning, TEXT("士兵编辑器预览: 行 %s 没有配置网格体"), *PreviewRowName.ToString());
+    return;
+  }
+
+  // 应用网格体
+  if (USkeletalMeshComponent* MeshComp = GetMesh()) {
+    MeshComp->SetSkeletalMesh(PreviewMesh);
+    MeshComp->SetVisibility(true, true);
+  }
+
+  // 应用缩放
+  float MeshScale = RowData->VisualConfig.MeshScale;
+  if (!FMath::IsNearlyEqual(MeshScale, 1.0f)) {
+    SetActorScale3D(FVector(MeshScale));
+  } else {
+    SetActorScale3D(FVector::OneVector);
+  }
+
+  // 自适应胶囊体大小
+  FBoxSphereBounds MeshBounds = PreviewMesh->GetBounds();
+  FVector BoxExtent = MeshBounds.BoxExtent;
+  float NewRadius = FMath::Clamp(FMath::Max(BoxExtent.X, BoxExtent.Y) * 0.6f, 15.0f, 60.0f);
+  float NewHalfHeight = FMath::Max(BoxExtent.Z, 30.0f);
+
+  if (UCapsuleComponent* Capsule = GetCapsuleComponent()) {
+    Capsule->SetCapsuleSize(NewRadius, NewHalfHeight);
+    GetMesh()->SetRelativeLocation(FVector(0.0f, 0.0f, -NewHalfHeight));
+  }
+
+  UE_LOG(LogXBSoldier, Log, TEXT("士兵编辑器预览: %s (网格=%s, 缩放=%.2f)"),
+         *PreviewRowName.ToString(), *PreviewMesh->GetName(), MeshScale);
+}
+
+TArray<FName> AXBSoldierCharacter::GetPreviewRowNames() const {
+  TArray<FName> RowNames;
+  if (PreviewDataTable) {
+    RowNames = PreviewDataTable->GetRowNames();
+  }
+  return RowNames;
+}
+
+void AXBSoldierCharacter::RefreshEditorPreview() {
+  if (bEnableEditorPreview && PreviewDataTable && !PreviewRowName.IsNone()) {
+    ApplyEditorPreview();
+    UE_LOG(LogXBSoldier, Log, TEXT("士兵编辑器预览已刷新: %s"), *PreviewRowName.ToString());
+  } else {
+    UE_LOG(LogXBSoldier, Warning, TEXT("士兵编辑器预览刷新失败: 请先启用预览并配置数据表和行名"));
+  }
+}
+#endif
 
 // ==================== 配置属性访问 ====================
 

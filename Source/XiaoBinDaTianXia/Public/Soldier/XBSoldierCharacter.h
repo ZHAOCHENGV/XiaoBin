@@ -83,6 +83,11 @@ public:
   virtual void BeginPlay() override;
   virtual void Tick(float DeltaTime) override;
   virtual void PostInitializeComponents() override;
+  virtual void OnConstruction(const FTransform& Transform) override;
+
+#if WITH_EDITOR
+  virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+#endif
 
   // ============ IAbilitySystemInterface ============
   virtual UAbilitySystemComponent *GetAbilitySystemComponent() const override;
@@ -712,6 +717,35 @@ protected:
             meta = (DisplayName = "休眠类型"))
   EXBDormantType CurrentDormantType = EXBDormantType::Sleeping;
 
+  // ==================== 编辑器预览配置 ====================
+
+#if WITH_EDITORONLY_DATA
+  /** 启用编辑器预览（根据数据表初始化网格体） */
+  UPROPERTY(EditAnywhere, Category = "XB|Soldier|EditorPreview",
+            meta = (DisplayName = "启用编辑器预览"))
+  bool bEnableEditorPreview = false;
+
+  /** 预览用数据表 */
+  UPROPERTY(EditAnywhere, Category = "XB|Soldier|EditorPreview",
+            meta = (DisplayName = "预览数据表",
+                    EditCondition = "bEnableEditorPreview",
+                    EditConditionHides))
+  TObjectPtr<UDataTable> PreviewDataTable;
+
+  /** 预览行名 */
+  UPROPERTY(EditAnywhere, Category = "XB|Soldier|EditorPreview",
+            meta = (DisplayName = "预览行名",
+                    EditCondition = "bEnableEditorPreview",
+                    EditConditionHides,
+                    GetOptions = "GetPreviewRowNames"))
+  FName PreviewRowName;
+
+  /** 刷新预览（数据表修改后点击此按钮刷新） */
+  UFUNCTION(CallInEditor, Category = "XB|Soldier|EditorPreview",
+            meta = (DisplayName = "刷新预览"))
+  void RefreshEditorPreview();
+#endif
+
   // ==================== 掉落飞行状态 ====================
 
   UPROPERTY(BlueprintReadOnly, Category = "XB|Soldier|Drop")
@@ -895,6 +929,15 @@ protected:
 
   bool PlayAttackMontage();
   void ApplyVisualConfig();
+  
+#if WITH_EDITORONLY_DATA
+  /** 应用编辑器预览（从数据表加载网格体） */
+  void ApplyEditorPreview();
+  /** 获取预览行名选项（供下拉菜单使用） */
+  UFUNCTION()
+  TArray<FName> GetPreviewRowNames() const;
+#endif
+
   void FaceTarget(AActor *Target, float DeltaTime);
   FVector CalculateAvoidanceDirection(const FVector &DesiredDirection);
 
