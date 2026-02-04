@@ -35,7 +35,7 @@ void UAN_XBTriggerMeleeHit::Notify(USkeletalMeshComponent* MeshComp, UAnimSequen
 {
     if (!MeshComp)
     {
-        return;
+        return; 
     }
 
     AActor* OwnerActor = MeshComp->GetOwner();

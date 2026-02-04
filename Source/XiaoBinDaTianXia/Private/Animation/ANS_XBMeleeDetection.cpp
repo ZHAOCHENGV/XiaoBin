@@ -21,6 +21,8 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "DrawDebugHelpers.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "Kismet/GameplayStatics.h"
+#include "Particles/ParticleSystem.h"
 #include "Character/XBCharacterBase.h"
 #include "Character/Components/XBCombatComponent.h"
 #include "Soldier/XBSoldierCharacter.h"
@@ -428,6 +430,21 @@ void UANS_XBMeleeDetection::ApplyDamageToTargets(const TArray<FHitResult>& HitRe
                     }
                 }
             }
+        }
+
+        // ✨ 新增 - 播放命中特效（在每个击中位置播放）
+        if (HitEffect)
+        {
+            UGameplayStatics::SpawnEmitterAtLocation(
+                OwnerActor->GetWorld(),
+                HitEffect,
+                Hit.ImpactPoint,
+                Hit.ImpactNormal.Rotation(),
+                FVector(HitEffectScale),
+                true,
+                EPSCPoolMethod::None,
+                true
+            );
         }
 
         // 检查目标是否是士兵
