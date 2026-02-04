@@ -26,6 +26,7 @@ class UNiagaraSystem;
 class UBoxComponent;
 struct FHitResult;
 class UNiagaraComponent;
+class UParticleSystem;
 
 /**
  * @brief 投射物碰撞体类型
@@ -60,6 +61,17 @@ enum class EXBProjectileDamageType : uint8 {
   ExplosionOnly UMETA(DisplayName = "仅爆炸伤害"),
   /** 飞行+爆炸伤害（两者都能造成伤害） */
   Both UMETA(DisplayName = "飞行+爆炸伤害")
+};
+
+/**
+ * @brief 击中特效类型（Niagara 或 Cascade）
+ */
+UENUM(BlueprintType)
+enum class EXBHitEffectType : uint8 {
+  /** Niagara 粒子系统 */
+  Niagara UMETA(DisplayName = "Niagara"),
+  /** Cascade 粒子系统 */
+  Cascade UMETA(DisplayName = "Cascade")
 };
 
 UCLASS()
@@ -319,19 +331,37 @@ public:
                     EditConditionHides))
   FGameplayTag HitSoundTag;
 
-  /** 飞行命中特效（Niagara） */
+  /** 击中特效类型（选择 Niagara 或 Cascade） */
   UPROPERTY(EditAnywhere, BlueprintReadWrite,
             Category = "发射物配置|飞行命中效果",
-            meta = (DisplayName = "飞行命中特效",
+            meta = (DisplayName = "击中特效类型",
                     EditCondition =
                         "DamageType == EXBProjectileDamageType::FlightOnly || DamageType == EXBProjectileDamageType::Both",
                     EditConditionHides))
+  EXBHitEffectType HitEffectType = EXBHitEffectType::Niagara;
+
+  /** 飞行命中特效（Niagara） */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite,
+            Category = "发射物配置|飞行命中效果",
+            meta = (DisplayName = "击中特效(Niagara)",
+                    EditCondition =
+                        "(DamageType == EXBProjectileDamageType::FlightOnly || DamageType == EXBProjectileDamageType::Both) && HitEffectType == EXBHitEffectType::Niagara",
+                    EditConditionHides))
   TObjectPtr<UNiagaraSystem> HitEffect;
+
+  /** 飞行命中特效（Cascade） */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite,
+            Category = "发射物配置|飞行命中效果",
+            meta = (DisplayName = "击中特效(Cascade)",
+                    EditCondition =
+                        "(DamageType == EXBProjectileDamageType::FlightOnly || DamageType == EXBProjectileDamageType::Both) && HitEffectType == EXBHitEffectType::Cascade",
+                    EditConditionHides))
+  TObjectPtr<UParticleSystem> HitEffectCascade;
 
   /** 飞行命中特效缩放 */
   UPROPERTY(EditAnywhere, BlueprintReadWrite,
             Category = "发射物配置|飞行命中效果",
-            meta = (DisplayName = "飞行命中特效缩放", ClampMin = "0.1",
+            meta = (DisplayName = "击中特效缩放", ClampMin = "0.1",
                     EditCondition =
                         "DamageType == EXBProjectileDamageType::FlightOnly || DamageType == EXBProjectileDamageType::Both",
                     EditConditionHides))

@@ -23,6 +23,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "NiagaraComponent.h"
 #include "NiagaraFunctionLibrary.h"
+#include "Particles/ParticleSystemComponent.h"
 #include "XBCollisionChannels.h"
 #include "Soldier/XBSoldierCharacter.h"
 #include "Sound/XBSoundManagerSubsystem.h"
@@ -312,10 +313,15 @@ void AXBProjectile::OnProjectileOverlap(
                                               HitLocation);
       }
 
-      if (HitEffect) {
+      // 播放击中特效（根据类型选择 Niagara 或 Cascade）
+      if (HitEffectType == EXBHitEffectType::Niagara && HitEffect) {
         UNiagaraFunctionLibrary::SpawnSystemAtLocation(
             this, HitEffect, HitLocation, FRotator::ZeroRotator,
             FVector(HitEffectScale), true, true, ENCPoolMethod::None, true);
+      } else if (HitEffectType == EXBHitEffectType::Cascade && HitEffectCascade) {
+        UGameplayStatics::SpawnEmitterAtLocation(
+            GetWorld(), HitEffectCascade, HitLocation, FRotator::ZeroRotator,
+            FVector(HitEffectScale), true, EPSCPoolMethod::None, true);
       }
     }
   }
@@ -527,11 +533,15 @@ void AXBProjectile::OnProjectileHit(UPrimitiveComponent *HitComponent,
                                           Hit.ImpactPoint);
   }
 
-  // 播放命中特效
-  if (HitEffect) {
+  // 播放命中特效（根据类型选择 Niagara 或 Cascade）
+  if (HitEffectType == EXBHitEffectType::Niagara && HitEffect) {
     UNiagaraFunctionLibrary::SpawnSystemAtLocation(
         this, HitEffect, Hit.ImpactPoint, Hit.ImpactNormal.Rotation(),
         FVector(HitEffectScale), true, true, ENCPoolMethod::None, true);
+  } else if (HitEffectType == EXBHitEffectType::Cascade && HitEffectCascade) {
+    UGameplayStatics::SpawnEmitterAtLocation(
+        GetWorld(), HitEffectCascade, Hit.ImpactPoint, Hit.ImpactNormal.Rotation(),
+        FVector(HitEffectScale), true, EPSCPoolMethod::None, true);
   }
 
   // 命中场景时触发爆炸伤害（仅 ExplosionOnly 或 Both 模式）
