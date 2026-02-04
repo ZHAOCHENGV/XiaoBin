@@ -109,6 +109,13 @@ public:
     UFUNCTION(BlueprintCallable, Category = "XB|MagnetField", meta = (DisplayName = "刷新贴花大小"))
     void UpdateRangeDecalSize();
 
+    /**
+     * @brief 设置贴花颜色
+     * @param NewColor 新颜色
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|MagnetField", meta = (DisplayName = "设置贴花颜色"))
+    void SetDecalColor(FLinearColor NewColor);
+
     // ============ 调试系统 ============
 
     UFUNCTION(BlueprintCallable, Category = "XB|MagnetField|Debug", meta = (DisplayName = "启用调试绘制"))
@@ -150,6 +157,18 @@ protected:
     /** 范围贴花材质 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|Decal", meta = (DisplayName = "范围贴花材质"))
     TObjectPtr<UMaterialInterface> RangeDecalMaterial;
+
+    /** 贴花颜色（用于材质实例参数） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|Decal", meta = (DisplayName = "贴花颜色"))
+    FLinearColor DecalColor = FLinearColor(0.0f, 1.0f, 0.5f, 1.0f);
+
+    /** 是否使用随机颜色 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|Decal", meta = (DisplayName = "使用随机颜色"))
+    bool bUseRandomColor = false;
+
+    /** 动态材质实例（运行时创建） */
+    UPROPERTY()
+    TObjectPtr<UMaterialInstanceDynamic> DecalMaterialInstance;
 
     /** 贴花高度偏移（防止Z-fighting） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|Decal", meta = (DisplayName = "贴花高度偏移"))

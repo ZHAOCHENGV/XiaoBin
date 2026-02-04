@@ -22,6 +22,7 @@
 #include "Engine/DataTable.h"
 #include "DrawDebugHelpers.h"
 #include "Components/DecalComponent.h"
+#include "Materials/MaterialInstanceDynamic.h"
 
 UXBMagnetFieldComponent::UXBMagnetFieldComponent()
 {
@@ -73,9 +74,30 @@ void UXBMagnetFieldComponent::BeginPlay()
             RangeDecalComponent->SetupAttachment(this);
             RangeDecalComponent->SetRelativeRotation(FRotator(-90.0f, 0.0f, 0.0f));
             RangeDecalComponent->SetVisibility(false);
-            RangeDecalComponent->SetDecalMaterial(RangeDecalMaterial);
+            
+            // 创建动态材质实例
+            DecalMaterialInstance = UMaterialInstanceDynamic::Create(RangeDecalMaterial, this);
+            if (DecalMaterialInstance)
+            {
+                // 如果使用随机颜色，生成随机颜色
+                if (bUseRandomColor)
+                {
+                    DecalColor = FLinearColor::MakeRandomColor();
+                    DecalColor.A = 1.0f;
+                }
+                DecalMaterialInstance->SetVectorParameterValue(TEXT("Color"), DecalColor);
+                RangeDecalComponent->SetDecalMaterial(DecalMaterialInstance);
+            }
+            else
+            {
+                RangeDecalComponent->SetDecalMaterial(RangeDecalMaterial);
+            }
+            
             RangeDecalComponent->RegisterComponent();
             UpdateRangeDecalSize();
+            
+            UE_LOG(LogTemp, Log, TEXT("磁场贴花已创建，颜色: (%.2f, %.2f, %.2f)"), 
+                DecalColor.R, DecalColor.G, DecalColor.B);
         }
     }
 
@@ -332,6 +354,18 @@ void UXBMagnetFieldComponent::UpdateRangeDecalSize()
     RangeDecalComponent->SetRelativeLocation(FVector(0.0f, 0.0f, DecalHeightOffset));
     
     UE_LOG(LogTemp, Verbose, TEXT("磁场贴花大小已更新: 半径=%.1f"), Radius);
+}
+
+void UXBMagnetFieldComponent::SetDecalColor(FLinearColor NewColor)
+{
+    DecalColor = NewColor;
+    
+    if (DecalMaterialInstance)
+    {
+        DecalMaterialInstance->SetVectorParameterValue(TEXT("Color"), DecalColor);
+        UE_LOG(LogTemp, Log, TEXT("磁场贴花颜色已更新: (%.2f, %.2f, %.2f)"), 
+            DecalColor.R, DecalColor.G, DecalColor.B);
+    }
 }
 
 bool UXBMagnetFieldComponent::IsActorDetectable(AActor* Actor) const

@@ -169,11 +169,12 @@ void AXBSoldierCharacter::BeginPlay() {
 
   // 🔧 修改 - 近战GA授予由 RefreshMeleeHitAbilityFromData 统一处理
 
-  // 加载 Zzz 特效资源（Cascade 粒子）- 不自动激活，由休眠系统控制
+  // 加载并激活 Zzz 特效（Cascade 粒子）- 有特效时自动激活，被招募时关闭
   if (ZzzEffectAsset && ZzzEffectComponent) {
     ZzzEffectComponent->SetTemplate(ZzzEffectAsset);
-    // 默认不激活，只有休眠态才显示
-    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: Zzz特效已加载"), *GetName());
+    // 自动激活特效
+    ZzzEffectComponent->Activate(true);
+    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: Zzz特效已自动激活"), *GetName());
   }
 
   if (IsDataAccessorValid()) {
