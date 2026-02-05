@@ -155,6 +155,13 @@ void UXBWorldHealthBarComponent::InitializeHealthWidget() {
 
   UXBLeaderHealthWidget *HealthWidget = GetHealthWidget();
   if (HealthWidget && CachedOwner.IsValid()) {
+    // ✨ 新增 - 先应用颜色配置
+    if (bUseRandomHealthBarColor) {
+      HealthWidget->bUseRandomColor = true;
+    } else {
+      HealthWidget->HealthBarFillColor = HealthBarFillColor;
+    }
+    
     HealthWidget->SetOwningLeader(CachedOwner.Get());
     UE_LOG(LogTemp, Log,
            TEXT("WorldHealthBarComponent: 血条 Widget 初始化成功"));
@@ -340,5 +347,23 @@ void UXBWorldHealthBarComponent::ForceRefreshHealthBar() {
     UE_LOG(
         LogTemp, Warning,
         TEXT("WorldHealthBarComponent: ForceRefreshHealthBar - Widget 为空"));
+  }
+}
+
+void UXBWorldHealthBarComponent::SetHealthBarColor(FLinearColor InColor) {
+  HealthBarFillColor = InColor;
+  
+  UXBLeaderHealthWidget *HealthWidget = GetHealthWidget();
+  if (HealthWidget) {
+    HealthWidget->SetHealthBarColor(InColor);
+  }
+}
+
+void UXBWorldHealthBarComponent::ApplyRandomHealthBarColor() {
+  UXBLeaderHealthWidget *HealthWidget = GetHealthWidget();
+  if (HealthWidget) {
+    HealthWidget->ApplyRandomColor();
+    // 同步颜色到组件缓存
+    HealthBarFillColor = HealthWidget->HealthBarFillColor;
   }
 }

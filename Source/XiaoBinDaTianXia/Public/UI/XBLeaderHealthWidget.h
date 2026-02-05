@@ -60,6 +60,23 @@ public:
     UFUNCTION(BlueprintCallable, Category = "XB|UI", meta = (DisplayName = "清除缓存"))
     void ClearCache();
 
+    // ✨ 新增 - 设置血条颜色
+    UFUNCTION(BlueprintCallable, Category = "XB|UI", meta = (DisplayName = "设置血条颜色"))
+    void SetHealthBarColor(FLinearColor InColor);
+
+    // ✨ 新增 - 应用随机颜色
+    UFUNCTION(BlueprintCallable, Category = "XB|UI", meta = (DisplayName = "应用随机颜色"))
+    void ApplyRandomColor();
+
+    // ✨ 新增 - 血条颜色配置
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|UI|配置", meta = (DisplayName = "血条填充颜色"))
+    FLinearColor HealthBarFillColor = FLinearColor(0.0f, 0.8f, 0.2f, 1.0f); // 默认绿色
+
+    // ✨ 新增 - 随机颜色开关
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|UI|配置", meta = (DisplayName = "启用随机颜色", ToolTip = "启用后每次设置将领时会自动应用随机颜色"))
+    bool bUseRandomColor = false;
+
+
 protected:
     virtual void NativeConstruct() override;
     virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
@@ -88,6 +105,7 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|UI|配置", meta = (DisplayName = "更新间隔", ClampMin = "0.0"))
     float UpdateInterval = 0.1f;
 
+   
     // ==================== 运行时数据 ====================
 
     UPROPERTY(BlueprintReadOnly, Category = "XB|UI")

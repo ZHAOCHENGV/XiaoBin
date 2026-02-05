@@ -60,7 +60,7 @@ void UXBLeaderHealthWidget::NativeConstruct()
 
         if (Text_HealthValue)
         {
-            Text_HealthValue->SetText(FText::FromString(TEXT("0/0")));
+            Text_HealthValue->SetText(FText::FromString(TEXT("0")));
         }
 
         if (ProgressBar_Health)
@@ -69,6 +69,12 @@ void UXBLeaderHealthWidget::NativeConstruct()
         }
         
         ClearCache();
+    }
+
+    // ✨ 新增 - 应用血条颜色
+    if (ProgressBar_Health)
+    {
+        ProgressBar_Health->SetFillColorAndOpacity(HealthBarFillColor);
     }
 
     UE_LOG(LogTemp, Log, TEXT("NativeConstruct 完成"));
@@ -112,6 +118,16 @@ void UXBLeaderHealthWidget::SetOwningLeader(AXBCharacterBase* InLeader)
         // 如果 Widget 还没构建，NativeConstruct 会负责刷新
         if (IsConstructed())
         {
+            // ✨ 新增 - 如果启用随机颜色，先应用随机颜色
+            if (bUseRandomColor)
+            {
+                ApplyRandomColor();
+            }
+            else if (ProgressBar_Health)
+            {
+                ProgressBar_Health->SetFillColorAndOpacity(HealthBarFillColor);
+            }
+            
             ForceRefreshDisplay();
         }
     }
@@ -309,8 +325,33 @@ FString UXBLeaderHealthWidget::FormatHealthValue(float HealthValue)
 
 FString UXBLeaderHealthWidget::FormatHealthDisplay(float CurrentHealth, float MaxHealth)
 {
-    FString CurrentStr = FormatHealthValue(CurrentHealth);
-    FString MaxStr = FormatHealthValue(MaxHealth);
+    // 🔧 修改 - 只显示当前血量，不显示 "当前/最大" 格式
+    return FormatHealthValue(CurrentHealth);
+}
 
-    return FString::Printf(TEXT("%s/%s"), *CurrentStr, *MaxStr);
+void UXBLeaderHealthWidget::SetHealthBarColor(FLinearColor InColor)
+{
+    HealthBarFillColor = InColor;
+    
+    if (ProgressBar_Health)
+    {
+        ProgressBar_Health->SetFillColorAndOpacity(InColor);
+    }
+}
+
+void UXBLeaderHealthWidget::ApplyRandomColor()
+{
+    // 生成鲜艳的随机颜色（使用 HSV 保证饱和度和亮度）
+    float Hue = FMath::FRand(); // 0-1 随机色相
+    float Saturation = FMath::FRandRange(0.7f, 1.0f); // 高饱和度
+    float Value = FMath::FRandRange(0.8f, 1.0f); // 高亮度
+    
+    FLinearColor RandomColor = FLinearColor::MakeFromHSV8(
+        static_cast<uint8>(Hue * 255.0f),
+        static_cast<uint8>(Saturation * 255.0f),
+        static_cast<uint8>(Value * 255.0f)
+    );
+    RandomColor.A = 1.0f;
+    
+    SetHealthBarColor(RandomColor);
 }

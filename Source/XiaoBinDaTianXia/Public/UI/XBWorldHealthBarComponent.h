@@ -103,6 +103,15 @@ public:
             meta = (DisplayName = "刷新名称显示"))
   void RefreshNameDisplay();
 
+  // ✨ 新增 - 血条颜色控制
+  UFUNCTION(BlueprintCallable, Category = "XB|UI",
+            meta = (DisplayName = "设置血条颜色"))
+  void SetHealthBarColor(FLinearColor InColor);
+
+  UFUNCTION(BlueprintCallable, Category = "XB|UI",
+            meta = (DisplayName = "应用随机颜色"))
+  void ApplyRandomHealthBarColor();
+
 protected:
   void InitializeHealthWidget();
   void UpdateDistanceBasedVisibility();
@@ -178,6 +187,15 @@ protected:
             meta = (DisplayName = "受伤显示时长", ClampMin = "0.0",
                     EditCondition = "bShowOnlyWhenDamaged"))
   float DamageShowDuration = 5.0f;
+
+  // ✨ 新增 - 血条颜色配置
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|UI|颜色",
+            meta = (DisplayName = "血条填充颜色"))
+  FLinearColor HealthBarFillColor = FLinearColor(0.0f, 0.8f, 0.2f, 1.0f);
+
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|UI|颜色",
+            meta = (DisplayName = "启用随机颜色", ToolTip = "启用后初始化时会自动应用随机颜色"))
+  bool bUseRandomHealthBarColor = false;
 
 private:
   UPROPERTY()
