@@ -2210,8 +2210,10 @@ void AXBCharacterBase::PlaySprintVFX() {
   }
 
   // ✨ 新增 - 提前停用冲刺特效（根据配置时间）
+  // 实际停用时间 = 冲刺时长 - 提前停用时间
   GetWorldTimerManager().ClearTimer(SprintVFXEarlyStopTimerHandle);
   if (SprintVFXEarlyStopTime > 0.0f && SprintVFXEarlyStopTime < SprintDuration) {
+    const float ActualStopDelay = SprintDuration - SprintVFXEarlyStopTime;
     GetWorldTimerManager().SetTimer(
         SprintVFXEarlyStopTimerHandle,
         [this]() {
@@ -2225,7 +2227,7 @@ void AXBCharacterBase::PlaySprintVFX() {
             UE_LOG(LogXBCharacter, Log, TEXT("%s: 冲刺特效提前停用"), *GetName());
           }
         },
-        SprintVFXEarlyStopTime, false);
+        ActualStopDelay, false);
   }
 
   UE_LOG(LogXBCharacter, Log, TEXT("%s: 播放冲刺特效"), *GetName());
