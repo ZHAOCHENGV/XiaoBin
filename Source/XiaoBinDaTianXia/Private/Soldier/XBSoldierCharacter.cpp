@@ -2518,7 +2518,7 @@ void AXBSoldierCharacter::ResetForPooling() {
       AnimInstance->Montage_Stop(0.0f);
       
       // 重置动画蓝图中的 bIsDead 变量，使状态机回到 Idle
-      if (UBoolProperty *DeadProp = CastField<UBoolProperty>(
+      if (FBoolProperty *DeadProp = CastField<FBoolProperty>(
               AnimInstance->GetClass()->FindPropertyByName(FName("bIsDead")))) {
         DeadProp->SetPropertyValue_InContainer(AnimInstance, false);
       }

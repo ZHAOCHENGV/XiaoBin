@@ -18,6 +18,7 @@
 #include "GameplayTagContainer.h"
 
 class UNiagaraSystem;
+class UParticleSystem;
 #include "AN_XBMeleeHit.generated.h"
 
 /**
@@ -138,10 +139,10 @@ public:
             meta = (DisplayName = "命中音效", Categories = "Sound"))
   FGameplayTag HitSoundTag;
 
-  /** @brief 命中 Niagara 特效 */
+  /** @brief 命中 Cascade 粒子特效 */
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "特效配置",
-            meta = (DisplayName = "命中Niagara特效"))
-  TObjectPtr<UNiagaraSystem> HitNiagaraEffect;
+            meta = (DisplayName = "命中特效"))
+  TObjectPtr<UParticleSystem> HitEffect;
 
   // UAnimNotify 接口
   virtual void Notify(USkeletalMeshComponent *MeshComp,

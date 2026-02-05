@@ -18,8 +18,8 @@
 #include "GAS/XBAttributeSet.h"
 #include "Game/XBGameInstance.h"
 #include "Kismet/KismetSystemLibrary.h"
-#include "NiagaraFunctionLibrary.h"
-#include "NiagaraSystem.h"
+#include "Kismet/GameplayStatics.h"
+#include "Particles/ParticleSystem.h"
 #include "Soldier/XBSoldierCharacter.h"
 #include "Sound/XBSoundManagerSubsystem.h"
 #include "Utils/XBBlueprintFunctionLibrary.h"
@@ -340,8 +340,8 @@ void UAN_XBMeleeHit::ApplyDamageToTargets(const TArray<FHitResult> &HitResults,
       }
     }
 
-    // ✨ 新增 - 播放命中 Niagara 特效（在每个击中位置播放）
-    if (HitNiagaraEffect) {
+    // ✨ 新增 - 播放命中 Cascade 粒子特效（在每个击中位置播放）
+    if (HitEffect) {
       if (UWorld *World = OwnerActor->GetWorld()) {
         // 计算攻击者指向被击者的方向
         FVector AttackerLocation = OwnerActor->GetActorLocation();
@@ -357,11 +357,12 @@ void UAN_XBMeleeHit::ApplyDamageToTargets(const TArray<FHitResult> &HitResults,
         // 特效朝向：面向攻击者到被击者的方向
         FRotator HitRotation = DirectionToTarget.Rotation();
 
-        UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-            World, HitNiagaraEffect, HitLocation, HitRotation);
+        UGameplayStatics::SpawnEmitterAtLocation(
+            World, HitEffect, HitLocation, HitRotation, FVector::OneVector,
+            true, EPSCPoolMethod::AutoRelease);
 
         UE_LOG(LogXBCombat, Verbose,
-               TEXT("[AN_XBMeleeHit] 播放Niagara命中特效于 %s 前方"),
+               TEXT("[AN_XBMeleeHit] 播放Cascade命中特效于 %s 前方"),
                *HitActor->GetName());
       }
     }
