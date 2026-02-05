@@ -334,18 +334,14 @@ public:
   /** 击中特效类型（选择 Niagara 或 Cascade） */
   UPROPERTY(EditAnywhere, BlueprintReadWrite,
             Category = "发射物配置|飞行命中效果",
-            meta = (DisplayName = "击中特效类型",
-                    EditCondition =
-                        "DamageType == EXBProjectileDamageType::FlightOnly || DamageType == EXBProjectileDamageType::Both",
-                    EditConditionHides))
+            meta = (DisplayName = "击中特效类型"))
   EXBHitEffectType HitEffectType = EXBHitEffectType::Niagara;
 
   /** 飞行命中特效（Niagara） */
   UPROPERTY(EditAnywhere, BlueprintReadWrite,
             Category = "发射物配置|飞行命中效果",
             meta = (DisplayName = "击中特效(Niagara)",
-                    EditCondition =
-                        "(DamageType == EXBProjectileDamageType::FlightOnly || DamageType == EXBProjectileDamageType::Both) && HitEffectType == EXBHitEffectType::Niagara",
+                    EditCondition = "HitEffectType == EXBHitEffectType::Niagara",
                     EditConditionHides))
   TObjectPtr<UNiagaraSystem> HitEffect;
 
@@ -353,18 +349,14 @@ public:
   UPROPERTY(EditAnywhere, BlueprintReadWrite,
             Category = "发射物配置|飞行命中效果",
             meta = (DisplayName = "击中特效(Cascade)",
-                    EditCondition =
-                        "(DamageType == EXBProjectileDamageType::FlightOnly || DamageType == EXBProjectileDamageType::Both) && HitEffectType == EXBHitEffectType::Cascade",
+                    EditCondition = "HitEffectType == EXBHitEffectType::Cascade",
                     EditConditionHides))
   TObjectPtr<UParticleSystem> HitEffectCascade;
 
   /** 飞行命中特效缩放 */
   UPROPERTY(EditAnywhere, BlueprintReadWrite,
             Category = "发射物配置|飞行命中效果",
-            meta = (DisplayName = "击中特效缩放", ClampMin = "0.1",
-                    EditCondition =
-                        "DamageType == EXBProjectileDamageType::FlightOnly || DamageType == EXBProjectileDamageType::Both",
-                    EditConditionHides))
+            meta = (DisplayName = "击中特效缩放", ClampMin = "0.1"))
   float HitEffectScale = 1.0f;
 
 protected:

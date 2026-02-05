@@ -598,6 +598,17 @@ void AXBProjectile::PerformExplosionDamage(const FVector &ExplosionLocation) {
                                           ExplosionLocation);
   }
 
+  // ✨ 新增 - 播放命中特效（在爆炸位置播放）
+  if (HitEffectType == EXBHitEffectType::Niagara && HitEffect) {
+    UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+        this, HitEffect, ExplosionLocation, FRotator::ZeroRotator,
+        FVector(HitEffectScale), true, true, ENCPoolMethod::None, true);
+  } else if (HitEffectType == EXBHitEffectType::Cascade && HitEffectCascade) {
+    UGameplayStatics::SpawnEmitterAtLocation(
+        GetWorld(), HitEffectCascade, ExplosionLocation, FRotator::ZeroRotator,
+        FVector(HitEffectScale), true, EPSCPoolMethod::None, true);
+  }
+
   // 调试可视化：绘制爆炸半径球体
   if (bDebugExplosionRadius) {
     DrawDebugSphere(World, ExplosionLocation, ExplosionRadius, 16, FColor::Red,
