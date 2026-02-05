@@ -149,6 +149,11 @@ struct FXBGameConfigData {
   /** 地图选项 */
   UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "地图选项"))
   FName SelectedMapName;
+
+  /** 血条颜色名称（用于 UI 选择和存档） */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite,
+            meta = (DisplayName = "血条颜色名称"))
+  FString HealthBarColorName;
 };
 
 /**

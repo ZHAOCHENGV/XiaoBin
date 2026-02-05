@@ -21,6 +21,7 @@
 
 class AXBCharacterBase;
 class UDataTable;
+class UXBHealthBarColorConfig;
 
 /**
  * @brief 配置界面 Widget
@@ -167,6 +168,25 @@ public:
             meta = (DisplayName = "根据类型获取士兵行名"))
   FName GetSoldierRowNameByType(FName LeaderRowName, EXBSoldierType SoldierType) const;
 
+  // ✨ 新增 - 血条颜色选择接口
+
+  /**
+   * @brief 获取血条颜色名称列表（供 UI 下拉框使用）
+   * @return 颜色名称数组
+   */
+  UFUNCTION(BlueprintCallable, Category = "XB|Config",
+            meta = (DisplayName = "获取血条颜色名称列表"))
+  TArray<FText> GetHealthBarColorNames() const;
+
+  /**
+   * @brief 根据颜色名称获取颜色值
+   * @param ColorName 颜色名称
+   * @return 颜色值
+   */
+  UFUNCTION(BlueprintCallable, Category = "XB|Config",
+            meta = (DisplayName = "根据名称获取血条颜色"))
+  FLinearColor GetHealthBarColorByName(const FString& ColorName) const;
+
 public:
   // ==================== UI 数据 ====================
 
@@ -186,6 +206,11 @@ public:
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "配置",
             meta = (DisplayName = "地图选项", Categories = "Map"))
   FGameplayTagContainer MapOptions;
+
+  /** 血条颜色配置数据资产 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "配置",
+            meta = (DisplayName = "血条颜色配置"))
+  TObjectPtr<UXBHealthBarColorConfig> HealthBarColorConfig;
 
   /**
    * @brief 从地图标签中获取地图名称

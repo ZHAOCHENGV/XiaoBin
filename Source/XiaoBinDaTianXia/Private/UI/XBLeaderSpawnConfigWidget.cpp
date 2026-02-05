@@ -7,6 +7,7 @@
  */
 
 #include "UI/XBLeaderSpawnConfigWidget.h"
+#include "Config/XBHealthBarColorConfig.h"
 #include "Engine/DataTable.h"
 #include "Utils/XBLogCategories.h"
 #include "Data/XBSoldierDataTable.h"
@@ -261,3 +262,24 @@ FName UXBLeaderSpawnConfigWidget::GetSoldierRowNameByType(
          TEXT("[GetSoldierRowNameByType] 未找到匹配，返回 NAME_None"));
   return NAME_None;
 }
+
+// ✨ 新增 - 血条颜色选择接口实现
+
+TArray<FText> UXBLeaderSpawnConfigWidget::GetHealthBarColorNames() const {
+  if (HealthBarColorConfig) {
+    return HealthBarColorConfig->GetColorNames();
+  }
+  return TArray<FText>();
+}
+
+FLinearColor UXBLeaderSpawnConfigWidget::GetHealthBarColorByName(const FString& ColorName) const {
+  if (HealthBarColorConfig) {
+    FLinearColor OutColor;
+    if (HealthBarColorConfig->GetColorByName(ColorName, OutColor)) {
+      return OutColor;
+    }
+  }
+  // 默认返回绿色
+  return FLinearColor(0.0f, 0.8f, 0.2f, 1.0f);
+}
+

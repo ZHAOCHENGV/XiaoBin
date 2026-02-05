@@ -17,6 +17,7 @@
 #include "XBLeaderSpawnConfigWidget.generated.h"
 
 class UDataTable;
+class UXBHealthBarColorConfig;
 
 // ============ 代理声明 ============
 
@@ -151,6 +152,25 @@ public:
             meta = (DisplayName = "根据类型获取士兵行名"))
   FName GetSoldierRowNameByType(FName LeaderRowName, EXBSoldierType SoldierType) const;
 
+  // ✨ 新增 - 血条颜色选择接口
+
+  /**
+   * @brief 获取血条颜色名称列表（供 UI 下拉框使用）
+   * @return 颜色名称数组
+   */
+  UFUNCTION(BlueprintCallable, Category = "XB|主将配置",
+            meta = (DisplayName = "获取血条颜色名称列表"))
+  TArray<FText> GetHealthBarColorNames() const;
+
+  /**
+   * @brief 根据颜色名称获取颜色值
+   * @param ColorName 颜色名称
+   * @return 颜色值
+   */
+  UFUNCTION(BlueprintCallable, Category = "XB|主将配置",
+            meta = (DisplayName = "根据名称获取血条颜色"))
+  FLinearColor GetHealthBarColorByName(const FString& ColorName) const;
+
   // ============ 代理事件 ============
 
   /** 配置确认事件 */
@@ -178,6 +198,11 @@ public:
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "配置",
             meta = (DisplayName = "士兵配置数据表"))
   TObjectPtr<UDataTable> SoldierConfigDataTable;
+
+  /** 血条颜色配置数据资产 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "配置",
+            meta = (DisplayName = "血条颜色配置"))
+  TObjectPtr<UXBHealthBarColorConfig> HealthBarColorConfig;
 
   /** 初始配置数据缓存（用于重置） */
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "配置",

@@ -8,6 +8,7 @@
 
 #include "UI/XBConfigWidget.h"
 #include "Character/XBCharacterBase.h"
+#include "Config/XBHealthBarColorConfig.h"
 #include "Engine/DataTable.h"
 #include "Game/XBGameInstance.h"
 #include "Kismet/GameplayStatics.h"
@@ -373,5 +374,25 @@ FString UXBConfigWidget::GetMapNameFromTag(const FGameplayTag& MapTag) {
 
   // 如果不包含 "Map." 前缀，直接返回
   return TagName;
+}
+
+// ✨ 新增 - 血条颜色选择接口实现
+
+TArray<FText> UXBConfigWidget::GetHealthBarColorNames() const {
+  if (HealthBarColorConfig) {
+    return HealthBarColorConfig->GetColorNames();
+  }
+  return TArray<FText>();
+}
+
+FLinearColor UXBConfigWidget::GetHealthBarColorByName(const FString& ColorName) const {
+  if (HealthBarColorConfig) {
+    FLinearColor OutColor;
+    if (HealthBarColorConfig->GetColorByName(ColorName, OutColor)) {
+      return OutColor;
+    }
+  }
+  // 默认返回绿色
+  return FLinearColor(0.0f, 0.8f, 0.2f, 1.0f);
 }
 
