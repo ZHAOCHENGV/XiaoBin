@@ -704,6 +704,11 @@ protected:
               meta = (DisplayName = "特效消失时间", ClampMin = "0.0"))
     float SprintVFXFadeOutTime = 0.0f;
 
+    /** 冲刺特效提前停用时间（秒，0 表示不提前停用，跟随冲刺结束） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|VFX",
+              meta = (DisplayName = "冲刺特效提前停用时间", ClampMin = "0.0"))
+    float SprintVFXEarlyStopTime = 0.0f;
+
     /** 开始播放冲刺特效 */
     void PlaySprintVFX();
 
@@ -712,6 +717,9 @@ protected:
 
     /** 拖尾延迟启动计时器 */
     FTimerHandle SprintTrailDelayTimerHandle;
+
+    /** 冲刺特效提前停用计时器 */
+    FTimerHandle SprintVFXEarlyStopTimerHandle;
 
     // ==================== 死亡系统 ====================
 

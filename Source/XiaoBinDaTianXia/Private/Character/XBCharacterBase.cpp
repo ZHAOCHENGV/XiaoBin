@@ -2209,6 +2209,25 @@ void AXBCharacterBase::PlaySprintVFX() {
     }
   }
 
+  // ✨ 新增 - 提前停用冲刺特效（根据配置时间）
+  GetWorldTimerManager().ClearTimer(SprintVFXEarlyStopTimerHandle);
+  if (SprintVFXEarlyStopTime > 0.0f && SprintVFXEarlyStopTime < SprintDuration) {
+    GetWorldTimerManager().SetTimer(
+        SprintVFXEarlyStopTimerHandle,
+        [this]() {
+          // 仅停用 Niagara 冲刺特效，保留拖尾（拖尾会在冲刺结束时停止）
+          if (SprintNiagaraComponent && SprintNiagaraComponent->IsActive()) {
+            if (SprintVFXFadeOutTime > 0.0f) {
+              SprintNiagaraComponent->Deactivate();
+            } else {
+              SprintNiagaraComponent->DeactivateImmediate();
+            }
+            UE_LOG(LogXBCharacter, Log, TEXT("%s: 冲刺特效提前停用"), *GetName());
+          }
+        },
+        SprintVFXEarlyStopTime, false);
+  }
+
   UE_LOG(LogXBCharacter, Log, TEXT("%s: 播放冲刺特效"), *GetName());
 }
 
@@ -2219,6 +2238,8 @@ void AXBCharacterBase::PlaySprintVFX() {
 void AXBCharacterBase::StopSprintVFX() {
   // 清理拖尾延迟计时器
   GetWorldTimerManager().ClearTimer(SprintTrailDelayTimerHandle);
+  // 清理提前停用计时器
+  GetWorldTimerManager().ClearTimer(SprintVFXEarlyStopTimerHandle);
 
   // 停止 Niagara 特效
   if (SprintNiagaraComponent && SprintNiagaraComponent->IsActive()) {
