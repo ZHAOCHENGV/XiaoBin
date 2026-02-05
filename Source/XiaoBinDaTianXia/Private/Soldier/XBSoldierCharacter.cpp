@@ -3081,3 +3081,63 @@ void AXBSoldierCharacter::InitializeAI() {
     }
   }
 }
+
+// ==================== 受击白光效果实现 ====================
+
+void AXBSoldierCharacter::InitializeHitFlashMaterials() {
+  // 清空之前的动态材质
+  HitFlashDynamicMaterials.Empty();
+
+  USkeletalMeshComponent *MeshComp = GetMesh();
+  if (!MeshComp) {
+    return;
+  }
+
+  // 为每个材质槽创建动态材质实例
+  int32 NumMaterials = MeshComp->GetNumMaterials();
+  for (int32 i = 0; i < NumMaterials; ++i) {
+    UMaterialInterface *OriginalMaterial = MeshComp->GetMaterial(i);
+    if (OriginalMaterial) {
+      UMaterialInstanceDynamic *DynMat =
+          UMaterialInstanceDynamic::Create(OriginalMaterial, this);
+      if (DynMat) {
+        MeshComp->SetMaterial(i, DynMat);
+        HitFlashDynamicMaterials.Add(DynMat);
+      }
+    }
+  }
+}
+
+void AXBSoldierCharacter::TriggerHitFlash() {
+  if (!bEnableHitFlash || bIsDead) {
+    return;
+  }
+
+  // 如果动态材质还未初始化，先初始化
+  if (HitFlashDynamicMaterials.Num() == 0) {
+    InitializeHitFlashMaterials();
+  }
+
+  // 设置白光参数为 1
+  SetHitFlashValue(1.0f);
+
+  // 清除之前的计时器（防止叠加）
+  GetWorldTimerManager().ClearTimer(HitFlashTimerHandle);
+
+  // 延迟后重置
+  GetWorldTimerManager().SetTimer(
+      HitFlashTimerHandle, this, &AXBSoldierCharacter::ResetHitFlash,
+      HitFlashDuration, false);
+}
+
+void AXBSoldierCharacter::SetHitFlashValue(float Value) {
+  for (UMaterialInstanceDynamic *DynMat : HitFlashDynamicMaterials) {
+    if (DynMat) {
+      DynMat->SetScalarParameterValue(HitFlashParameterName, Value);
+    }
+  }
+}
+
+void AXBSoldierCharacter::ResetHitFlash() {
+  SetHitFlashValue(0.0f);
+}

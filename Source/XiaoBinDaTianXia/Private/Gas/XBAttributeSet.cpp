@@ -8,6 +8,7 @@
 #include "GameplayEffectExtension.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "Character/XBCharacterBase.h"
+#include "Soldier/XBSoldierCharacter.h"
 
 UXBAttributeSet::UXBAttributeSet()
 {
@@ -173,6 +174,11 @@ void UXBAttributeSet::HandleHealthChanged(const FGameplayEffectModCallbackData& 
             }
             // 🔧 修改 - 触发目标的受伤回调，用于AI响应
             TargetCharacter->HandleDamageReceived(SourceActor, DamageDone);
+        }
+        // ✨ 新增 - 为士兵触发受击白光效果
+        else if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(TargetActor))
+        {
+            TargetSoldier->TriggerHitFlash();
         }
         // 输出目标信息
         if (TargetActor)

@@ -421,6 +421,24 @@ public:
             meta = (DisplayName = "是否可以攻击"))
   bool CanAttack() const;
 
+  // ==================== 受击白光效果 ====================
+
+  /**
+   * @brief 触发受击白光闪烁效果
+   * @note 设置材质参数 WhiteLight 为 1，延迟后恢复为 0
+   */
+  UFUNCTION(BlueprintCallable, Category = "XB|Soldier|视觉",
+            meta = (DisplayName = "触发受击白光"))
+  void TriggerHitFlash();
+
+  /**
+   * @brief 设置白光参数值
+   * @param Value 0-1，0为原色，1为白色
+   */
+  UFUNCTION(BlueprintCallable, Category = "XB|Soldier|视觉",
+            meta = (DisplayName = "设置白光参数"))
+  void SetHitFlashValue(float Value);
+
   // ==================== AI系统 ====================
 
   UFUNCTION(BlueprintCallable, Category = "XB|Soldier|AI",
@@ -558,6 +576,36 @@ public:
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "状态",
             meta = (DisplayName = "锁定招募"))
   bool bRecruitmentLocked = true;
+
+  // ==================== 受击白光配置 ====================
+
+  /** 白光材质参数名称 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Soldier|视觉",
+            meta = (DisplayName = "白光参数名"))
+  FName HitFlashParameterName = FName("WhiteLight");
+
+  /** 白光持续时间（秒） */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Soldier|视觉",
+            meta = (DisplayName = "白光持续时间", ClampMin = "0.01", ClampMax = "2.0"))
+  float HitFlashDuration = 0.1f;
+
+  /** 是否启用受击白光 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|Soldier|视觉",
+            meta = (DisplayName = "启用受击白光"))
+  bool bEnableHitFlash = true;
+
+  /** 白光动态材质实例数组 */
+  UPROPERTY()
+  TArray<TObjectPtr<UMaterialInstanceDynamic>> HitFlashDynamicMaterials;
+
+  /** 白光恢复计时器 */
+  FTimerHandle HitFlashTimerHandle;
+
+  /** 初始化白光动态材质 */
+  void InitializeHitFlashMaterials();
+
+  /** 重置白光参数 */
+  void ResetHitFlash();
 
   /**
    * @brief 设置招募锁定状态
