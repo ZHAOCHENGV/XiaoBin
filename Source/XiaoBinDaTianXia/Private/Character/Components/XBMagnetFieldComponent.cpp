@@ -75,6 +75,9 @@ void UXBMagnetFieldComponent::BeginPlay()
             RangeDecalComponent->SetRelativeRotation(FRotator(-90.0f, 0.0f, 0.0f));
             RangeDecalComponent->SetVisibility(false);
             
+            // ✨ 新增 - 提高贴花排序顺序，使其渲染在其他贴花之上
+            RangeDecalComponent->SortOrder = 999;
+            
             // 创建动态材质实例
             DecalMaterialInstance = UMaterialInstanceDynamic::Create(RangeDecalMaterial, this);
             if (DecalMaterialInstance)

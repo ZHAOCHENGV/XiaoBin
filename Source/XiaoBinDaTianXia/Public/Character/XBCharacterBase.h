@@ -347,6 +347,23 @@ public:
      */
     virtual void HandleDamageReceived(AActor* DamageSource, float DamageAmount);
 
+    // ==================== 受击白光效果 ====================
+
+    /**
+     * @brief  触发受击白光闪烁效果
+     * @return 无
+     * @note   详细流程分析: 设置材质参数 WhiteLight 为 1 -> 延迟后恢复为 0
+     */
+    UFUNCTION(BlueprintCallable, Category = "视觉", meta = (DisplayName = "触发受击白光"))
+    void TriggerHitFlash();
+
+    /**
+     * @brief  设置白光参数值
+     * @param  Value 0-1，0为原色，1为白色
+     */
+    UFUNCTION(BlueprintCallable, Category = "视觉", meta = (DisplayName = "设置白光参数"))
+    void SetHitFlashValue(float Value);
+
     // ============ 委托事件 ============
 
     UPROPERTY(BlueprintAssignable, Category = "事件")
@@ -579,6 +596,36 @@ protected:
     /** 原始材质数组（用于恢复） */
     UPROPERTY()
     TArray<TObjectPtr<UMaterialInterface>> CachedOriginalMaterials;
+
+    // ==================== 受击白光效果 ====================
+
+    /** 白光材质参数名称 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "受击白光", 
+              meta = (DisplayName = "白光参数名"))
+    FName HitFlashParameterName = FName("WhiteLight");
+
+    /** 白光持续时间（秒） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "受击白光", 
+              meta = (DisplayName = "白光持续时间", ClampMin = "0.01", ClampMax = "2.0"))
+    float HitFlashDuration = 0.1f;
+
+    /** 是否启用受击白光 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "受击白光", 
+              meta = (DisplayName = "启用受击白光"))
+    bool bEnableHitFlash = true;
+
+    /** 白光动态材质实例数组 */
+    UPROPERTY()
+    TArray<TObjectPtr<UMaterialInstanceDynamic>> HitFlashDynamicMaterials;
+
+    /** 白光恢复计时器 */
+    FTimerHandle HitFlashTimerHandle;
+
+    /** 初始化白光动态材质 */
+    void InitializeHitFlashMaterials();
+
+    /** 重置白光参数 */
+    void ResetHitFlash();
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "掉落", meta = (DisplayName = "士兵掉落配置"))
     FXBSoldierDropConfig SoldierDropConfig;
