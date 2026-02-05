@@ -1997,6 +1997,11 @@ float AXBSoldierCharacter::TakeSoldierDamage(float DamageAmount,
   UE_LOG(LogXBCombat, Log, TEXT("士兵 %s 受到 %.1f 伤害, 剩余血量: %.1f"),
          *GetName(), ActualDamage, CurrentHealth);
 
+  // ✨ 新增 - 触发受击白光效果
+  if (ActualDamage > 0.0f) {
+    TriggerHitFlash();
+  }
+
   if (CurrentHealth <= 0.0f) {
     HandleDeath();
   }
@@ -2505,6 +2510,20 @@ void AXBSoldierCharacter::ResetForPooling() {
   bIsEscaping = false;
 
   CurrentHealth = 100.0f;
+
+  // ✨ 新增 - 停止所有正在播放的 Montage 并重置动画蓝图状态
+  if (USkeletalMeshComponent *MeshComp = GetMesh()) {
+    if (UAnimInstance *AnimInstance = MeshComp->GetAnimInstance()) {
+      // 停止所有 Montage
+      AnimInstance->Montage_Stop(0.0f);
+      
+      // 重置动画蓝图中的 bIsDead 变量，使状态机回到 Idle
+      if (UBoolProperty *DeadProp = CastField<UBoolProperty>(
+              AnimInstance->GetClass()->FindPropertyByName(FName("bIsDead")))) {
+        DeadProp->SetPropertyValue_InContainer(AnimInstance, false);
+      }
+    }
+  }
 
   CurrentAttackTarget = nullptr;
   UnbindAssignedTargetEvents();

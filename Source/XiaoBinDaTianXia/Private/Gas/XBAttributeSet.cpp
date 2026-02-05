@@ -225,6 +225,11 @@ void UXBAttributeSet::HandleHealthChanged(const FGameplayEffectModCallbackData& 
             {
                 TargetCharacter->HandleDeath();
             }
+            // ✨ 新增 - 为士兵调用死亡处理
+            else if (AXBSoldierCharacter* TargetSoldier = Cast<AXBSoldierCharacter>(GetOwningActor()))
+            {
+                TargetSoldier->HandleDeath();
+            }
         }
 
         UE_LOG(LogTemp, Log, TEXT("╚══════════════════════════════════════════╝"));

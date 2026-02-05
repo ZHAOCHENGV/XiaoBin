@@ -18,6 +18,8 @@
 #include "GAS/XBAttributeSet.h"
 #include "Game/XBGameInstance.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "NiagaraFunctionLibrary.h"
+#include "NiagaraSystem.h"
 #include "Soldier/XBSoldierCharacter.h"
 #include "Sound/XBSoundManagerSubsystem.h"
 #include "Utils/XBBlueprintFunctionLibrary.h"
@@ -335,6 +337,32 @@ void UAN_XBMeleeHit::ApplyDamageToTargets(const TArray<FHitResult> &HitResults,
             bPlayedHitSound = true;
           }
         }
+      }
+    }
+
+    // ✨ 新增 - 播放命中 Niagara 特效（在每个击中位置播放）
+    if (HitNiagaraEffect) {
+      if (UWorld *World = OwnerActor->GetWorld()) {
+        // 计算攻击者指向被击者的方向
+        FVector AttackerLocation = OwnerActor->GetActorLocation();
+        FVector TargetLocation = HitActor->GetActorLocation();
+        FVector DirectionToTarget =
+            (TargetLocation - AttackerLocation).GetSafeNormal();
+
+        // 命中位置：被击者朝向攻击者方向偏移
+        constexpr float HitOffsetDistance = 50.0f;
+        FVector HitLocation =
+            TargetLocation - DirectionToTarget * HitOffsetDistance;
+
+        // 特效朝向：面向攻击者到被击者的方向
+        FRotator HitRotation = DirectionToTarget.Rotation();
+
+        UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+            World, HitNiagaraEffect, HitLocation, HitRotation);
+
+        UE_LOG(LogXBCombat, Verbose,
+               TEXT("[AN_XBMeleeHit] 播放Niagara命中特效于 %s 前方"),
+               *HitActor->GetName());
       }
     }
 

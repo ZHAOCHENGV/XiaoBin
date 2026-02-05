@@ -16,6 +16,8 @@
 #include "Army/XBSoldierTypes.h"
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
+
+class UNiagaraSystem;
 #include "AN_XBMeleeHit.generated.h"
 
 /**
@@ -135,6 +137,11 @@ public:
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "音效配置",
             meta = (DisplayName = "命中音效", Categories = "Sound"))
   FGameplayTag HitSoundTag;
+
+  /** @brief 命中 Niagara 特效 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "特效配置",
+            meta = (DisplayName = "命中Niagara特效"))
+  TObjectPtr<UNiagaraSystem> HitNiagaraEffect;
 
   // UAnimNotify 接口
   virtual void Notify(USkeletalMeshComponent *MeshComp,
