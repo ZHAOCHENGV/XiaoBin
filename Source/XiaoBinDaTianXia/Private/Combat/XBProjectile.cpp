@@ -225,25 +225,8 @@ void AXBProjectile::ActivateFromPool(const FVector &SpawnLocation,
 }
 
 void AXBProjectile::ResetForPooling() {
-  if (ProjectileMovementComponent) {
-    ProjectileMovementComponent->StopMovementImmediately();
-  }
-
-  GetWorldTimerManager().ClearTimer(LifeTimerHandle);
-
-  // 🔧 修改 - 若启用对象池则回收，否则允许直接销毁
-  if (bUsePooling) {
-    SetActorEnableCollision(false);
-    SetActorHiddenInGame(true);
-  } else {
-    Destroy();
-    return;
-  }
-
-  SourceActor = nullptr;
-
-  UE_LOG(LogXBCombat, Verbose, TEXT("投射物 %s 已重置并进入池化休眠"),
-         *GetName());
+  // 生命周期结束时调用准备销毁流程（让拖尾渐隐后再销毁）
+  PrepareForDestroy();
 }
 
 void AXBProjectile::OnProjectileOverlap(
@@ -332,21 +315,9 @@ void AXBProjectile::OnProjectileOverlap(
     PerformExplosionDamage(HitLocation);
   }
 
-  // 命中后销毁/回收
+  // 命中后销毁/回收（让拖尾渐隐后再销毁）
   if (bDestroyOnHit) {
-    DeactivateTrailEffect();
-
-    if (bUsePooling) {
-      if (UWorld *World = GetWorld()) {
-        if (UXBProjectilePoolSubsystem *PoolSubsystem =
-                World->GetSubsystem<UXBProjectilePoolSubsystem>()) {
-          PoolSubsystem->ReleaseProjectile(this);
-          return;
-        }
-      }
-    }
-
-    Destroy();
+    PrepareForDestroy();
   }
 }
 
@@ -516,6 +487,73 @@ void AXBProjectile::DeactivateTrailEffect() {
   }
 }
 
+void AXBProjectile::PrepareForDestroy() {
+  // 清理生命周期计时器
+  GetWorldTimerManager().ClearTimer(LifeTimerHandle);
+
+  // 停止运动
+  if (ProjectileMovementComponent) {
+    ProjectileMovementComponent->StopMovementImmediately();
+    ProjectileMovementComponent->SetComponentTickEnabled(false);
+  }
+
+  // 🔧 修复 - 直接禁用碰撞组件（防止重复触发伤害检测）
+  if (CapsuleCollision) {
+    CapsuleCollision->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    CapsuleCollision->SetGenerateOverlapEvents(false);
+  }
+  if (BoxCollision) {
+    BoxCollision->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    BoxCollision->SetGenerateOverlapEvents(false);
+  }
+
+  // 隐藏网格组件（保留拖尾特效可见）
+  if (MeshComponent) {
+    MeshComponent->SetVisibility(false, true);
+  }
+
+  // 停用拖尾特效（让它渐隐）
+  DeactivateTrailEffect();
+
+  // 延迟销毁/回收，等待拖尾消散
+  if (TrailFadeDelay > KINDA_SMALL_NUMBER) {
+    GetWorldTimerManager().ClearTimer(TrailFadeTimerHandle);
+    GetWorldTimerManager().SetTimer(TrailFadeTimerHandle, this,
+                                    &AXBProjectile::ExecuteDestroyOrPool,
+                                    TrailFadeDelay, false);
+  } else {
+    // 无延迟时直接执行
+    ExecuteDestroyOrPool();
+  }
+
+  UE_LOG(LogXBCombat, Verbose, TEXT("投射物 %s: 准备销毁，等待拖尾渐隐 %.2f秒"),
+         *GetName(), TrailFadeDelay);
+}
+
+void AXBProjectile::ExecuteDestroyOrPool() {
+  // 清理来源引用
+  SourceActor = nullptr;
+
+  if (bUsePooling) {
+    // 回收到对象池
+    if (UWorld *World = GetWorld()) {
+      if (UXBProjectilePoolSubsystem *PoolSubsystem =
+              World->GetSubsystem<UXBProjectilePoolSubsystem>()) {
+        // 确保完全隐藏
+        SetActorHiddenInGame(true);
+        PoolSubsystem->ReleaseProjectile(this);
+        UE_LOG(LogXBCombat, Verbose, TEXT("投射物 %s: 已回收到对象池"),
+               *GetName());
+        return;
+      }
+    }
+  }
+
+  // 直接销毁
+  Destroy();
+  UE_LOG(LogXBCombat, Verbose, TEXT("投射物已销毁"));
+}
+
 void AXBProjectile::OnProjectileHit(UPrimitiveComponent *HitComponent,
                                     AActor *OtherActor,
                                     UPrimitiveComponent *OtherComp,
@@ -553,20 +591,9 @@ void AXBProjectile::OnProjectileHit(UPrimitiveComponent *HitComponent,
   UE_LOG(LogXBCombat, Verbose, TEXT("投射物 %s 命中场景: %s"), *GetName(),
          *OtherActor->GetName());
 
+  // 命中后销毁/回收（让拖尾渐隐后再销毁）
   if (bDestroyOnHit) {
-    DeactivateTrailEffect();
-
-    if (bUsePooling) {
-      if (UWorld *World = GetWorld()) {
-        if (UXBProjectilePoolSubsystem *PoolSubsystem =
-                World->GetSubsystem<UXBProjectilePoolSubsystem>()) {
-          PoolSubsystem->ReleaseProjectile(this);
-          return;
-        }
-      }
-    }
-
-    Destroy();
+    PrepareForDestroy();
   }
 }
 

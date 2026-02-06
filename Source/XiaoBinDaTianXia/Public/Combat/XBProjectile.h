@@ -186,6 +186,11 @@ public:
             meta = (DisplayName = "命中后销毁"))
   bool bDestroyOnHit = true;
 
+  /** 拖尾渐隐延迟时间（销毁前等待拖尾消散的时间） */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置",
+            meta = (DisplayName = "拖尾渐隐延迟", ClampMin = "0.0", ClampMax = "2.0"))
+  float TrailFadeDelay = 0.3f;
+
   /** 伤害效果（GAS） */
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置|伤害",
             meta = (DisplayName = "伤害效果"))
@@ -405,8 +410,21 @@ private:
 
   FTimerHandle LifeTimerHandle;
 
+  /** 拖尾渐隐后延迟销毁计时器 */
+  FTimerHandle TrailFadeTimerHandle;
+
   /** 停用拖尾特效 */
   void DeactivateTrailEffect();
+
+  /**
+   * @brief  准备销毁/回收（隐藏网格、停用拖尾、延迟销毁）
+   * @note   详细流程分析: 隐藏网格 -> 禁用碰撞 -> 停用拖尾 -> 延迟销毁/回收
+   *         让拖尾有时间渐隐后再销毁Actor
+   */
+  void PrepareForDestroy();
+
+  /** 延迟销毁完成后执行实际销毁/回收 */
+  void ExecuteDestroyOrPool();
 
   /** 处理场景碰撞 */
   UFUNCTION()

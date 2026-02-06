@@ -99,15 +99,12 @@ AXBSoldierCharacter::AXBSoldierCharacter() {
   DropEffectComponent->SetupAttachment(RootComponent);
   DropEffectComponent->bAutoActivate = false;
 
-  // ✨ 新增 - 掉落拖尾组件（Cascade 粒子）
+  // ✨ 新增 - 掉落拖尾组件（Niagara 粒子）
   DropTrailComponent =
-      CreateDefaultSubobject<UParticleSystemComponent>(TEXT("DropTrailComponent"));
+      CreateDefaultSubobject<UNiagaraComponent>(TEXT("DropTrailComponent"));
   DropTrailComponent->SetupAttachment(RootComponent);
   DropTrailComponent->bAutoActivate = false;
 
-  DropTrailNiagaraComponent =  CreateDefaultSubobject<UNiagaraComponent>(TEXT("DropTrailNiagaraComponent"));
-  DropTrailNiagaraComponent->SetupAttachment(RootComponent);
-  DropTrailNiagaraComponent->bAutoActivate = false;
 
   // ==================== 移动组件配置 ====================
   if (UCharacterMovementComponent *MovementComp = GetCharacterMovement()) {
@@ -493,14 +490,11 @@ void AXBSoldierCharacter::StartDropFlight(const FVector &StartLocation,
     DropEffectComponent->Activate(true);
     UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 激活掉落特效"), *GetName());
   }
-  if (DropTrailComponent && DropTrailComponent->Template) {
+  if (DropTrailComponent && DropTrailComponent->GetAsset()) {
     DropTrailComponent->Activate(true);
     UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 激活掉落拖尾"), *GetName());
   }
-  if (DropTrailNiagaraComponent) {
-    DropTrailNiagaraComponent->Activate(true);
-    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 激活掉落Niagara拖尾"), *GetName());
-  }
+
 
   // 隐藏角色（整体）- 保留掉落特效可见
   // SetActorHiddenInGame(false);  // 已移除，改用网格隐藏
@@ -697,13 +691,10 @@ void AXBSoldierCharacter::OnDropLanded() {
     UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 停用掉落特效"), *GetName());
   }
   if (DropTrailComponent && DropTrailComponent->IsActive()) {
-    DropTrailComponent->DeactivateSystem();
+    DropTrailComponent->Deactivate();
     UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 停用掉落拖尾"), *GetName());
   }
-  if (DropTrailNiagaraComponent) {
-    DropTrailNiagaraComponent->Activate(true);
-    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 激活掉落Niagara拖尾"), *GetName());
-  }
+
   if (USkeletalMeshComponent* MeshComp = GetMesh()) {
     MeshComp->SetVisibility(true, true);
   }
@@ -1955,10 +1946,9 @@ void AXBSoldierCharacter::ExitCombat() {
 
 float AXBSoldierCharacter::TakeSoldierDamage(float DamageAmount,
                                              AActor *DamageSource) {
-  // 🔧 新增 - 休眠无敌状态检查（未招募且休眠状态下不受伤）
-  if (bInvulnerableWhenDormant && !bIsRecruited &&
-      CurrentState == EXBSoldierState::Dormant) {
-    UE_LOG(LogXBCombat, Verbose, TEXT("士兵 %s: 休眠无敌状态，免疫伤害"),
+  // 🔧 修复 - 未招募的士兵都无敌（包括休眠、掉落、待机等状态）
+  if (!bIsRecruited) {
+    UE_LOG(LogXBCombat, Verbose, TEXT("士兵 %s: 未招募状态，免疫伤害"),
            *GetName());
     return 0.0f;
   }

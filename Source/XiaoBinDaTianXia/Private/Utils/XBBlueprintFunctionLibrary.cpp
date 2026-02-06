@@ -188,13 +188,13 @@ bool UXBBlueprintFunctionLibrary::IsFriendlyTarget(const AActor *SourceActor,
     return true;
   }
 
-  // 2. 检查是否为休眠无敌士兵
+  // 2. 检查是否为未招募的士兵（无敌状态）
+  // 🔧 修复 - 未招募或未初始化的士兵都视为友军（投射物穿透）
   if (const AXBSoldierCharacter *TargetSoldier =
           Cast<AXBSoldierCharacter>(TargetActor)) {
-    if (TargetSoldier->bInvulnerableWhenDormant &&
-        !TargetSoldier->IsRecruited() &&
-        TargetSoldier->GetSoldierState() == EXBSoldierState::Dormant) {
-      return true; // 休眠无敌士兵视为友军（穿透）
+    // 未招募的士兵无敌（包括休眠、掉落、待机等状态）
+    if (!TargetSoldier->IsRecruited()) {
+      return true; // 未招募士兵视为友军（穿透）
     }
   }
 
