@@ -767,7 +767,7 @@ protected:
 
   // ==================== 编辑器预览配置 ====================
 
-#if WITH_EDITOR
+#if WITH_EDITORONLY_DATA
   /** 启用编辑器预览（根据数据表初始化网格体） */
   UPROPERTY(EditAnywhere, Category = "XB|Soldier|EditorPreview",
             meta = (DisplayName = "启用编辑器预览"))
@@ -787,7 +787,9 @@ protected:
                     EditConditionHides,
                     GetOptions = "GetPreviewRowNames"))
   FName PreviewRowName;
+#endif
 
+#if WITH_EDITOR
   /** 刷新预览（数据表修改后点击此按钮刷新） */
   UFUNCTION(CallInEditor, Category = "XB|Soldier|EditorPreview",
             meta = (DisplayName = "刷新预览"))
