@@ -210,7 +210,7 @@ void UXBMagnetFieldComponent::OnSphereBeginOverlap(UPrimitiveComponent* Overlapp
 
     if (SoldierDT && !SoldierRowName.IsNone())
     {
-        UE_LOG(LogTemp, Log, TEXT("磁场: 使用将领配置初始化士兵 - 数据表: %s, 行: %s"), 
+        UE_LOG(LogTemp, Warning, TEXT("磁场: 使用将领配置初始化士兵 - 数据表: %s, 行: %s"), 
             *SoldierDT->GetName(), *SoldierRowName.ToString());
         
         // 使用将领的配置初始化士兵（改变兵种）

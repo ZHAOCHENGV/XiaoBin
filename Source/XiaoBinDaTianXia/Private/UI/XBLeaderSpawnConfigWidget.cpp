@@ -168,11 +168,17 @@ TArray<FName> UXBLeaderSpawnConfigWidget::GetSoldierRowNames() const {
 }
 
 TArray<EXBSoldierType> UXBLeaderSpawnConfigWidget::GetSoldierTypes() const {
-  // 返回可用的士兵类型列表（不包含 None）
+  // 根据开关配置返回可用的士兵类型列表
   TArray<EXBSoldierType> Types;
-  Types.Add(EXBSoldierType::Infantry);
-  Types.Add(EXBSoldierType::Archer);
-  Types.Add(EXBSoldierType::Cavalry);
+  if (bEnableInfantry) {
+    Types.Add(EXBSoldierType::Infantry);
+  }
+  if (bEnableArcher) {
+    Types.Add(EXBSoldierType::Archer);
+  }
+  if (bEnableCavalry) {
+    Types.Add(EXBSoldierType::Cavalry);
+  }
   return Types;
 }
 

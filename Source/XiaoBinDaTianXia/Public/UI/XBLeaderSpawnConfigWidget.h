@@ -199,6 +199,23 @@ public:
             meta = (DisplayName = "士兵配置数据表"))
   TObjectPtr<UDataTable> SoldierConfigDataTable;
 
+  // ==================== 兵种启用开关 ====================
+
+  /** 启用步兵 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "配置|兵种开关",
+            meta = (DisplayName = "启用步兵"))
+  bool bEnableInfantry = true;
+
+  /** 启用弓箭手 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "配置|兵种开关",
+            meta = (DisplayName = "启用弓箭手"))
+  bool bEnableArcher = true;
+
+  /** 启用骑兵 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "配置|兵种开关",
+            meta = (DisplayName = "启用骑兵"))
+  bool bEnableCavalry = true;
+
   /** 血条颜色配置数据资产 */
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "配置",
             meta = (DisplayName = "血条颜色配置"))

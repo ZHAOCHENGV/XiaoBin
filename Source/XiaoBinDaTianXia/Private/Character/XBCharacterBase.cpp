@@ -463,6 +463,13 @@ void AXBCharacterBase::ApplyRuntimeConfig(const FXBGameConfigData &GameConfig,
   // 初始士兵行名
   if (!GameConfig.InitialSoldierRowName.IsNone()) {
     RecruitSoldierRowName = GameConfig.InitialSoldierRowName;
+    UE_LOG(LogXBCharacter, Warning,
+           TEXT("[ApplyConfigFromGameConfig] 设置 RecruitSoldierRowName = %s (来自 GameConfig.InitialSoldierRowName)"),
+           *RecruitSoldierRowName.ToString());
+  } else {
+    UE_LOG(LogXBCharacter, Warning,
+           TEXT("[ApplyConfigFromGameConfig] GameConfig.InitialSoldierRowName 为空，保留原值: %s"),
+           *RecruitSoldierRowName.ToString());
   }
 
 
