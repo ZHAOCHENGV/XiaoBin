@@ -56,6 +56,31 @@ void UXBProjectilePoolSubsystem::ReleaseProjectile(AXBProjectile* Projectile)
         *Projectile->GetName(), Stats.PoolSize);
 }
 
+void UXBProjectilePoolSubsystem::AddToPool(AXBProjectile* Projectile)
+{
+    if (!Projectile)
+    {
+        return;
+    }
+
+    TSubclassOf<AXBProjectile> ProjectileClass = Projectile->GetClass();
+    if (!ProjectileClass)
+    {
+        return;
+    }
+
+    // 直接添加到池中，不调用 ResetForPooling（调用者已完成重置）
+    Projectile->SetActorLocation(RecycleLocation);
+
+    RecycledProjectiles.FindOrAdd(ProjectileClass).Projectiles.Add(Projectile);
+
+    Stats.ReleaseCount += 1;
+    Stats.PoolSize += 1;
+
+    UE_LOG(LogXBCombat, Verbose, TEXT("投射物 %s 已直接添加到对象池，池大小=%d"),
+        *Projectile->GetName(), Stats.PoolSize);
+}
+
 AXBProjectile* UXBProjectilePoolSubsystem::AcquireProjectile(TSubclassOf<AXBProjectile> ProjectileClass, const FVector& SpawnLocation, const FRotator& SpawnRotation)
 {
     if (!ProjectileClass)

@@ -198,11 +198,11 @@ void AXBProjectile::InitializeProjectileWithTarget(
   // 以飞行方向更新Actor旋转
   SetActorRotation(Velocity.Rotation());
 
-  // 启动存活计时
+  // 启动存活计时（到期后触发拖尾渐隐延迟销毁流程）
   if (LifeSeconds > 0.0f) {
     GetWorldTimerManager().ClearTimer(LifeTimerHandle);
     GetWorldTimerManager().SetTimer(LifeTimerHandle, this,
-                                    &AXBProjectile::ResetForPooling,
+                                    &AXBProjectile::PrepareForDestroy,
                                     LifeSeconds, false);
   }
 
@@ -225,8 +225,40 @@ void AXBProjectile::ActivateFromPool(const FVector &SpawnLocation,
 }
 
 void AXBProjectile::ResetForPooling() {
-  // 生命周期结束时调用准备销毁流程（让拖尾渐隐后再销毁）
-  PrepareForDestroy();
+  // 对象池回收时的简单重置（由 PoolSubsystem 调用）
+  // 注意：这里不调用 PrepareForDestroy，因为延迟销毁已经完成
+  if (ProjectileMovementComponent) {
+    ProjectileMovementComponent->StopMovementImmediately();
+    ProjectileMovementComponent->SetComponentTickEnabled(false);
+  }
+
+  GetWorldTimerManager().ClearTimer(LifeTimerHandle);
+  GetWorldTimerManager().ClearTimer(TrailFadeTimerHandle);
+
+  // 禁用碰撞
+  if (CapsuleCollision) {
+    CapsuleCollision->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    CapsuleCollision->SetGenerateOverlapEvents(false);
+  }
+  if (BoxCollision) {
+    BoxCollision->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    BoxCollision->SetGenerateOverlapEvents(false);
+  }
+
+  // 确保拖尾停用
+  DeactivateTrailEffect();
+
+  // 隐藏网格和Actor
+  if (MeshComponent) {
+    MeshComponent->SetVisibility(false, true);
+  }
+  SetActorHiddenInGame(true);
+  SetActorEnableCollision(false);
+
+  SourceActor = nullptr;
+
+  UE_LOG(LogXBCombat, Verbose, TEXT("投射物 %s 已重置并进入池化休眠"),
+         *GetName());
 }
 
 void AXBProjectile::OnProjectileOverlap(
@@ -535,13 +567,21 @@ void AXBProjectile::ExecuteDestroyOrPool() {
   SourceActor = nullptr;
 
   if (bUsePooling) {
-    // 回收到对象池
+    // 确保拖尾已停用
+    DeactivateTrailEffect();
+
+    // 隐藏网格和Actor
+    if (MeshComponent) {
+      MeshComponent->SetVisibility(false, true);
+    }
+    SetActorHiddenInGame(true);
+    SetActorEnableCollision(false);
+
+    // 回收到对象池（不调用 ResetForPooling 避免重复清理）
     if (UWorld *World = GetWorld()) {
       if (UXBProjectilePoolSubsystem *PoolSubsystem =
               World->GetSubsystem<UXBProjectilePoolSubsystem>()) {
-        // 确保完全隐藏
-        SetActorHiddenInGame(true);
-        PoolSubsystem->ReleaseProjectile(this);
+        PoolSubsystem->AddToPool(this);
         UE_LOG(LogXBCombat, Verbose, TEXT("投射物 %s: 已回收到对象池"),
                *GetName());
         return;

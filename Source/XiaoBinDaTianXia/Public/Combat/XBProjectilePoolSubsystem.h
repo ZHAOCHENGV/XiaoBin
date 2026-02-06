@@ -73,6 +73,13 @@ public:
     void ReleaseProjectile(AXBProjectile* Projectile);
 
     /**
+     * @brief 直接将投射物添加到池中（不调用 ResetForPooling）
+     * @param Projectile 已重置的投射物
+     * @note 用于 ExecuteDestroyOrPool，避免重复调用 ResetForPooling
+     */
+    void AddToPool(AXBProjectile* Projectile);
+
+    /**
      * @brief 从池中获取投射物
      * @param ProjectileClass 投射物类
      * @param SpawnLocation 生成位置
