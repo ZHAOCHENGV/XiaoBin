@@ -1885,6 +1885,11 @@ void AXBCharacterBase::HandleDeath() {
                                     &AXBCharacterBase::OnDestroyTimerExpired,
                                     DeathDestroyDelay, false);
   }
+
+  // ✨ 新增 - 启动死亡渐隐效果
+  if (bEnableDeathFade) {
+    StartDeathFade();
+  }
 }
 
 /**
@@ -2087,6 +2092,86 @@ void AXBCharacterBase::SpawnDroppedSoldiers() {
 
       UE_LOG(LogXBCharacter, Log, TEXT("掉落士兵 [%d] %s 开始飞行"), i,
              *DroppedSoldier->GetName());
+    }
+  }
+}
+
+// ==================== 死亡渐隐效果实现 ====================
+
+/**
+ * @brief  开始死亡渐隐动画
+ * @note   详细流程分析: 创建动态材质实例 -> 设置延迟计时器 -> 每帧更新透明度
+ */
+void AXBCharacterBase::StartDeathFade() {
+  if (!bEnableDeathFade) {
+    return;
+  }
+
+  USkeletalMeshComponent *MeshComp = GetMesh();
+  if (!MeshComp) {
+    return;
+  }
+
+  // 创建动态材质实例
+  const int32 NumMaterials = MeshComp->GetNumMaterials();
+  DeathFadeMaterials.Reserve(NumMaterials);
+
+  for (int32 i = 0; i < NumMaterials; ++i) {
+    UMaterialInterface *BaseMaterial = MeshComp->GetMaterial(i);
+    if (BaseMaterial) {
+      UMaterialInstanceDynamic *DynMat =
+          UMaterialInstanceDynamic::Create(BaseMaterial, this);
+      MeshComp->SetMaterial(i, DynMat);
+      DeathFadeMaterials.Add(DynMat);
+    } else {
+      DeathFadeMaterials.Add(nullptr);
+    }
+  }
+
+  // 重置渐隐进度
+  DeathFadeProgress = 0.0f;
+
+  // 启动渐隐计时器（带延迟）
+  const float UpdateInterval = 0.016f;  // ~60fps
+  GetWorldTimerManager().ClearTimer(DeathFadeTimerHandle);
+  GetWorldTimerManager().SetTimer(DeathFadeTimerHandle, this,
+                                  &AXBCharacterBase::UpdateDeathFade,
+                                  UpdateInterval, true, DeathFadeDelay);
+
+  UE_LOG(LogXBCharacter, Verbose,
+         TEXT("角色 %s: 开始死亡渐隐，延迟=%.2f秒，时长=%.2f秒"), *GetName(),
+         DeathFadeDelay, DeathFadeDuration);
+}
+
+/**
+ * @brief  更新死亡渐隐进度
+ * @note   详细流程分析: 每帧更新透明度参数 -> 渐隐完成后隐藏网格
+ */
+void AXBCharacterBase::UpdateDeathFade() {
+  USkeletalMeshComponent *MeshComp = GetMesh();
+  if (!MeshComp) {
+    GetWorldTimerManager().ClearTimer(DeathFadeTimerHandle);
+    return;
+  }
+
+  // 更新渐隐进度
+  const float DeltaTime = 0.016f;
+  DeathFadeProgress += DeltaTime / FMath::Max(DeathFadeDuration, 0.01f);
+
+  if (DeathFadeProgress >= 1.0f) {
+    // 渐隐完成，隐藏网格并停止计时器
+    MeshComp->SetVisibility(false, true);
+    GetWorldTimerManager().ClearTimer(DeathFadeTimerHandle);
+
+    UE_LOG(LogXBCharacter, Verbose, TEXT("角色 %s: 死亡渐隐完成"), *GetName());
+    return;
+  }
+
+  // 更新材质透明度参数（从1渐变到0）
+  const float Opacity = 1.0f - DeathFadeProgress;
+  for (UMaterialInstanceDynamic *DynMat : DeathFadeMaterials) {
+    if (DynMat) {
+      DynMat->SetScalarParameterValue(DeathFadeParameterName, Opacity);
     }
   }
 }

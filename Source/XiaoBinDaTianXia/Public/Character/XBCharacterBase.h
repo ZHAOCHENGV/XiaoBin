@@ -753,6 +753,47 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "死亡", meta = (DisplayName = "死亡时杀死士兵"))
     bool bKillSoldiersOnDeath = true;
 
+    // ==================== 死亡渐隐效果 ====================
+
+    /** 启用死亡渐隐（通过材质参数控制透明度） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "死亡|渐隐效果",
+              meta = (DisplayName = "启用死亡渐隐"))
+    bool bEnableDeathFade = false;
+
+    /** 死亡渐隐材质参数名称（Scalar参数） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "死亡|渐隐效果",
+              meta = (DisplayName = "渐隐参数名称",
+                      EditCondition = "bEnableDeathFade", EditConditionHides))
+    FName DeathFadeParameterName = FName("Opacity");
+
+    /** 死亡渐隐时间（秒） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "死亡|渐隐效果",
+              meta = (DisplayName = "渐隐时间", ClampMin = "0.05", ClampMax = "5.0",
+                      EditCondition = "bEnableDeathFade", EditConditionHides))
+    float DeathFadeDuration = 1.0f;
+
+    /** 死亡渐隐延迟（动画播放后再开始渐隐） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "死亡|渐隐效果",
+              meta = (DisplayName = "渐隐延迟", ClampMin = "0.0", ClampMax = "10.0",
+                      EditCondition = "bEnableDeathFade", EditConditionHides))
+    float DeathFadeDelay = 0.0f;
+
+    /** 开始死亡渐隐动画 */
+    void StartDeathFade();
+
+    /** 更新死亡渐隐进度 */
+    void UpdateDeathFade();
+
+    /** 死亡渐隐动态材质实例 */
+    UPROPERTY(Transient)
+    TArray<TObjectPtr<UMaterialInstanceDynamic>> DeathFadeMaterials;
+
+    /** 死亡渐隐计时器 */
+    FTimerHandle DeathFadeTimerHandle;
+
+    /** 死亡渐隐当前进度（0~1） */
+    float DeathFadeProgress = 0.0f;
+
     void KillAllSoldiers();
 
     // ==================== AI配置 ====================
