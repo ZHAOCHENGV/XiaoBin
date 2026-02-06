@@ -539,12 +539,20 @@ void AXBProjectile::PrepareForDestroy() {
     BoxCollision->SetGenerateOverlapEvents(false);
   }
 
-  // 隐藏网格组件（保留拖尾特效可见）
-  if (MeshComponent) {
-    MeshComponent->SetVisibility(false, true);
+  // 确保拖尾组件在渐隐期间保持可见
+  if (TrailNiagaraComponent) {
+    TrailNiagaraComponent->SetVisibility(true, false);
   }
 
-  // 停用拖尾特效（让它渐隐）
+  // 处理网格：渐隐或直接隐藏
+  if (bEnableMeshFade && MeshComponent) {
+    StartMeshFade();
+  } else if (MeshComponent) {
+    // 🔧 修复 - 隐藏网格组件但不传播到子组件
+    MeshComponent->SetVisibility(false, false);
+  }
+
+  // 停用拖尾特效（让它渐隐，停止生成新粒子但保留现有粒子）
   DeactivateTrailEffect();
 
   // 延迟销毁/回收，等待拖尾消散
@@ -592,6 +600,56 @@ void AXBProjectile::ExecuteDestroyOrPool() {
   // 直接销毁
   Destroy();
   UE_LOG(LogXBCombat, Verbose, TEXT("投射物已销毁"));
+}
+
+void AXBProjectile::StartMeshFade() {
+  if (!MeshComponent) {
+    return;
+  }
+
+  // 创建动态材质实例
+  UMaterialInterface *BaseMaterial = MeshComponent->GetMaterial(0);
+  if (BaseMaterial) {
+    MeshFadeMaterial = UMaterialInstanceDynamic::Create(BaseMaterial, this);
+    MeshComponent->SetMaterial(0, MeshFadeMaterial);
+  }
+
+  // 重置渐隐进度
+  MeshFadeProgress = 0.0f;
+
+  // 启动渐隐计时器（每帧更新）
+  const float UpdateInterval = 0.016f;  // ~60fps
+  GetWorldTimerManager().ClearTimer(MeshFadeTimerHandle);
+  GetWorldTimerManager().SetTimer(MeshFadeTimerHandle, this,
+                                  &AXBProjectile::UpdateMeshFade,
+                                  UpdateInterval, true);
+
+  UE_LOG(LogXBCombat, Verbose, TEXT("投射物 %s: 开始网格渐隐，时长=%.2f秒"),
+         *GetName(), MeshFadeDuration);
+}
+
+void AXBProjectile::UpdateMeshFade() {
+  if (!MeshComponent) {
+    GetWorldTimerManager().ClearTimer(MeshFadeTimerHandle);
+    return;
+  }
+
+  // 更新渐隐进度
+  const float DeltaTime = 0.016f;
+  MeshFadeProgress += DeltaTime / FMath::Max(MeshFadeDuration, 0.01f);
+
+  if (MeshFadeProgress >= 1.0f) {
+    // 渐隐完成，隐藏网格并停止计时器
+    MeshComponent->SetVisibility(false, false);
+    GetWorldTimerManager().ClearTimer(MeshFadeTimerHandle);
+    return;
+  }
+
+  // 更新材质透明度参数（从1渐变到0）
+  if (MeshFadeMaterial) {
+    const float Opacity = 1.0f - MeshFadeProgress;
+    MeshFadeMaterial->SetScalarParameterValue(MeshFadeParameterName, Opacity);
+  }
 }
 
 void AXBProjectile::OnProjectileHit(UPrimitiveComponent *HitComponent,

@@ -191,6 +191,23 @@ public:
             meta = (DisplayName = "拖尾渐隐延迟", ClampMin = "0.0", ClampMax = "2.0"))
   float TrailFadeDelay = 0.3f;
 
+  /** 启用网格渐隐（通过材质参数控制透明度） */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置|网格渐隐",
+            meta = (DisplayName = "启用网格渐隐"))
+  bool bEnableMeshFade = false;
+
+  /** 网格渐隐材质参数名称（Scalar参数） */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置|网格渐隐",
+            meta = (DisplayName = "渐隐参数名称",
+                    EditCondition = "bEnableMeshFade", EditConditionHides))
+  FName MeshFadeParameterName = FName("Opacity");
+
+  /** 网格渐隐时间（秒） */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置|网格渐隐",
+            meta = (DisplayName = "渐隐时间", ClampMin = "0.05", ClampMax = "2.0",
+                    EditCondition = "bEnableMeshFade", EditConditionHides))
+  float MeshFadeDuration = 0.2f;
+
   /** 伤害效果（GAS） */
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "发射物配置|伤害",
             meta = (DisplayName = "伤害效果"))
@@ -425,6 +442,22 @@ private:
 
   /** 延迟销毁完成后执行实际销毁/回收 */
   void ExecuteDestroyOrPool();
+
+  /** 开始网格渐隐动画 */
+  void StartMeshFade();
+
+  /** 更新网格渐隐进度 */
+  void UpdateMeshFade();
+
+  /** 网格动态材质实例（用于渐隐） */
+  UPROPERTY(Transient)
+  TObjectPtr<UMaterialInstanceDynamic> MeshFadeMaterial;
+
+  /** 网格渐隐计时器 */
+  FTimerHandle MeshFadeTimerHandle;
+
+  /** 网格渐隐当前进度（0~1） */
+  float MeshFadeProgress = 0.0f;
 
   /** 处理场景碰撞 */
   UFUNCTION()
