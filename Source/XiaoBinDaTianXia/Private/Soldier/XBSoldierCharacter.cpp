@@ -105,6 +105,10 @@ AXBSoldierCharacter::AXBSoldierCharacter() {
   DropTrailComponent->SetupAttachment(RootComponent);
   DropTrailComponent->bAutoActivate = false;
 
+  DropTrailNiagaraComponent =  CreateDefaultSubobject<UNiagaraComponent>(TEXT("DropTrailNiagaraComponent"));
+  DropTrailNiagaraComponent->SetupAttachment(RootComponent);
+  DropTrailNiagaraComponent->bAutoActivate = false;
+
   // ==================== 移动组件配置 ====================
   if (UCharacterMovementComponent *MovementComp = GetCharacterMovement()) {
     MovementComp->bOrientRotationToMovement = true;
@@ -493,6 +497,10 @@ void AXBSoldierCharacter::StartDropFlight(const FVector &StartLocation,
     DropTrailComponent->Activate(true);
     UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 激活掉落拖尾"), *GetName());
   }
+  if (DropTrailNiagaraComponent) {
+    DropTrailNiagaraComponent->Activate(true);
+    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 激活掉落Niagara拖尾"), *GetName());
+  }
 
   // 隐藏角色（整体）- 保留掉落特效可见
   // SetActorHiddenInGame(false);  // 已移除，改用网格隐藏
@@ -691,6 +699,10 @@ void AXBSoldierCharacter::OnDropLanded() {
   if (DropTrailComponent && DropTrailComponent->IsActive()) {
     DropTrailComponent->DeactivateSystem();
     UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 停用掉落拖尾"), *GetName());
+  }
+  if (DropTrailNiagaraComponent) {
+    DropTrailNiagaraComponent->Activate(true);
+    UE_LOG(LogXBSoldier, Log, TEXT("士兵 %s: 激活掉落Niagara拖尾"), *GetName());
   }
   if (USkeletalMeshComponent* MeshComp = GetMesh()) {
     MeshComp->SetVisibility(true, true);

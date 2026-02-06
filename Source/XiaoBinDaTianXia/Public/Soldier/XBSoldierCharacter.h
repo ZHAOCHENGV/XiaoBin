@@ -547,6 +547,11 @@ public:
             meta = (DisplayName = "掉落拖尾组件"))
   TObjectPtr<UParticleSystemComponent> DropTrailComponent;
 
+	/** 掉落拖尾特效组件（Cascade 粒子，掉落飞行时激活，落地后停用） */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "组件",
+			  meta = (DisplayName = "掉落拖尾组件"))
+	TObjectPtr<UNiagaraComponent> DropTrailNiagaraComponent;
+
   // ==================== 公开访问的战斗状态 ====================
 
   UPROPERTY(BlueprintReadOnly, Category = "状态",
