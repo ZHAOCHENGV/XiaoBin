@@ -182,7 +182,7 @@ void UXBCombatComponent::InitializeFromDataTable(UDataTable* DataTable, FName Ro
     }
     else if (!CachedASC.IsValid())
     {
-        UE_LOG(LogTemp, Error, TEXT("尝试赋予技能失败：CachedASC 无效，请确保在 BeginPlay 后调用 InitializeFromDataTable"));
+        UE_LOG(LogTemp, Warning, TEXT("尝试赋予技能：CachedASC 无效，请确保在 BeginPlay 后调用 InitializeFromDataTable"));
     }
     else if (!GetOwner()->HasAuthority())
     {

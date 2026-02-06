@@ -1387,7 +1387,7 @@ void AXBSoldierCharacter::ApplyVisualConfig() {
   }
 }
 
-#if WITH_EDITORONLY_DATA
+#if WITH_EDITOR
 void AXBSoldierCharacter::ApplyEditorPreview() {
   if (!PreviewDataTable || PreviewRowName.IsNone()) {
     return;

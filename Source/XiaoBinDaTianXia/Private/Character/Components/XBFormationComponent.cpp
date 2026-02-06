@@ -234,15 +234,15 @@ void UXBFormationComponent::SetDebugDrawEnabled(bool bEnabled)
 
     if (bEnabled)
     {
-        UE_LOG(LogTemp, Error, TEXT("============================================="));
-        UE_LOG(LogTemp, Error, TEXT("编队调试绘制已启用: %s"), *GetOwner()->GetName());
-        UE_LOG(LogTemp, Error, TEXT("当前槽位数量: %d"), FormationSlots.Num());
-        UE_LOG(LogTemp, Error, TEXT("手动槽位数量: %d"), ManualSlotCount);
-        UE_LOG(LogTemp, Error, TEXT("配置详情:"));
-        UE_LOG(LogTemp, Error, TEXT("  - HorizontalSpacing: %.1f"), FormationConfig.HorizontalSpacing);
-        UE_LOG(LogTemp, Error, TEXT("  - VerticalSpacing: %.1f"), FormationConfig.VerticalSpacing);
-        UE_LOG(LogTemp, Error, TEXT("  - MinDistanceToLeader: %.1f"), FormationConfig.MinDistanceToLeader);
-        UE_LOG(LogTemp, Error, TEXT("============================================="));
+        UE_LOG(LogTemp, Log, TEXT("============================================="));
+        UE_LOG(LogTemp, Log, TEXT("编队调试绘制已启用: %s"), *GetOwner()->GetName());
+        UE_LOG(LogTemp, Log, TEXT("当前槽位数量: %d"), FormationSlots.Num());
+        UE_LOG(LogTemp, Log, TEXT("手动槽位数量: %d"), ManualSlotCount);
+        UE_LOG(LogTemp, Log, TEXT("配置详情:"));
+        UE_LOG(LogTemp, Log, TEXT("  - HorizontalSpacing: %.1f"), FormationConfig.HorizontalSpacing);
+        UE_LOG(LogTemp, Log, TEXT("  - VerticalSpacing: %.1f"), FormationConfig.VerticalSpacing);
+        UE_LOG(LogTemp, Log, TEXT("  - MinDistanceToLeader: %.1f"), FormationConfig.MinDistanceToLeader);
+        UE_LOG(LogTemp, Log, TEXT("============================================="));
 
         DrawDebugFormation(10.0f);
     }
@@ -469,14 +469,14 @@ FVector2D UXBFormationComponent::CalculateSlotLocalOffset(int32 SlotIndex, int32
 
 void UXBFormationComponent::RegenerateFormation(int32 SoldierCount)
 {
-    // ✨ 新增：诊断日志
-    UE_LOG(LogTemp, Error, TEXT(""));
-    UE_LOG(LogTemp, Error, TEXT("============================================="));
-    UE_LOG(LogTemp, Error, TEXT("RegenerateFormation 诊断"));
-    UE_LOG(LogTemp, Error, TEXT("============================================="));
-    UE_LOG(LogTemp, Error, TEXT("组件实例: %s"), *GetName());
-    UE_LOG(LogTemp, Error, TEXT("组件所有者: %s"), GetOwner() ? *GetOwner()->GetName() : TEXT("NULL"));
-    UE_LOG(LogTemp, Error, TEXT("组件地址: %p"), this);
+    // ✨ 诊断日志（调试用，使用 Log 级别避免打包报错）
+    UE_LOG(LogTemp, Log, TEXT(""));
+    UE_LOG(LogTemp, Log, TEXT("============================================="));
+    UE_LOG(LogTemp, Log, TEXT("RegenerateFormation 诊断"));
+    UE_LOG(LogTemp, Log, TEXT("============================================="));
+    UE_LOG(LogTemp, Log, TEXT("组件实例: %s"), *GetName());
+    UE_LOG(LogTemp, Log, TEXT("组件所有者: %s"), GetOwner() ? *GetOwner()->GetName() : TEXT("NULL"));
+    UE_LOG(LogTemp, Log, TEXT("组件地址: %p"), this);
     // 检查是否是同一个实例
     if (GetOwner())
     {
@@ -485,14 +485,14 @@ void UXBFormationComponent::RegenerateFormation(int32 SoldierCount)
             UXBFormationComponent* OwnerComp = Character->GetFormationComponent();
             if (OwnerComp)
             {
-                UE_LOG(LogTemp, Error, TEXT("Owner的组件地址: %p"), OwnerComp);
-                UE_LOG(LogTemp, Error, TEXT("是否同一实例: %s"), 
+                UE_LOG(LogTemp, Log, TEXT("Owner的组件地址: %p"), OwnerComp);
+                UE_LOG(LogTemp, Log, TEXT("是否同一实例: %s"), 
                     (OwnerComp == this) ? TEXT("✅ 是") : TEXT("❌ 否"));
             }
         }
     }
-    UE_LOG(LogTemp, Error, TEXT("============================================="));
-    UE_LOG(LogTemp, Error, TEXT(""));
+    UE_LOG(LogTemp, Log, TEXT("============================================="));
+    UE_LOG(LogTemp, Log, TEXT(""));
     
     // ✨ 新增 - 详细调试日志
     UE_LOG(LogTemp, Warning, TEXT(""));

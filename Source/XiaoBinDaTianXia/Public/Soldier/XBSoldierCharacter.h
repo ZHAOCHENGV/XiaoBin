@@ -767,7 +767,7 @@ protected:
 
   // ==================== 编辑器预览配置 ====================
 
-#if WITH_EDITORONLY_DATA
+#if WITH_EDITOR
   /** 启用编辑器预览（根据数据表初始化网格体） */
   UPROPERTY(EditAnywhere, Category = "XB|Soldier|EditorPreview",
             meta = (DisplayName = "启用编辑器预览"))
@@ -978,7 +978,7 @@ protected:
   bool PlayAttackMontage();
   void ApplyVisualConfig();
   
-#if WITH_EDITORONLY_DATA
+#if WITH_EDITOR
   /** 应用编辑器预览（从数据表加载网格体） */
   void ApplyEditorPreview();
   /** 获取预览行名选项（供下拉菜单使用） */
