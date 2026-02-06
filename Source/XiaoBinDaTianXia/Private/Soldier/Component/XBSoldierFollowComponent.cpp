@@ -339,7 +339,7 @@ void UXBSoldierFollowComponent::UpdateLeaderSpeedPerception(float DeltaTime)
         // PendingLeaderSpeed 初始取当前（后续会持续更新）
         PendingLeaderSpeed = InstantLeaderSpeed;
 
-        UE_LOG(LogXBSoldier, Log, TEXT("跟随组件：触发速度传播波；Accel=%.1f，速度差=%.1f，槽位=%d，延迟=%.3fs"),
+        UE_LOG(LogXBSoldier, Verbose, TEXT("跟随组件：触发速度传播波；Accel=%.1f，速度差=%.1f，槽位=%d，延迟=%.3fs"),
             Accel,
             FMath::Abs(InstantLeaderSpeed - PerceivedLeaderSpeed),
             FormationSlotIndex,
@@ -374,10 +374,8 @@ void UXBSoldierFollowComponent::UpdateLeaderSpeedPerception(float DeltaTime)
     // 为什么：你要的是“开始加速触发波”，而不是“每个增量都重新触发”，因此不重置 StartTime，只更新目标值
     PendingLeaderSpeed = InstantLeaderSpeed;
 
-    const float Delay = ComputeLeaderSpeedWaveDelay();
-    const float Elapsed = Now - LeaderSpeedEventStartTime;
-
-    if (Elapsed >= Delay)
+    // ✨ 重构 - 使用抽取的方法检查延迟
+    if (IsWaveDelayElapsed())
     {
         // 到点后快速贴近（插值），前排先开始，后排后开始 → 交错感
         PerceivedLeaderSpeed = (LeaderSpeedWaveApplyInterpRate > 0.0f)
@@ -527,12 +525,63 @@ float UXBSoldierFollowComponent::GetDeterministicRandom01() const
 }
 
 /**
+ * @brief 检查传播波延迟是否已到点
+ * @return true 表示延迟已过，可以应用新速度
+ * @note ✨ 重构 - 抽取自 UpdateLockedMode 和 UpdateLeaderSpeedPerception 的重复逻辑
+ */
+bool UXBSoldierFollowComponent::IsWaveDelayElapsed() const
+{
+    if (!bEnableLeaderSpeedWave || !bLeaderSpeedEventPending)
+    {
+        return true;
+    }
+
+    const UWorld* World = GetWorld();
+    if (!World)
+    {
+        return true;
+    }
+
+    const float Now = World->GetTimeSeconds();
+    const float Delay = ComputeLeaderSpeedWaveDelay();
+    const float Elapsed = Now - LeaderSpeedEventStartTime;
+
+    return (Elapsed >= Delay);
+}
+
+/**
+ * @brief 计算锁定模式下的目标速度
+ * @param DistanceToSlot 到槽位的距离
+ * @return 目标移动速度
+ * @note ✨ 重构 - 统一速度计算：基础速度 + 追赶额外速度
+ */
+float UXBSoldierFollowComponent::CalculateLockedModeSpeed(float DistanceToSlot) const
+{
+    // 速度来源：传播波启用时使用感知速度，否则用瞬时速度
+    const float LeaderSpeedForThisSoldier = (bEnableLeaderSpeedWave ? PerceivedLeaderSpeed : InstantLeaderSpeed);
+
+    // 误差归一化
+    const float Deadzone = FMath::Max(LockedDeadzoneDistance, 0.0f);
+    const float FullDist = FMath::Max(LockedFullInputDistance, Deadzone + 1.0f);
+    const float ErrorAlpha = FMath::Clamp((DistanceToSlot - Deadzone) / (FullDist - Deadzone), 0.0f, 1.0f);
+
+    // 追赶额外速度（仅在偏离槽位时）
+    float CatchUpExtra = LockedCatchUpExtraSpeed * ErrorAlpha;
+
+    // 波纹保护：延迟未到点时抑制追赶速度
+    if (!IsWaveDelayElapsed())
+    {
+        CatchUpExtra = 0.0f;
+    }
+
+    return FMath::Max(LockedFollowMoveSpeed, LeaderSpeedForThisSoldier) + CatchUpExtra;
+}
+
+/**
  * @brief  锁定模式更新（严格跟随槽位）
  * @param  DeltaTime 帧间隔
- * @note   🔧 修改 - 朝向严格对齐主将朝向：
- *        原逻辑用 CalculateFormationWorldRotation()，在 GhostYaw 插值/限速时可能与主将Yaw不一致，
- *        导致士兵看起来“队形在走但脸没对齐主将”。
- *        修复：Locked 模式下，若启用 bFollowRotation，直接以 Leader->GetActorRotation().Yaw 作为目标Yaw。
+ * @note   ✨ 重构 - 速度计算已抽取到 CalculateLockedModeSpeed()
+ *         朝向严格对齐主将朝向
  */
 void UXBSoldierFollowComponent::UpdateLockedMode(float DeltaTime)
 {
@@ -555,43 +604,8 @@ void UXBSoldierFollowComponent::UpdateLockedMode(float DeltaTime)
     const FVector CurrentPosition = Owner->GetActorLocation();
     const float DistanceToSlot = FVector::Dist2D(CurrentPosition, TargetPosition);
 
-    // 🔧 修改 - 速度来源使用“感知速度”（用于产生按行传播波纹）
-    const float LeaderSpeedForThisSoldier = (bEnableLeaderSpeedWave ? PerceivedLeaderSpeed : InstantLeaderSpeed);
-
-    // ==================== 误差归一化（用于输入与追赶速度缩放） ====================
-
-    const float Deadzone = FMath::Max(LockedDeadzoneDistance, 0.0f);
-    const float FullDist = FMath::Max(LockedFullInputDistance, Deadzone + 1.0f);
-    const float ErrorAlpha = FMath::Clamp((DistanceToSlot - Deadzone) / (FullDist - Deadzone), 0.0f, 1.0f);
-
-    // ==================== 波纹保护：延迟未到点时抑制追赶速度 ====================
-
-    bool bHoldCatchUpForWave = false;
-    if (bEnableLeaderSpeedWave && bLeaderSpeedEventPending)
-    {
-        if (UWorld* World = GetWorld())
-        {
-            const float Now = World->GetTimeSeconds();
-            const float Delay = ComputeLeaderSpeedWaveDelay();
-            const float Elapsed = Now - LeaderSpeedEventStartTime;
-
-            if (Elapsed < Delay)
-            {
-                bHoldCatchUpForWave = true;
-            }
-        }
-    }
-
-    // ==================== 追赶额外速度（仅在偏离槽位时） ====================
-
-    float CatchUpExtra = LockedCatchUpExtraSpeed * ErrorAlpha;
-
-    if (bHoldCatchUpForWave)
-    {
-        CatchUpExtra = 0.0f;
-    }
-
-    const float DesiredSpeed = FMath::Max(LockedFollowMoveSpeed, LeaderSpeedForThisSoldier) + CatchUpExtra;
+    // ✨ 重构 - 使用抽取的方法计算速度
+    const float DesiredSpeed = CalculateLockedModeSpeed(DistanceToSlot);
 
     const float NewMaxSpeed = (LockedSpeedInterpRate > 0.0f)
         ? FMath::FInterpTo(MoveComp->MaxWalkSpeed, DesiredSpeed, DeltaTime, LockedSpeedInterpRate)
@@ -601,6 +615,10 @@ void UXBSoldierFollowComponent::UpdateLockedMode(float DeltaTime)
 
     // ==================== 位移：输入强度随误差缩放 ====================
 
+    const float Deadzone = FMath::Max(LockedDeadzoneDistance, 0.0f);
+    const float FullDist = FMath::Max(LockedFullInputDistance, Deadzone + 1.0f);
+    const float ErrorAlpha = FMath::Clamp((DistanceToSlot - Deadzone) / (FullDist - Deadzone), 0.0f, 1.0f);
+
     if (DistanceToSlot > Deadzone)
     {
         const FVector MoveDir = (TargetPosition - CurrentPosition).GetSafeNormal2D();
@@ -608,21 +626,16 @@ void UXBSoldierFollowComponent::UpdateLockedMode(float DeltaTime)
         CharOwner->AddMovementInput(MoveDir, InputScale);
     }
 
-    // ==================== 🔧 修改 - 朝向：严格对齐主将Yaw ====================
+    // ==================== 朝向：严格对齐主将Yaw ====================
 
     if (bFollowRotation)
     {
         const float LeaderYaw = FRotator::NormalizeAxis(Leader->GetActorRotation().Yaw);
+        const float CurrentYaw = Owner->GetActorRotation().Yaw;
 
-        const FRotator TargetRotation(0.0f, LeaderYaw, 0.0f);
-        const FRotator NewRotation = FMath::RInterpTo(
-            Owner->GetActorRotation(),
-            TargetRotation,
-            DeltaTime,
-            LockedRotationInterpSpeed
-        );
-
-        Owner->SetActorRotation(FRotator(0.0f, NewRotation.Yaw, 0.0f));
+        // ✨ 优化 - 使用标量插值代替 RInterpTo
+        const float NewYaw = FMath::FInterpTo(CurrentYaw, LeaderYaw, DeltaTime, LockedRotationInterpSpeed);
+        Owner->SetActorRotation(FRotator(0.0f, NewYaw, 0.0f));
     }
 }
 /**

@@ -177,6 +177,23 @@ protected:
 
     bool IsRotationAligned(const FRotator& TargetRotation, float ToleranceDegrees = 5.0f) const;
 
+    // ✨ 重构 - 速度计算与延迟检查抽取
+
+    /**
+     * @brief 计算锁定模式下的目标速度
+     * @param DistanceToSlot 到槽位的距离
+     * @return 目标移动速度
+     * @note 统一速度计算策略：基础速度 + 追赶额外速度
+     */
+    float CalculateLockedModeSpeed(float DistanceToSlot) const;
+
+    /**
+     * @brief 检查传播波延迟是否已到点
+     * @return true 表示延迟已过，可以应用新速度
+     * @note 抽取重复的延迟判断逻辑
+     */
+    bool IsWaveDelayElapsed() const;
+
 protected:
     // ==================== 引用 ====================
 
