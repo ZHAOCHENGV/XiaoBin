@@ -96,6 +96,7 @@ void UXBMagnetFieldComponent::BeginPlay()
                 RangeDecalComponent->SetDecalMaterial(RangeDecalMaterial);
             }
             
+            
             RangeDecalComponent->RegisterComponent();
             UpdateRangeDecalSize();
             
@@ -351,12 +352,12 @@ void UXBMagnetFieldComponent::UpdateRangeDecalSize()
     }
 
     // 贴花大小根据磁场半径设置
-    // DecalSize: X=深度, Y=半径X, Z=半径Y
+    // DecalSize: X=投影深度（向下投影距离）, Y=半径X, Z=半径Y
     const float Radius = GetScaledSphereRadius();
-    RangeDecalComponent->DecalSize = FVector(500.0f, Radius, Radius);
+    RangeDecalComponent->DecalSize = FVector(DecalProjectionDepth, Radius, Radius);
     RangeDecalComponent->SetRelativeLocation(FVector(0.0f, 0.0f, DecalHeightOffset));
     
-    UE_LOG(LogTemp, Verbose, TEXT("磁场贴花大小已更新: 半径=%.1f"), Radius);
+    UE_LOG(LogTemp, Verbose, TEXT("磁场贴花大小已更新: 半径=%.1f, 投影深度=%.1f"), Radius, DecalProjectionDepth);
 }
 
 void UXBMagnetFieldComponent::SetDecalColor(FLinearColor NewColor)

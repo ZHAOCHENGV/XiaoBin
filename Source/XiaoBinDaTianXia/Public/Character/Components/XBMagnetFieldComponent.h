@@ -174,6 +174,10 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|Decal", meta = (DisplayName = "贴花高度偏移"))
     float DecalHeightOffset = 5.0f;
 
+    /** 贴花投影深度（控制贴花向下投影的距离，值越大可在更高/更低的地形上显示） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|Decal", meta = (DisplayName = "贴花投影深度", ClampMin = "1", ClampMax = "5000.0"))
+    float DecalProjectionDepth = 500.0f;
+
     // ============ 调试配置 ============
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|Debug", meta = (DisplayName = "启用调试绘制"))
