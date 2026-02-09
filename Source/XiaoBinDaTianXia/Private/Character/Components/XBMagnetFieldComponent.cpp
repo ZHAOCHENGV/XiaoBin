@@ -22,7 +22,9 @@
 #include "Engine/DataTable.h"
 #include "DrawDebugHelpers.h"
 #include "Components/DecalComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "Engine/StaticMesh.h"
 
 UXBMagnetFieldComponent::UXBMagnetFieldComponent()
 {
@@ -102,6 +104,54 @@ void UXBMagnetFieldComponent::BeginPlay()
             
             UE_LOG(LogTemp, Log, TEXT("磁场贴花已创建，颜色: (%.2f, %.2f, %.2f)"), 
                 DecalColor.R, DecalColor.G, DecalColor.B);
+        }
+    }
+
+    // ✨ 新增 - 动态创建范围 Plane 组件
+    if (bUsePlaneForRange && !RangePlaneComponent)
+    {
+        RangePlaneComponent = NewObject<UStaticMeshComponent>(GetOwner(), TEXT("RangePlaneComponent"));
+        if (RangePlaneComponent)
+        {
+            RangePlaneComponent->SetupAttachment(this);
+            RangePlaneComponent->SetRelativeLocation(FVector(0.0f, 0.0f, PlaneHeightOffset));
+            RangePlaneComponent->SetRelativeRotation(FRotator::ZeroRotator);
+            RangePlaneComponent->SetVisibility(false);
+            
+            // 运行时加载默认 Plane 静态网格
+            UStaticMesh* PlaneMesh = LoadObject<UStaticMesh>(
+                nullptr, TEXT("/Engine/BasicShapes/Plane.Plane"));
+            if (PlaneMesh)
+            {
+                RangePlaneComponent->SetStaticMesh(PlaneMesh);
+            }
+            
+            // 禁用碰撞
+            RangePlaneComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+            RangePlaneComponent->SetGenerateOverlapEvents(false);
+            
+            // 创建动态材质实例
+            if (RangePlaneMaterial)
+            {
+                PlaneMaterialInstance = UMaterialInstanceDynamic::Create(RangePlaneMaterial, this);
+                if (PlaneMaterialInstance)
+                {
+                    if (bUseRandomColor)
+                    {
+                        PlaneMaterialInstance->SetVectorParameterValue(TEXT("Color"), DecalColor);
+                    }
+                    RangePlaneComponent->SetMaterial(0, PlaneMaterialInstance);
+                }
+                else
+                {
+                    RangePlaneComponent->SetMaterial(0, RangePlaneMaterial);
+                }
+            }
+            
+            RangePlaneComponent->RegisterComponent();
+            UpdateRangePlaneSize();
+            
+            UE_LOG(LogTemp, Log, TEXT("磁场 Plane 组件已创建"));
         }
     }
 
@@ -283,8 +333,9 @@ void UXBMagnetFieldComponent::OnSphereEndOverlap(UPrimitiveComponent* Overlapped
 void UXBMagnetFieldComponent::SetFieldRadius(float NewRadius)
 {
     SetSphereRadius(NewRadius);
-    // 同步更新贴花大小
+    // 同步更新贴花和 Plane 大小
     UpdateRangeDecalSize();
+    UpdateRangePlaneSize();
 }
 
 void UXBMagnetFieldComponent::SetFieldEnabled(bool bEnabled)
@@ -292,8 +343,12 @@ void UXBMagnetFieldComponent::SetFieldEnabled(bool bEnabled)
     bIsFieldEnabled = bEnabled;
     SetGenerateOverlapEvents(bEnabled);
     
-    // 同步贴花显示状态
+    // 同步贴花和 Plane 显示状态
     SetRangeDecalEnabled(bEnabled);
+    if (bUsePlaneForRange)
+    {
+        SetRangePlaneEnabled(bEnabled);
+    }
     
     UE_LOG(LogTemp, Log, TEXT("磁场组件 %s: 启用状态 = %s"), 
         GetOwner() ? *GetOwner()->GetName() : TEXT("Unknown"),
@@ -358,6 +413,45 @@ void UXBMagnetFieldComponent::UpdateRangeDecalSize()
     RangeDecalComponent->SetRelativeLocation(FVector(0.0f, 0.0f, DecalHeightOffset));
     
     UE_LOG(LogTemp, Verbose, TEXT("磁场贴花大小已更新: 半径=%.1f, 投影深度=%.1f"), Radius, DecalProjectionDepth);
+}
+
+void UXBMagnetFieldComponent::UpdateRangePlaneSize()
+{
+    if (!RangePlaneComponent)
+    {
+        return;
+    }
+
+    // Plane 默认大小是 100x100，需要根据磁场半径计算缩放
+    // 直径 = 半径 * 2，缩放 = 直径 / 100
+    const float Radius = GetScaledSphereRadius();
+    const float Diameter = Radius * 2.0f;
+    const float PlaneScale = Diameter / 100.0f;  // 默认 Plane 是 100x100 单位
+    
+    RangePlaneComponent->SetRelativeScale3D(FVector(PlaneScale, PlaneScale, 1.0f));
+    RangePlaneComponent->SetRelativeLocation(FVector(0.0f, 0.0f, PlaneHeightOffset));
+    
+    UE_LOG(LogTemp, Verbose, TEXT("磁场 Plane 大小已更新: 半径=%.1f, 缩放=%.2f"), Radius, PlaneScale);
+}
+
+void UXBMagnetFieldComponent::SetRangePlaneEnabled(bool bEnabled)
+{
+    if (!RangePlaneComponent)
+    {
+        return;
+    }
+
+    RangePlaneComponent->SetVisibility(bEnabled);
+    
+    if (bEnabled)
+    {
+        UpdateRangePlaneSize();
+        UE_LOG(LogTemp, Log, TEXT("磁场 Plane 已启用"));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Log, TEXT("磁场 Plane 已禁用"));
+    }
 }
 
 void UXBMagnetFieldComponent::SetDecalColor(FLinearColor NewColor)

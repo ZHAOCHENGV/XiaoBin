@@ -23,6 +23,7 @@ class AXBCharacterBase;
 class AXBSoldierCharacter;
 class UDecalComponent;
 class UMaterialInterface;
+class UStaticMeshComponent;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FXBOnActorEnteredField, AActor*, Actor);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FXBOnActorExitedField, AActor*, Actor);
@@ -110,6 +111,19 @@ public:
     void UpdateRangeDecalSize();
 
     /**
+     * @brief 刷新 Plane 大小（根据当前磁场半径）
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|MagnetField", meta = (DisplayName = "刷新 Plane 大小"))
+    void UpdateRangePlaneSize();
+
+    /**
+     * @brief 设置 Plane 显示状态
+     * @param bEnabled 是否启用
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|MagnetField", meta = (DisplayName = "设置 Plane 显示"))
+    void SetRangePlaneEnabled(bool bEnabled);
+
+    /**
      * @brief 设置贴花颜色
      * @param NewColor 新颜色
      */
@@ -177,6 +191,29 @@ protected:
     /** 贴花投影深度（控制贴花向下投影的距离，值越大可在更高/更低的地形上显示） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|Decal", meta = (DisplayName = "贴花投影深度", ClampMin = "1", ClampMax = "5000.0"))
     float DecalProjectionDepth = 500.0f;
+
+    // ============ 范围 Plane 配置 ============
+
+    /** 是否使用 Plane 显示范围（替代贴花） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|Plane", meta = (DisplayName = "启用 Plane 范围显示"))
+    bool bUsePlaneForRange = false;
+
+    /** 范围 Plane 组件（用于可视化招募范围） */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "XB|MagnetField|Plane", meta = (DisplayName = "范围 Plane 组件"))
+    TObjectPtr<UStaticMeshComponent> RangePlaneComponent;
+
+    /** 范围 Plane 材质 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|Plane", meta = (DisplayName = "Plane 材质"))
+    TObjectPtr<UMaterialInterface> RangePlaneMaterial;
+
+    /** Plane 动态材质实例（运行时创建） */
+    UPROPERTY()
+    TObjectPtr<UMaterialInstanceDynamic> PlaneMaterialInstance;
+
+    /** Plane 高度偏移（防止Z-fighting） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|Plane", meta = (DisplayName = "Plane 高度偏移"))
+    float PlaneHeightOffset = 1.0f;
+
 
     // ============ 调试配置 ============
 
