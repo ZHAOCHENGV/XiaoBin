@@ -824,13 +824,6 @@ void UXBMagnetFieldComponent::CreateRangePlaneComponent()
     RangePlaneComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     RangePlaneComponent->SetGenerateOverlapEvents(false);
     
-    // 自定义深度设置
-    if (bEnablePlaneCustomDepth)
-    {
-        RangePlaneComponent->SetRenderCustomDepth(true);
-        RangePlaneComponent->SetCustomDepthStencilValue(PlaneCustomDepthStencilValue);
-    }
-    
     // 设置半透明排序优先级（值越大，渲染越靠后，显示在其他半透明物体之上）
     RangePlaneComponent->SetTranslucentSortPriority(PlaneTranslucentSortPriority);
     

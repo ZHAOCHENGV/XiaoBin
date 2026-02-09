@@ -38,7 +38,7 @@ enum class EXBRangeIndicatorMode : uint8
     Decal UMETA(DisplayName = "贴花模式"),
     
     /** 使用 Plane 网格显示范围 */
-    Plane UMETA(DisplayName = "Plane 模式"),
+    Plane UMETA(DisplayName = "平面模式"),
     
     /** 不显示范围指示 */
     None UMETA(DisplayName = "禁用")
@@ -230,17 +230,6 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|RangeIndicator|Plane", 
         meta = (DisplayName = "Plane 材质", EditCondition = "RangeIndicatorMode == EXBRangeIndicatorMode::Plane", EditConditionHides))
     TObjectPtr<UMaterialInterface> RangePlaneMaterial;
-
-    /** 是否启用自定义深度（用于后处理轮廓效果等） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|RangeIndicator|Plane", 
-        meta = (DisplayName = "启用自定义深度", EditCondition = "RangeIndicatorMode == EXBRangeIndicatorMode::Plane", EditConditionHides))
-    bool bEnablePlaneCustomDepth = false;
-
-    /** 自定义深度模板值 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|RangeIndicator|Plane", 
-        meta = (DisplayName = "自定义深度模板值", ClampMin = "0", ClampMax = "255", 
-                EditCondition = "RangeIndicatorMode == EXBRangeIndicatorMode::Plane && bEnablePlaneCustomDepth", EditConditionHides))
-    int32 PlaneCustomDepthStencilValue = 1;
 
     /** 半透明排序优先级（值越大，渲染越靠后，显示在其他半透明物体之上） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|RangeIndicator|Plane", 
