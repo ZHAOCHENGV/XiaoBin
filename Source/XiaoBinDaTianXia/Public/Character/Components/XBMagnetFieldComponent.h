@@ -29,6 +29,22 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FXBOnActorEnteredField, AActor*, Act
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FXBOnActorExitedField, AActor*, Actor);
 
 /**
+ * @brief 范围指示模式
+ */
+UENUM(BlueprintType)
+enum class EXBRangeIndicatorMode : uint8
+{
+    /** 使用贴花（Decal）显示范围 */
+    Decal UMETA(DisplayName = "贴花模式"),
+    
+    /** 使用 Plane 网格显示范围 */
+    Plane UMETA(DisplayName = "Plane 模式"),
+    
+    /** 不显示范围指示 */
+    None UMETA(DisplayName = "禁用")
+};
+
+/**
  * @brief 磁场统计数据
  */
 USTRUCT(BlueprintType)
@@ -124,11 +140,11 @@ public:
     void SetRangePlaneEnabled(bool bEnabled);
 
     /**
-     * @brief 设置贴花颜色
+     * @brief 设置范围指示颜色（适用于贴花和 Plane）
      * @param NewColor 新颜色
      */
-    UFUNCTION(BlueprintCallable, Category = "XB|MagnetField", meta = (DisplayName = "设置贴花颜色"))
-    void SetDecalColor(FLinearColor NewColor);
+    UFUNCTION(BlueprintCallable, Category = "XB|MagnetField", meta = (DisplayName = "设置范围指示颜色"))
+    void SetRangeIndicatorColor(FLinearColor NewColor);
 
     // ============ 调试系统 ============
 
@@ -162,57 +178,80 @@ protected:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XB|MagnetField", meta = (DisplayName = "可检测 Actor 类型列表"))
     TArray<TSubclassOf<AActor>> DetectableActorClasses;
 
-    // ============ 范围贴花配置 ============
+
+    // ============ 范围指示配置（通用） ============
+
+    /** 范围指示模式 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|RangeIndicator", meta = (DisplayName = "范围指示模式"))
+    EXBRangeIndicatorMode RangeIndicatorMode = EXBRangeIndicatorMode::Decal;
+
+    /** 范围指示颜色（适用于贴花和 Plane） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|RangeIndicator", meta = (DisplayName = "范围指示颜色"))
+    FLinearColor RangeIndicatorColor = FLinearColor(0.0f, 1.0f, 0.5f, 1.0f);
+
+    /** 是否使用随机颜色 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|RangeIndicator", meta = (DisplayName = "使用随机颜色"))
+    bool bUseRandomColor = false;
+
+    /** 高度偏移（防止Z-fighting） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|RangeIndicator", meta = (DisplayName = "高度偏移"))
+    float RangeIndicatorHeightOffset = 5.0f;
+
+    // ============ 贴花模式配置 ============
 
     /** 范围贴花组件（用于可视化招募范围） */
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "XB|MagnetField|Decal", meta = (DisplayName = "范围贴花组件"))
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "XB|MagnetField|RangeIndicator|Decal", 
+        meta = (DisplayName = "范围贴花组件", EditCondition = "RangeIndicatorMode == EXBRangeIndicatorMode::Decal", EditConditionHides))
     TObjectPtr<UDecalComponent> RangeDecalComponent;
 
     /** 范围贴花材质 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|Decal", meta = (DisplayName = "范围贴花材质"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|RangeIndicator|Decal", 
+        meta = (DisplayName = "贴花材质", EditCondition = "RangeIndicatorMode == EXBRangeIndicatorMode::Decal", EditConditionHides))
     TObjectPtr<UMaterialInterface> RangeDecalMaterial;
 
-    /** 贴花颜色（用于材质实例参数） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|Decal", meta = (DisplayName = "贴花颜色"))
-    FLinearColor DecalColor = FLinearColor(0.0f, 1.0f, 0.5f, 1.0f);
+    /** 贴花投影深度（控制贴花向下投影的距离，值越大可在更高/更低的地形上显示） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|RangeIndicator|Decal", 
+        meta = (DisplayName = "贴花投影深度", ClampMin = "1", ClampMax = "5000.0", 
+                EditCondition = "RangeIndicatorMode == EXBRangeIndicatorMode::Decal", EditConditionHides))
+    float DecalProjectionDepth = 500.0f;
 
-    /** 是否使用随机颜色 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|Decal", meta = (DisplayName = "使用随机颜色"))
-    bool bUseRandomColor = false;
-
-    /** 动态材质实例（运行时创建） */
+    /** 贴花动态材质实例（运行时创建） */
     UPROPERTY()
     TObjectPtr<UMaterialInstanceDynamic> DecalMaterialInstance;
 
-    /** 贴花高度偏移（防止Z-fighting） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|Decal", meta = (DisplayName = "贴花高度偏移"))
-    float DecalHeightOffset = 5.0f;
-
-    /** 贴花投影深度（控制贴花向下投影的距离，值越大可在更高/更低的地形上显示） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|Decal", meta = (DisplayName = "贴花投影深度", ClampMin = "1", ClampMax = "5000.0"))
-    float DecalProjectionDepth = 500.0f;
-
-    // ============ 范围 Plane 配置 ============
-
-    /** 是否使用 Plane 显示范围（替代贴花） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|Plane", meta = (DisplayName = "启用 Plane 范围显示"))
-    bool bUsePlaneForRange = false;
+    // ============ Plane 模式配置 ============
 
     /** 范围 Plane 组件（用于可视化招募范围） */
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "XB|MagnetField|Plane", meta = (DisplayName = "范围 Plane 组件"))
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "XB|MagnetField|RangeIndicator|Plane", 
+        meta = (DisplayName = "范围 Plane 组件", EditCondition = "RangeIndicatorMode == EXBRangeIndicatorMode::Plane", EditConditionHides))
     TObjectPtr<UStaticMeshComponent> RangePlaneComponent;
 
     /** 范围 Plane 材质 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|Plane", meta = (DisplayName = "Plane 材质"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|RangeIndicator|Plane", 
+        meta = (DisplayName = "Plane 材质", EditCondition = "RangeIndicatorMode == EXBRangeIndicatorMode::Plane", EditConditionHides))
     TObjectPtr<UMaterialInterface> RangePlaneMaterial;
+
+    /** 是否启用自定义深度（用于后处理轮廓效果等） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|RangeIndicator|Plane", 
+        meta = (DisplayName = "启用自定义深度", EditCondition = "RangeIndicatorMode == EXBRangeIndicatorMode::Plane", EditConditionHides))
+    bool bEnablePlaneCustomDepth = false;
+
+    /** 自定义深度模板值 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|RangeIndicator|Plane", 
+        meta = (DisplayName = "自定义深度模板值", ClampMin = "0", ClampMax = "255", 
+                EditCondition = "RangeIndicatorMode == EXBRangeIndicatorMode::Plane && bEnablePlaneCustomDepth", EditConditionHides))
+    int32 PlaneCustomDepthStencilValue = 1;
+
+    /** 半透明排序优先级（值越大，渲染越靠后，显示在其他半透明物体之上） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|RangeIndicator|Plane", 
+        meta = (DisplayName = "半透明排序优先级", 
+                EditCondition = "RangeIndicatorMode == EXBRangeIndicatorMode::Plane", EditConditionHides))
+    int32 PlaneTranslucentSortPriority = 1000;
 
     /** Plane 动态材质实例（运行时创建） */
     UPROPERTY()
     TObjectPtr<UMaterialInstanceDynamic> PlaneMaterialInstance;
 
-    /** Plane 高度偏移（防止Z-fighting） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "XB|MagnetField|Plane", meta = (DisplayName = "Plane 高度偏移"))
-    float PlaneHeightOffset = 1.0f;
 
 
     // ============ 调试配置 ============
@@ -269,6 +308,12 @@ private:
     void UpdateActorsInField();
     bool IsActorRecruitable(AActor* Actor) const;
     void DrawDebugActorInfo(AActor* Actor, float Duration);
+
+    /** 创建范围贴花组件 */
+    void CreateRangeDecalComponent();
+    
+    /** 创建范围 Plane 组件 */
+    void CreateRangePlaneComponent();
 
 protected:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XB|MagnetField", meta = (DisplayName = "招募增益效果"))

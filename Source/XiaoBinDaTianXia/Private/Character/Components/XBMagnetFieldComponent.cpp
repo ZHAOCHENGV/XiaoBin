@@ -67,92 +67,25 @@ void UXBMagnetFieldComponent::BeginPlay()
 
     SetGenerateOverlapEvents(bIsFieldEnabled);
 
-    // 动态创建范围贴花组件
-    if (!RangeDecalComponent && RangeDecalMaterial)
+    // 生成随机颜色（如果启用）
+    if (bUseRandomColor)
     {
-        RangeDecalComponent = NewObject<UDecalComponent>(GetOwner(), TEXT("RangeDecalComponent"));
-        if (RangeDecalComponent)
-        {
-            RangeDecalComponent->SetupAttachment(this);
-            RangeDecalComponent->SetRelativeRotation(FRotator(-90.0f, 0.0f, 0.0f));
-            RangeDecalComponent->SetVisibility(false);
-            
-            // ✨ 新增 - 提高贴花排序顺序，使其渲染在其他贴花之上
-            RangeDecalComponent->SortOrder = 999;
-            
-            // 创建动态材质实例
-            DecalMaterialInstance = UMaterialInstanceDynamic::Create(RangeDecalMaterial, this);
-            if (DecalMaterialInstance)
-            {
-                // 如果使用随机颜色，生成随机颜色
-                if (bUseRandomColor)
-                {
-                    DecalColor = FLinearColor::MakeRandomColor();
-                    DecalColor.A = 1.0f;
-                }
-                DecalMaterialInstance->SetVectorParameterValue(TEXT("Color"), DecalColor);
-                RangeDecalComponent->SetDecalMaterial(DecalMaterialInstance);
-            }
-            else
-            {
-                RangeDecalComponent->SetDecalMaterial(RangeDecalMaterial);
-            }
-            
-            
-            RangeDecalComponent->RegisterComponent();
-            UpdateRangeDecalSize();
-            
-            UE_LOG(LogTemp, Log, TEXT("磁场贴花已创建，颜色: (%.2f, %.2f, %.2f)"), 
-                DecalColor.R, DecalColor.G, DecalColor.B);
-        }
+        RangeIndicatorColor = FLinearColor::MakeRandomColor();
+        RangeIndicatorColor.A = 1.0f;
     }
 
-    // ✨ 新增 - 动态创建范围 Plane 组件
-    if (bUsePlaneForRange && !RangePlaneComponent)
+    // 根据模式创建范围指示组件
+    switch (RangeIndicatorMode)
     {
-        RangePlaneComponent = NewObject<UStaticMeshComponent>(GetOwner(), TEXT("RangePlaneComponent"));
-        if (RangePlaneComponent)
-        {
-            RangePlaneComponent->SetupAttachment(this);
-            RangePlaneComponent->SetRelativeLocation(FVector(0.0f, 0.0f, PlaneHeightOffset));
-            RangePlaneComponent->SetRelativeRotation(FRotator::ZeroRotator);
-            RangePlaneComponent->SetVisibility(false);
-            
-            // 运行时加载默认 Plane 静态网格
-            UStaticMesh* PlaneMesh = LoadObject<UStaticMesh>(
-                nullptr, TEXT("/Engine/BasicShapes/Plane.Plane"));
-            if (PlaneMesh)
-            {
-                RangePlaneComponent->SetStaticMesh(PlaneMesh);
-            }
-            
-            // 禁用碰撞
-            RangePlaneComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-            RangePlaneComponent->SetGenerateOverlapEvents(false);
-            
-            // 创建动态材质实例
-            if (RangePlaneMaterial)
-            {
-                PlaneMaterialInstance = UMaterialInstanceDynamic::Create(RangePlaneMaterial, this);
-                if (PlaneMaterialInstance)
-                {
-                    if (bUseRandomColor)
-                    {
-                        PlaneMaterialInstance->SetVectorParameterValue(TEXT("Color"), DecalColor);
-                    }
-                    RangePlaneComponent->SetMaterial(0, PlaneMaterialInstance);
-                }
-                else
-                {
-                    RangePlaneComponent->SetMaterial(0, RangePlaneMaterial);
-                }
-            }
-            
-            RangePlaneComponent->RegisterComponent();
-            UpdateRangePlaneSize();
-            
-            UE_LOG(LogTemp, Log, TEXT("磁场 Plane 组件已创建"));
-        }
+    case EXBRangeIndicatorMode::Decal:
+        CreateRangeDecalComponent();
+        break;
+    case EXBRangeIndicatorMode::Plane:
+        CreateRangePlaneComponent();
+        break;
+    case EXBRangeIndicatorMode::None:
+    default:
+        break;
     }
 
     if (bDrawDebug)
@@ -343,18 +276,25 @@ void UXBMagnetFieldComponent::SetFieldEnabled(bool bEnabled)
     bIsFieldEnabled = bEnabled;
     SetGenerateOverlapEvents(bEnabled);
     
-    // 同步贴花和 Plane 显示状态
-    SetRangeDecalEnabled(bEnabled);
-    if (bUsePlaneForRange)
+    // 根据范围指示模式同步显示状态
+    switch (RangeIndicatorMode)
     {
+    case EXBRangeIndicatorMode::Decal:
+        SetRangeDecalEnabled(bEnabled);
+        break;
+    case EXBRangeIndicatorMode::Plane:
         SetRangePlaneEnabled(bEnabled);
+        break;
+    case EXBRangeIndicatorMode::None:
+    default:
+        break;
     }
     
     UE_LOG(LogTemp, Log, TEXT("磁场组件 %s: 启用状态 = %s"), 
         GetOwner() ? *GetOwner()->GetName() : TEXT("Unknown"),
         bEnabled ? TEXT("是") : TEXT("否"));
 
-    // ✨ 新增 - 启用时扫描并招募已经在范围内的士兵
+    // 启用时扫描并招募已经在范围内的士兵
     if (bEnabled)
     {
         // 使用下一帧延迟执行，确保所有 Actor 的 BeginPlay 都已完成
@@ -410,7 +350,7 @@ void UXBMagnetFieldComponent::UpdateRangeDecalSize()
     // DecalSize: X=投影深度（向下投影距离）, Y=半径X, Z=半径Y
     const float Radius = GetScaledSphereRadius();
     RangeDecalComponent->DecalSize = FVector(DecalProjectionDepth, Radius, Radius);
-    RangeDecalComponent->SetRelativeLocation(FVector(0.0f, 0.0f, DecalHeightOffset));
+    RangeDecalComponent->SetRelativeLocation(FVector(0.0f, 0.0f, RangeIndicatorHeightOffset));
     
     UE_LOG(LogTemp, Verbose, TEXT("磁场贴花大小已更新: 半径=%.1f, 投影深度=%.1f"), Radius, DecalProjectionDepth);
 }
@@ -429,7 +369,7 @@ void UXBMagnetFieldComponent::UpdateRangePlaneSize()
     const float PlaneScale = Diameter / 100.0f;  // 默认 Plane 是 100x100 单位
     
     RangePlaneComponent->SetRelativeScale3D(FVector(PlaneScale, PlaneScale, 1.0f));
-    RangePlaneComponent->SetRelativeLocation(FVector(0.0f, 0.0f, PlaneHeightOffset));
+    RangePlaneComponent->SetRelativeLocation(FVector(0.0f, 0.0f, RangeIndicatorHeightOffset));
     
     UE_LOG(LogTemp, Verbose, TEXT("磁场 Plane 大小已更新: 半径=%.1f, 缩放=%.2f"), Radius, PlaneScale);
 }
@@ -454,16 +394,24 @@ void UXBMagnetFieldComponent::SetRangePlaneEnabled(bool bEnabled)
     }
 }
 
-void UXBMagnetFieldComponent::SetDecalColor(FLinearColor NewColor)
+void UXBMagnetFieldComponent::SetRangeIndicatorColor(FLinearColor NewColor)
 {
-    DecalColor = NewColor;
+    RangeIndicatorColor = NewColor;
     
+    // 更新贴花材质颜色
     if (DecalMaterialInstance)
     {
-        DecalMaterialInstance->SetVectorParameterValue(TEXT("Color"), DecalColor);
-        UE_LOG(LogTemp, Log, TEXT("磁场贴花颜色已更新: (%.2f, %.2f, %.2f)"), 
-            DecalColor.R, DecalColor.G, DecalColor.B);
+        DecalMaterialInstance->SetVectorParameterValue(TEXT("Color"), RangeIndicatorColor);
     }
+    
+    // 更新 Plane 材质颜色
+    if (PlaneMaterialInstance)
+    {
+        PlaneMaterialInstance->SetVectorParameterValue(TEXT("Color"), RangeIndicatorColor);
+    }
+    
+    UE_LOG(LogTemp, Log, TEXT("范围指示颜色已更新: (%.2f, %.2f, %.2f)"), 
+        RangeIndicatorColor.R, RangeIndicatorColor.G, RangeIndicatorColor.B);
 }
 
 bool UXBMagnetFieldComponent::IsActorDetectable(AActor* Actor) const
@@ -804,3 +752,107 @@ void UXBMagnetFieldComponent::DrawDebugActorInfo(AActor* Actor, float Duration)
         1.0f
     );
 }
+
+// ==================== 范围指示组件创建 ====================
+
+void UXBMagnetFieldComponent::CreateRangeDecalComponent()
+{
+    if (RangeDecalComponent || !RangeDecalMaterial)
+    {
+        return;
+    }
+
+    RangeDecalComponent = NewObject<UDecalComponent>(GetOwner(), TEXT("RangeDecalComponent"));
+    if (!RangeDecalComponent)
+    {
+        return;
+    }
+
+    RangeDecalComponent->SetupAttachment(this);
+    RangeDecalComponent->SetRelativeRotation(FRotator(-90.0f, 0.0f, 0.0f));
+    RangeDecalComponent->SetVisibility(false);
+    
+    // 提高贴花排序顺序，使其渲染在其他贴花之上
+    RangeDecalComponent->SortOrder = 999;
+    
+    // 创建动态材质实例
+    DecalMaterialInstance = UMaterialInstanceDynamic::Create(RangeDecalMaterial, this);
+    if (DecalMaterialInstance)
+    {
+        DecalMaterialInstance->SetVectorParameterValue(TEXT("Color"), RangeIndicatorColor);
+        RangeDecalComponent->SetDecalMaterial(DecalMaterialInstance);
+    }
+    else
+    {
+        RangeDecalComponent->SetDecalMaterial(RangeDecalMaterial);
+    }
+    
+    RangeDecalComponent->RegisterComponent();
+    UpdateRangeDecalSize();
+    
+    UE_LOG(LogTemp, Log, TEXT("磁场贴花组件已创建，颜色: (%.2f, %.2f, %.2f)"), 
+        RangeIndicatorColor.R, RangeIndicatorColor.G, RangeIndicatorColor.B);
+}
+
+void UXBMagnetFieldComponent::CreateRangePlaneComponent()
+{
+    if (RangePlaneComponent)
+    {
+        return;
+    }
+
+    RangePlaneComponent = NewObject<UStaticMeshComponent>(GetOwner(), TEXT("RangePlaneComponent"));
+    if (!RangePlaneComponent)
+    {
+        return;
+    }
+
+    RangePlaneComponent->SetupAttachment(this);
+    RangePlaneComponent->SetRelativeLocation(FVector(0.0f, 0.0f, RangeIndicatorHeightOffset));
+    RangePlaneComponent->SetRelativeRotation(FRotator::ZeroRotator);
+    RangePlaneComponent->SetVisibility(false);
+    
+    // 运行时加载默认 Plane 静态网格
+    UStaticMesh* PlaneMesh = LoadObject<UStaticMesh>(
+        nullptr, TEXT("/Engine/BasicShapes/Plane.Plane"));
+    if (PlaneMesh)
+    {
+        RangePlaneComponent->SetStaticMesh(PlaneMesh);
+    }
+    
+    // 禁用碰撞
+    RangePlaneComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    RangePlaneComponent->SetGenerateOverlapEvents(false);
+    
+    // 自定义深度设置
+    if (bEnablePlaneCustomDepth)
+    {
+        RangePlaneComponent->SetRenderCustomDepth(true);
+        RangePlaneComponent->SetCustomDepthStencilValue(PlaneCustomDepthStencilValue);
+    }
+    
+    // 设置半透明排序优先级（值越大，渲染越靠后，显示在其他半透明物体之上）
+    RangePlaneComponent->SetTranslucentSortPriority(PlaneTranslucentSortPriority);
+    
+    // 创建动态材质实例
+    if (RangePlaneMaterial)
+    {
+        PlaneMaterialInstance = UMaterialInstanceDynamic::Create(RangePlaneMaterial, this);
+        if (PlaneMaterialInstance)
+        {
+            PlaneMaterialInstance->SetVectorParameterValue(TEXT("Color"), RangeIndicatorColor);
+            RangePlaneComponent->SetMaterial(0, PlaneMaterialInstance);
+        }
+        else
+        {
+            RangePlaneComponent->SetMaterial(0, RangePlaneMaterial);
+        }
+    }
+    
+    RangePlaneComponent->RegisterComponent();
+    UpdateRangePlaneSize();
+    
+    UE_LOG(LogTemp, Log, TEXT("磁场 Plane 组件已创建，颜色: (%.2f, %.2f, %.2f)"), 
+        RangeIndicatorColor.R, RangeIndicatorColor.G, RangeIndicatorColor.B);
+}
+
