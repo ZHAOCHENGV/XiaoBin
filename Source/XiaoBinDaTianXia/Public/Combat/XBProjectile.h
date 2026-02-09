@@ -435,10 +435,11 @@ private:
 
   /**
    * @brief  准备销毁/回收（隐藏网格、停用拖尾、延迟销毁）
+   * @param  bHitEnemy 是否命中敌人（true=直接隐藏网格，false=渐隐效果）
    * @note   详细流程分析: 隐藏网格 -> 禁用碰撞 -> 停用拖尾 -> 延迟销毁/回收
    *         让拖尾有时间渐隐后再销毁Actor
    */
-  void PrepareForDestroy();
+  void PrepareForDestroy(bool bHitEnemy = false);
 
   /** 延迟销毁完成后执行实际销毁/回收 */
   void ExecuteDestroyOrPool();

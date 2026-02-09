@@ -198,12 +198,23 @@ void AXBProjectile::InitializeProjectileWithTarget(
   // 以飞行方向更新Actor旋转
   SetActorRotation(Velocity.Rotation());
 
+  // 🔧 修复 - 在 SourceActor 设置完成后再启用碰撞（避免在发射者身上立即触发碰撞）
+  SetActorEnableCollision(true);
+  UpdateCollisionType();
+  if (CapsuleCollision) {
+    CapsuleCollision->SetGenerateOverlapEvents(true);
+  }
+  if (BoxCollision) {
+    BoxCollision->SetGenerateOverlapEvents(true);
+  }
+
   // 启动存活计时（到期后触发拖尾渐隐延迟销毁流程）
   if (LifeSeconds > 0.0f) {
     GetWorldTimerManager().ClearTimer(LifeTimerHandle);
-    GetWorldTimerManager().SetTimer(LifeTimerHandle, this,
-                                    &AXBProjectile::PrepareForDestroy,
-                                    LifeSeconds, false);
+    // 🔧 修复 - 使用 Lambda 包装调用，传入 false 表示未命中敌人（生命周期超时）
+    GetWorldTimerManager().SetTimer(LifeTimerHandle, [this]() {
+      PrepareForDestroy(false);  // 生命周期超时，使用渐隐效果
+    }, LifeSeconds, false);
   }
 
   UE_LOG(LogXBCombat, Log,
@@ -214,14 +225,40 @@ void AXBProjectile::InitializeProjectileWithTarget(
 
 void AXBProjectile::ActivateFromPool(const FVector &SpawnLocation,
                                      const FRotator &SpawnRotation) {
+  // 🔧 修复 - 显示 Actor（但暂不启用碰撞，避免在 SourceActor 设置前触发碰撞事件）
   SetActorHiddenInGame(false);
-  SetActorEnableCollision(true);
+  // 注意：不在这里启用碰撞，改为在 InitializeProjectileWithTarget 中启用
   SetActorLocation(SpawnLocation);
   SetActorRotation(SpawnRotation);
 
+  // 🔧 修复 - 重置移动组件状态
   if (ProjectileMovementComponent) {
     ProjectileMovementComponent->StopMovementImmediately();
+    ProjectileMovementComponent->SetComponentTickEnabled(true);
+    // 重置速度为0，等待 InitializeProjectileWithTarget 设置正确的速度
+    ProjectileMovementComponent->Velocity = FVector::ZeroVector;
   }
+
+  // 🔧 修复 - 显示网格
+  if (MeshComponent) {
+    MeshComponent->SetVisibility(true, true);
+  }
+
+  // 🔧 修复 - 激活拖尾特效
+  if (TrailNiagaraComponent && TrailNiagaraComponent->GetAsset()) {
+    TrailNiagaraComponent->Activate(true);
+  }
+
+  // 🔧 修复 - 清理旧计时器（避免残留的销毁逻辑干扰）
+  GetWorldTimerManager().ClearTimer(LifeTimerHandle);
+  GetWorldTimerManager().ClearTimer(TrailFadeTimerHandle);
+  GetWorldTimerManager().ClearTimer(MeshFadeTimerHandle);
+
+  // 🔧 修复 - 重置渐隐状态
+  MeshFadeProgress = 0.0f;
+
+  UE_LOG(LogXBCombat, Log, TEXT("投射物 %s 从对象池激活，位置=%s"),
+         *GetName(), *SpawnLocation.ToString());
 }
 
 void AXBProjectile::ResetForPooling() {
@@ -349,7 +386,8 @@ void AXBProjectile::OnProjectileOverlap(
 
   // 命中后销毁/回收（让拖尾渐隐后再销毁）
   if (bDestroyOnHit) {
-    PrepareForDestroy();
+    // 🔧 修复 - 传入是否命中敌人的信息，决定网格是直接隐藏还是渐隐
+    PrepareForDestroy(bDidApplyFlightDamage);
   }
 }
 
@@ -519,7 +557,7 @@ void AXBProjectile::DeactivateTrailEffect() {
   }
 }
 
-void AXBProjectile::PrepareForDestroy() {
+void AXBProjectile::PrepareForDestroy(bool bHitEnemy) {
   // 清理生命周期计时器
   GetWorldTimerManager().ClearTimer(LifeTimerHandle);
 
@@ -544,12 +582,21 @@ void AXBProjectile::PrepareForDestroy() {
     TrailNiagaraComponent->SetVisibility(true, false);
   }
 
-  // 处理网格：渐隐或直接隐藏
-  if (bEnableMeshFade && MeshComponent) {
-    StartMeshFade();
-  } else if (MeshComponent) {
-    // 🔧 修复 - 隐藏网格组件但不传播到子组件
-    MeshComponent->SetVisibility(false, false);
+  // 🔧 修复 - 根据是否命中敌人决定网格处理方式
+  if (bHitEnemy) {
+    // 命中敌人：直接隐藏网格
+    if (MeshComponent) {
+      MeshComponent->SetVisibility(false, false);
+    }
+    UE_LOG(LogXBCombat, Verbose, TEXT("投射物 %s: 命中敌人，直接隐藏网格"), *GetName());
+  } else {
+    // 未命中敌人（超时/命中场景）：使用渐隐效果
+    if (bEnableMeshFade && MeshComponent) {
+      StartMeshFade();
+    } else if (MeshComponent) {
+      // 未启用渐隐时也直接隐藏
+      MeshComponent->SetVisibility(false, false);
+    }
   }
 
   // 停用拖尾特效（让它渐隐，停止生成新粒子但保留现有粒子）
