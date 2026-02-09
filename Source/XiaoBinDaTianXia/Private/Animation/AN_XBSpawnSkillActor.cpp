@@ -216,12 +216,21 @@ void UAN_XBSpawnSkillActor::Notify(
     }
     // 添加对 AXBProjectile 的直接初始化支持
     else if (AXBProjectile *Projectile = Cast<AXBProjectile>(SpawnedActor)) {
+      // 🔧 调试日志 - 输出配置和计算值
+      UE_LOG(LogXBCombat, Log,
+             TEXT("AN_XBSpawnSkillActor [投射物调试]: bUseTargetDirection=%s, "
+                  "SpawnDirection=%s, FinalSpawnRotation=%s"),
+             SpawnConfig.bUseTargetDirection ? TEXT("true") : TEXT("false"),
+             *SpawnDirection.ToString(),
+             *FinalSpawnRotation.ToString());
+
       // 先禁用碰撞，避免在初始化前触发
       Projectile->SetActorEnableCollision(false);
 
-      // 计算目标位置用于抛射轨迹
+      // 🔧 修复 - 只有当 bUseTargetDirection = true 时才使用目标位置
+      // 否则弧线模式的投射物仍会朝向目标飞行，忽略 bUseTargetDirection 配置
       FVector TargetLocation = FVector::ZeroVector;
-      if (Target) {
+      if (SpawnConfig.bUseTargetDirection && Target) {
         TargetLocation = Target->GetActorLocation();
       }
 
@@ -236,7 +245,7 @@ void UAN_XBSpawnSkillActor::Notify(
           SpawnDirection,          // 发射方向
           Projectile->LinearSpeed, // 使用投射物自身配置的速度
           bUseArcMode,             // 使用投射物自身配置的发射模式
-          TargetLocation           // 目标位置
+          TargetLocation           // 目标位置（仅当 bUseTargetDirection = true 时有效）
       );
 
       // 初始化完成后重新启用碰撞
