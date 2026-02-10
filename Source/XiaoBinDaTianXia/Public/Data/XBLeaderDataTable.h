@@ -80,6 +80,10 @@ struct XIAOBINDATIANXIA_API FXBLeaderAIConfig
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "最小移动距离", ClampMin = "50.0"))
     float MinMoveDistance = 200.0f;
 
+    /** @brief 最大移动距离（单次移动不超过此距离） */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "最大移动距离", ClampMin = "100.0"))
+    float MaxMoveDistance = 600.0f;
+
     /** @brief Forward模式随机转向最小间隔（秒） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "随机转向最小间隔", ClampMin = "1.0"))
     float ForwardTurnIntervalMin = 10.0f;

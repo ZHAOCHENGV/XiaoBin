@@ -732,31 +732,54 @@ void UBTService_XBDummyLeaderAI::UpdateBehaviorDestination(AXBDummyCharacter* Du
 		const FVector BehaviorCenter = Blackboard->GetValueAsVector(BehaviorCenterKey);
 		const FVector CurrentLocation = Dummy->GetActorLocation();
 		const float MinDistance = AIConfig.MinMoveDistance;
+		const float MaxDistance = AIConfig.MaxMoveDistance;
+		const float DistToCenter = FVector::Dist(CurrentLocation, BehaviorCenter);
+		
+		UE_LOG(LogXBAI, Log, TEXT("🔍 [Wander] %s | 配置: 中心半径=%.0f, 移动距离=[%.0f, %.0f], 间隔=%.1fs | 当前离中心=%.0f"),
+			*Dummy->GetName(), AIConfig.WanderRadius, MinDistance, MaxDistance, AIConfig.WanderInterval, DistToCenter);
 		
 		FNavLocation RandomLocation;
 		bool bFoundValidPoint = false;
 		
-		for (int32 Attempt = 0; Attempt < 5 && !bFoundValidPoint; ++Attempt)
+		// 在行为中心 + WanderRadius 范围内搜索随机点
+		// 过滤条件：距当前位置 ∈ [MinMoveDistance, MaxMoveDistance]
+		for (int32 Attempt = 0; Attempt < 10 && !bFoundValidPoint; ++Attempt)
 		{
 			if (NavSystem->GetRandomPointInNavigableRadius(BehaviorCenter, AIConfig.WanderRadius, RandomLocation))
 			{
 				const float DistToNewPoint = FVector::Dist(CurrentLocation, RandomLocation.Location);
-				if (DistToNewPoint >= MinDistance)
+				if (DistToNewPoint >= MinDistance && DistToNewPoint <= MaxDistance)
 				{
 					bFoundValidPoint = true;
+					UE_LOG(LogXBAI, Log, TEXT("🔍 [Wander]   尝试%d: 距当前=%.0f ✅ 通过"), Attempt + 1, DistToNewPoint);
 				}
+				else
+				{
+					UE_LOG(LogXBAI, Log, TEXT("🔍 [Wander]   尝试%d: 距当前=%.0f %s"),
+						Attempt + 1, DistToNewPoint,
+						DistToNewPoint < MinDistance ? TEXT("❌ 太近") : TEXT("❌ 太远"));
+				}
+			}
+			else
+			{
+				UE_LOG(LogXBAI, Warning, TEXT("🔍 [Wander]   尝试%d: 导航系统未找到可达点"), Attempt + 1);
 			}
 		}
 		
 		if (bFoundValidPoint)
 		{	
+			const float FinalDist = FVector::Dist(CurrentLocation, RandomLocation.Location);
 			Blackboard->SetValueAsVector(BehaviorDestinationKey, RandomLocation.Location);
 			NextWanderTime = CurrentTime + AIConfig.WanderInterval;
+			UE_LOG(LogXBAI, Log, TEXT("🔍 [Wander] 🚶 %s 开始移动，距离=%.0f，下次搜索=%.1fs后"),
+				*Dummy->GetName(), FinalDist, AIConfig.WanderInterval);
 		}
 		else
 		{
 			Blackboard->SetValueAsVector(BehaviorDestinationKey, BehaviorCenter);
 			NextWanderTime = CurrentTime + AIConfig.WanderInterval;
+			UE_LOG(LogXBAI, Warning, TEXT("🔍 [Wander] ❌ %s 10次尝试全部失败，回退到行为中心(离中心=%.0f)"),
+				*Dummy->GetName(), DistToCenter);
 		}
 		break;
 	}
