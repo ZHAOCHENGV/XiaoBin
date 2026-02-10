@@ -140,9 +140,6 @@ private:
 	/** @brief 下一次搜索时间 */
 	float NextSearchTime = 0.0f;
 
-	/** @brief 下一次随机移动时间 */
-	float NextWanderTime = 0.0f;
-
 	/** @brief Forward模式下次转向时间 */
 	float NextForwardTurnTime = 0.0f;
 

@@ -50,8 +50,7 @@ struct XIAOBINDATIANXIA_API FXBLeaderAIConfig
     /** @brief 行为树资源 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|行为", meta = (DisplayName = "行为树资源"))
     TSoftObjectPtr<UBehaviorTree> BehaviorTree;
-
-
+    
 
     /** @brief 视野范围 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|感知", meta = (DisplayName = "视野范围", ClampMin = "100.0"))
@@ -67,10 +66,6 @@ struct XIAOBINDATIANXIA_API FXBLeaderAIConfig
      */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "随机移动半径", ClampMin = "100.0"))
     float WanderRadius = 800.0f;
-
-    /** @brief 随机移动间隔 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "随机移动间隔", ClampMin = "0.1"))
-    float WanderInterval = 2.0f;
 
     /** @brief 到达判定半径（统一用于所有移动模式） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|移动", meta = (DisplayName = "到达判定半径", ClampMin = "10.0"))

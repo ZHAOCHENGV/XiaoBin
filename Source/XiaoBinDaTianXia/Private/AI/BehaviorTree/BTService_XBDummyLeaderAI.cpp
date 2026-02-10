@@ -59,7 +59,6 @@ void UBTService_XBDummyLeaderAI::OnBecomeRelevant(UBehaviorTreeComponent& OwnerC
 	Super::OnBecomeRelevant(OwnerComp, NodeMemory);
 
 	NextSearchTime = 0.0f;
-	NextWanderTime = 0.0f;
 	bHadCombatTarget = false;
 	bLoggedMissingSpline = false;
 	bRouteForward = true;
@@ -289,8 +288,6 @@ void UBTService_XBDummyLeaderAI::TickNode(UBehaviorTreeComponent& OwnerComp, uin
 
 		// 🔧 修改 - 结束正前方移动后恢复常规行为更新
 		bForwardMoveAfterLost = false;
-		// 🔧 修改 - 前进阶段结束后强制刷新随机移动时间，避免目的地长期不更新
-		NextWanderTime = 0.0f;
 		UE_LOG(LogXBAI, Log, TEXT("假人AI前进阶段结束，恢复常规移动: %s"), *Dummy->GetName());
 	}
 
@@ -568,7 +565,6 @@ void UBTService_XBDummyLeaderAI::HandleTargetLost(AXBDummyCharacter* Dummy, UBla
 	// 清理前进阶段标记
 	bForwardMoveAfterLost = false;
 	ForwardMoveEndTime = 0.0f;
-	NextWanderTime = 0.0f;
 
 	switch (MoveMode)
 	{
@@ -710,33 +706,43 @@ void UBTService_XBDummyLeaderAI::UpdateBehaviorDestination(AXBDummyCharacter* Du
 	}
 	case EXBLeaderAIMoveMode::Wander:
 	{
-	
 		const FVector CurrentDestination = Blackboard->GetValueAsVector(BehaviorDestinationKey);
+		const FVector CurrentLocation = Dummy->GetActorLocation();
 		const bool bDestinationInvalid = CurrentDestination.ContainsNaN() ||
-			(CurrentDestination.IsNearlyZero() && !Dummy->GetActorLocation().IsNearlyZero());
+			(CurrentDestination.IsNearlyZero() && !CurrentLocation.IsNearlyZero());
 
-		const float CurrentTime = Dummy->GetWorld()->GetTimeSeconds();
-		if (CurrentTime < NextWanderTime && !bDestinationInvalid)
+		// 到达检测：AI 仍在移动且未到达目标时，不搜索新目标
+		// 同时检查速度，避免 BT 的 MoveTo 任务已完成但距离判定不一致导致死锁
+		if (!bDestinationInvalid)
 		{
-			return;
+			const float DistToDest = FVector::Dist(CurrentLocation, CurrentDestination);
+			const float Speed = Dummy->GetVelocity().Size();
+			const bool bStillMoving = (Speed > 10.0f) && (DistToDest > AIConfig.AcceptanceRadius);
+			if (bStillMoving)
+			{
+				// 还在移动中，不做任何处理
+				return;
+			}
+			// 到达目标点（或已停止移动）
+			UE_LOG(LogXBAI, Log, TEXT("🔍 [Wander] 📍 %s 到达目标点(距离=%.0f, 速度=%.0f)"),
+				*Dummy->GetName(), DistToDest, Speed);
 		}
 
+		// 到达目标 / 首次进入 / 目标无效 → 搜索新目标点
 		UNavigationSystemV1* NavSystem = FNavigationSystem::GetCurrent<UNavigationSystemV1>(Dummy->GetWorld());
 		if (!NavSystem)
 		{
 			Blackboard->SetValueAsVector(BehaviorDestinationKey, Blackboard->GetValueAsVector(BehaviorCenterKey));
-			NextWanderTime = CurrentTime + AIConfig.WanderInterval;
 			return;
 		}
 
 		const FVector BehaviorCenter = Blackboard->GetValueAsVector(BehaviorCenterKey);
-		const FVector CurrentLocation = Dummy->GetActorLocation();
 		const float MinDistance = AIConfig.MinMoveDistance;
 		const float MaxDistance = AIConfig.MaxMoveDistance;
 		const float DistToCenter = FVector::Dist(CurrentLocation, BehaviorCenter);
 		
-		UE_LOG(LogXBAI, Log, TEXT("🔍 [Wander] %s | 配置: 中心半径=%.0f, 移动距离=[%.0f, %.0f], 间隔=%.1fs | 当前离中心=%.0f"),
-			*Dummy->GetName(), AIConfig.WanderRadius, MinDistance, MaxDistance, AIConfig.WanderInterval, DistToCenter);
+		UE_LOG(LogXBAI, Log, TEXT("🔍 [Wander] %s 开始搜索 | 配置: 中心半径=%.0f, 移动距离=[%.0f, %.0f] | 当前离中心=%.0f"),
+			*Dummy->GetName(), AIConfig.WanderRadius, MinDistance, MaxDistance, DistToCenter);
 		
 		FNavLocation RandomLocation;
 		bool bFoundValidPoint = false;
@@ -770,14 +776,12 @@ void UBTService_XBDummyLeaderAI::UpdateBehaviorDestination(AXBDummyCharacter* Du
 		{	
 			const float FinalDist = FVector::Dist(CurrentLocation, RandomLocation.Location);
 			Blackboard->SetValueAsVector(BehaviorDestinationKey, RandomLocation.Location);
-			NextWanderTime = CurrentTime + AIConfig.WanderInterval;
-			UE_LOG(LogXBAI, Log, TEXT("🔍 [Wander] 🚶 %s 开始移动，距离=%.0f，下次搜索=%.1fs后"),
-				*Dummy->GetName(), FinalDist, AIConfig.WanderInterval);
+			UE_LOG(LogXBAI, Log, TEXT("🔍 [Wander] 🚶 %s 开始移动，距离=%.0f"),
+				*Dummy->GetName(), FinalDist);
 		}
 		else
 		{
 			Blackboard->SetValueAsVector(BehaviorDestinationKey, BehaviorCenter);
-			NextWanderTime = CurrentTime + AIConfig.WanderInterval;
 			UE_LOG(LogXBAI, Warning, TEXT("🔍 [Wander] ❌ %s 10次尝试全部失败，回退到行为中心(离中心=%.0f)"),
 				*Dummy->GetName(), DistToCenter);
 		}
