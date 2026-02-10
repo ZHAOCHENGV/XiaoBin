@@ -27,6 +27,7 @@ class UXBInputConfig;
 struct FInputActionValue;
 class AXBPlayerCharacter;
 class AXBConfigCameraPawn;
+class UXBPauseMenuWidget;
 
 UCLASS()
 class XIAOBINDATIANXIA_API AXBPlayerController : public APlayerController
@@ -96,6 +97,14 @@ public:
      * @note 对应按键：通常绑定到 R 键
      */
     void HandleDisengageCombat();
+
+    // ==================== 暂停菜单 ====================
+
+    /**
+     * @brief 切换暂停菜单显示/隐藏
+     */
+    UFUNCTION(BlueprintCallable, Category = "XB|PauseMenu", meta = (DisplayName = "切换暂停菜单"))
+    void TogglePauseMenu();
 
 protected:
     // ==================== 输入配置 ====================
@@ -213,6 +222,7 @@ protected:
     void HandlePlacementCancelInput();
     void HandlePlacementDeleteInput();
     void HandlePlacementRotateInput(const FInputActionValue& InputValue);
+    void HandlePauseMenuInput();
 
 private:
     // ==================== 镜头状态 ====================
@@ -275,4 +285,14 @@ private:
 
     // ✨ 新增 - 磁场扫描计时器句柄
     FTimerHandle MagnetScanTimerHandle;
+
+    // ==================== 暂停菜单 ====================
+
+    /** @brief 暂停菜单 Widget 蓝图类（在蓝图子类中配置） */
+    UPROPERTY(EditDefaultsOnly, Category = "XB|PauseMenu", meta = (DisplayName = "暂停菜单Widget类"))
+    TSubclassOf<UXBPauseMenuWidget> PauseMenuWidgetClass;
+
+    /** @brief 暂停菜单 Widget 运行时实例 */
+    UPROPERTY()
+    TObjectPtr<UXBPauseMenuWidget> PauseMenuWidgetInstance;
 };

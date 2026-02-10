@@ -139,6 +139,12 @@ public:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XB|Input|Placement", meta = (DisplayName = "切换放置菜单"))
     TObjectPtr<UInputAction> TogglePlacementMenuAction;
 
+    // ============ 系统操作 ============
+
+    /** 暂停菜单 (Bool: ESC key) */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "XB|Input|System", meta = (DisplayName = "暂停菜单"))
+    TObjectPtr<UInputAction> PauseMenuAction;
+
     // ============ 扩展配置 ============
 
     

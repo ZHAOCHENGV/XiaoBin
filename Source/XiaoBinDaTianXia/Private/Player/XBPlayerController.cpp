@@ -27,6 +27,7 @@
 #include "Character/XBCharacterBase.h"
 #include "Kismet/GameplayStatics.h"
 #include "Soldier/XBSoldierCharacter.h"
+#include "UI/XBPauseMenuWidget.h"
 
 AXBPlayerController::AXBPlayerController()
 {
@@ -301,6 +302,16 @@ void AXBPlayerController::BindInputActions()
             ETriggerEvent::Triggered,
             this,
             &AXBPlayerController::HandlePlacementRotateInput);
+    }
+
+    // ✨ 新增 - 暂停菜单输入绑定
+    if (InputConfig->PauseMenuAction)
+    {
+        EnhancedInput->BindAction(
+            InputConfig->PauseMenuAction,
+            ETriggerEvent::Started,
+            this,
+            &AXBPlayerController::HandlePauseMenuInput);
     }
 
     UE_LOG(LogTemp, Log, TEXT("输入操作已成功绑定!!!"));
@@ -824,4 +835,60 @@ void AXBPlayerController::HandlePlacementRotateInput(const FInputActionValue& In
     {
         PlacementComp->RotateActor(RotateValue);
     }
+}
+
+// ============ 暂停菜单 ============
+
+void AXBPlayerController::HandlePauseMenuInput()
+{
+    // 配置阶段不处理暂停菜单（ESC 在配置阶段用于取消操作）
+    if (CachedConfigPawn.IsValid())
+    {
+        return;
+    }
+
+    TogglePauseMenu();
+}
+
+void AXBPlayerController::TogglePauseMenu()
+{
+    // 当前已有菜单实例且在视口中 → 关闭菜单
+    if (IsValid(PauseMenuWidgetInstance) && PauseMenuWidgetInstance->IsInViewport())
+    {
+        PauseMenuWidgetInstance->ResumeGame();
+        return;
+    }
+
+    // 创建并显示暂停菜单
+    if (!PauseMenuWidgetClass)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[PauseMenu] PauseMenuWidgetClass 未配置，请在蓝图中设置"));
+        return;
+    }
+
+    // 创建 Widget 实例
+    PauseMenuWidgetInstance = CreateWidget<UXBPauseMenuWidget>(this, PauseMenuWidgetClass);
+    if (!PauseMenuWidgetInstance)
+    {
+        UE_LOG(LogTemp, Error, TEXT("[PauseMenu] 创建暂停菜单Widget失败"));
+        return;
+    }
+
+    // 添加到视口
+    PauseMenuWidgetInstance->AddToViewport(100);
+
+    // 暂停游戏
+    UGameplayStatics::SetGamePaused(GetWorld(), true);
+
+    // 切换输入模式为 UI + 游戏（允许 ESC 再次触发关闭）
+    FInputModeGameAndUI UIMode;
+    UIMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+    UIMode.SetWidgetToFocus(PauseMenuWidgetInstance->TakeWidget());
+    SetInputMode(UIMode);
+    bShowMouseCursor = true;
+
+    // 通知蓝图菜单已打开
+    PauseMenuWidgetInstance->OnMenuOpened();
+
+    UE_LOG(LogTemp, Log, TEXT("[PauseMenu] 暂停菜单已打开"));
 }
