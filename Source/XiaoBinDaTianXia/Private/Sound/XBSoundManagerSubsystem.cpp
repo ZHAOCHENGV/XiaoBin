@@ -120,6 +120,28 @@ bool UXBSoundManagerSubsystem::GetSoundEntryByTag(
       }
       return true;
     }
+
+    // 🔧 修改 - RowName 未命中时，回退为遍历匹配 SoundTag 字段
+    // 说明：允许行名与 Tag 不一致，但要求行内 SoundTag 正确配置
+    const TArray<FName> RowNames = SoundDataTable->GetRowNames();
+    for (const FName &FallbackRowName : RowNames) {
+      const FXBSoundEntry *FallbackRow =
+          SoundDataTable->FindRow<FXBSoundEntry>(
+              FallbackRowName, TEXT("XBSoundManager_GetSoundEntryByTag"));
+      if (!FallbackRow) {
+        continue;
+      }
+
+      // 🔧 修改 - 使用 GameplayTag 精准匹配，避免字符串误差
+      if (FallbackRow->SoundTag == SoundTag) {
+        OutEntry = *FallbackRow;
+        return true;
+      }
+    }
+
+    UE_LOG(LogXBSound, Warning,
+           TEXT("[XBSoundManager] 数据表未找到音效：RowName=%s，Tag=%s"),
+           *RowName.ToString(), *SoundTag.ToString());
   }
 
   // 🔧 修改 - 兼容旧数据资产
