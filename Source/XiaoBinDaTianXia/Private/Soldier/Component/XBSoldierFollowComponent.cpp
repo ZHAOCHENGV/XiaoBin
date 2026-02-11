@@ -633,9 +633,11 @@ void UXBSoldierFollowComponent::UpdateLockedMode(float DeltaTime)
         const float LeaderYaw = FRotator::NormalizeAxis(Leader->GetActorRotation().Yaw);
         const float CurrentYaw = Owner->GetActorRotation().Yaw;
 
-        // ✨ 优化 - 使用标量插值代替 RInterpTo
-        const float NewYaw = FMath::FInterpTo(CurrentYaw, LeaderYaw, DeltaTime, LockedRotationInterpSpeed);
-        Owner->SetActorRotation(FRotator(0.0f, NewYaw, 0.0f));
+        // 🔧 修复 - 使用 RInterpTo 代替 FInterpTo，避免角度越过 ±180° 时绕远路旋转
+        const FRotator CurrentRot = Owner->GetActorRotation();
+        const FRotator TargetRot(0.0f, LeaderYaw, 0.0f);
+        const FRotator NewRot = FMath::RInterpTo(CurrentRot, TargetRot, DeltaTime, LockedRotationInterpSpeed);
+        Owner->SetActorRotation(FRotator(0.0f, NewRot.Yaw, 0.0f));
     }
 }
 /**
