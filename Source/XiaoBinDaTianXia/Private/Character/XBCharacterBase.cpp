@@ -1696,10 +1696,13 @@ void AXBCharacterBase::SetHiddenInBush(bool bEnableHidden) {
       // 设置隐身参数值
       for (UMaterialInstanceDynamic *DynMat : BushDynamicMaterials) {
         if (DynMat) {
-          DynMat->SetScalarParameterValue(BushHiddenParameterName,
-                                          BushHiddenParameterValue);
+          DynMat->SetScalarParameterValue(BushHiddenParameterName,BushHiddenParameterValue);
+          //设置材质亮度参数值
+          DynMat->SetScalarParameterValue("Height",0.2);
         }
       }
+
+    
 
       // 🔧 修改 - 草丛中对非友军不可见，仅对本地玩家做可见性过滤
       bool bShouldHideForLocal = false;
@@ -1720,6 +1723,13 @@ void AXBCharacterBase::SetHiddenInBush(bool bEnableHidden) {
         for (int32 i = 0; i < NumCached; ++i) {
           if (CachedOriginalMaterials[i]) {
             MeshComp->SetMaterial(i, CachedOriginalMaterials[i]);
+            // 设置隐身参数值
+            for (UMaterialInstanceDynamic *DynMat : BushDynamicMaterials) {
+              if (DynMat) {
+                //设置材质亮度参数值
+                DynMat->SetScalarParameterValue("Height",1);
+              }
+            }
           }
         }
         CachedOriginalMaterials.Empty();
