@@ -1601,7 +1601,9 @@ void AXBCharacterBase::RecallAllSoldiers()
  *         性能/架构注意事项: 仅在状态变化时执行，避免频繁材质更新
  */
 void AXBCharacterBase::SetHiddenInBush(bool bEnableHidden) {
-  if (bIsHiddenInBush == bEnableHidden) {
+  // 🔧 修复 - 仅在开启隐身且已开启时跳过（避免重复创建动态材质）
+  // 关闭隐身时始终执行，确保视觉状态一定恢复正确
+  if (bIsHiddenInBush == bEnableHidden && bEnableHidden) {
     return;
   }
 
@@ -1645,6 +1647,31 @@ void AXBCharacterBase::SetHiddenInBush(bool bEnableHidden) {
 
   // 🔧 修改 - 通过材质参数控制隐身效果
   if (USkeletalMeshComponent *MeshComp = GetMesh()) {
+    // 🔧 修复 - 进入/离开草丛时清空 HitFlash 动态材质，避免两套材质系统交叉干扰
+    // 说明：HitFlash 的 InitializeHitFlashMaterials 会用 SetMaterial 替换网格材质，
+    // 如果不清理，SetHiddenInBush 缓存的“原始材质”实际上是 HitFlash 动态材质，
+    // 导致草丛材质恢复时产生嵌套混乱
+    if (HitFlashDynamicMaterials.Num() > 0) {
+      // 清除 HitFlash 定时器，防止它在草丛状态中触发
+      GetWorldTimerManager().ClearTimer(HitFlashTimerHandle);
+
+      // 恢复初始材质（在 HitFlash 材质下面的真正原始材质）
+      for (int32 i = 0; i < HitFlashDynamicMaterials.Num(); ++i) {
+        if (HitFlashDynamicMaterials[i]) {
+          // 获取 HitFlash 动态材质的父材质（即真正的原始材质）
+          UMaterialInterface *ParentMaterial = HitFlashDynamicMaterials[i]->Parent;
+          if (ParentMaterial) {
+            MeshComp->SetMaterial(i, ParentMaterial);
+          }
+        }
+      }
+      HitFlashDynamicMaterials.Empty();
+
+      UE_LOG(LogXBCharacter, Log,
+             TEXT("主将 %s 草丛状态变化，已清理 HitFlash 材质并恢复原始材质"),
+             *GetName());
+    }
+
     if (bEnableHidden) {
       // 缓存原始材质并创建动态材质实例
       if (BushDynamicMaterials.Num() == 0) {

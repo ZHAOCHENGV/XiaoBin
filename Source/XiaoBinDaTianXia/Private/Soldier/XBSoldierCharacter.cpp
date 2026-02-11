@@ -2577,6 +2577,28 @@ void AXBSoldierCharacter::SetHiddenInBush(bool bEnableHidden) {
   bIsHiddenInBush = bEnableHidden;
 
   if (USkeletalMeshComponent *MeshComp = GetMesh()) {
+    // 🔧 修复 - 草丛状态变化时清空 HitFlash 动态材质，避免两套材质系统交叉干扰
+    // 说明：与主将 AXBCharacterBase::SetHiddenInBush 相同的修复
+    if (HitFlashDynamicMaterials.Num() > 0) {
+      // 清除 HitFlash 定时器
+      GetWorldTimerManager().ClearTimer(HitFlashTimerHandle);
+
+      // 恢复 HitFlash 下的真正原始材质
+      for (int32 i = 0; i < HitFlashDynamicMaterials.Num(); ++i) {
+        if (HitFlashDynamicMaterials[i]) {
+          UMaterialInterface *ParentMaterial = HitFlashDynamicMaterials[i]->Parent;
+          if (ParentMaterial) {
+            MeshComp->SetMaterial(i, ParentMaterial);
+          }
+        }
+      }
+      HitFlashDynamicMaterials.Empty();
+
+      UE_LOG(LogXBSoldier, Log,
+             TEXT("士兵 %s 草丛状态变化，已清理 HitFlash 材质并恢复原始材质"),
+             *GetName());
+    }
+
     if (bEnableHidden) {
       // 缓存原始材质并创建动态材质实例
       if (BushDynamicMaterials.Num() == 0) {

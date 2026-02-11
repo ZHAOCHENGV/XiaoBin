@@ -10,6 +10,7 @@
 
 #include "Environment/XBBushVolume.h"
 #include "Components/BoxComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "Character/XBCharacterBase.h"
 #include "Utils/XBLogCategories.h"
 
@@ -50,6 +51,18 @@ void AXBBushVolume::OnBushOverlapBegin(UPrimitiveComponent* OverlappedComponent,
         return;
     }
 
+    // 🔧 修复 - 只响应主将的胶囊体组件，防止磁场等附属组件产生额外计数
+    if (OtherComp != Leader->GetCapsuleComponent())
+    {
+        return;
+    }
+
+    // 🔧 修复 - 死亡状态不处理草丛隐身
+    if (Leader->IsDead())
+    {
+        return;
+    }
+
     OverlappingLeaders.Add(Leader);
 
     // 🔧 修复 - 使用引用计数机制，支持连续穿过多个草丛
@@ -63,6 +76,12 @@ void AXBBushVolume::OnBushOverlapEnd(UPrimitiveComponent* OverlappedComponent, A
 {
     AXBCharacterBase* Leader = Cast<AXBCharacterBase>(OtherActor);
     if (!Leader)
+    {
+        return;
+    }
+
+    // 🔧 修复 - 只响应主将的胶囊体组件，与 BeginOverlap 保持一致
+    if (OtherComp != Leader->GetCapsuleComponent())
     {
         return;
     }
