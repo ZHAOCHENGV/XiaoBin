@@ -2625,6 +2625,9 @@ void AXBSoldierCharacter::SetHiddenInBush(bool bEnableHidden) {
         if (DynMat) {
           DynMat->SetScalarParameterValue(BushHiddenParameterName,
                                           BushHiddenParameterValue);
+          // 🔧 修改 - 使用配置的亮度参数名和值
+          DynMat->SetScalarParameterValue(BushHeightParameterName, 
+                                          BushHiddenHeightValue);
         }
       }
 
@@ -2644,6 +2647,12 @@ void AXBSoldierCharacter::SetHiddenInBush(bool bEnableHidden) {
         for (int32 i = 0; i < NumCached; ++i) {
           if (CachedOriginalMaterials[i]) {
             MeshComp->SetMaterial(i, CachedOriginalMaterials[i]);
+
+            // 🔧 修改 - 如果原始材质是动态材质，尝试重置亮度参数为正常值
+            // 若原始材质是静态实例，则假设其默认值即为正常值
+            if (UMaterialInstanceDynamic* OriginalDynMat = Cast<UMaterialInstanceDynamic>(CachedOriginalMaterials[i])) {
+               OriginalDynMat->SetScalarParameterValue(BushHeightParameterName, BushVisibleHeightValue);
+            }
           }
         }
         CachedOriginalMaterials.Empty();

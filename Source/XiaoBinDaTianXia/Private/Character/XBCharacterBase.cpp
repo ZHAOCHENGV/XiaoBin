@@ -1696,9 +1696,11 @@ void AXBCharacterBase::SetHiddenInBush(bool bEnableHidden) {
       // 设置隐身参数值
       for (UMaterialInstanceDynamic *DynMat : BushDynamicMaterials) {
         if (DynMat) {
-          DynMat->SetScalarParameterValue(BushHiddenParameterName,BushHiddenParameterValue);
-          //设置材质亮度参数值
-          DynMat->SetScalarParameterValue("Height",0.2);
+          DynMat->SetScalarParameterValue(BushHiddenParameterName,
+                                          BushHiddenParameterValue);
+          // 🔧 修改 - 使用配置的亮度参数名和值
+          DynMat->SetScalarParameterValue(BushHeightParameterName, 
+                                          BushHiddenHeightValue);
         }
       }
 
@@ -1723,12 +1725,11 @@ void AXBCharacterBase::SetHiddenInBush(bool bEnableHidden) {
         for (int32 i = 0; i < NumCached; ++i) {
           if (CachedOriginalMaterials[i]) {
             MeshComp->SetMaterial(i, CachedOriginalMaterials[i]);
-            // 设置隐身参数值
-            for (UMaterialInstanceDynamic *DynMat : BushDynamicMaterials) {
-              if (DynMat) {
-                //设置材质亮度参数值
-                DynMat->SetScalarParameterValue("Height",1);
-              }
+            
+            // 🔧 修改 - 如果原始材质是动态材质，尝试重置亮度参数为正常值
+            // 若原始材质是静态实例，则假设其默认值即为正常值
+            if (UMaterialInstanceDynamic* OriginalDynMat = Cast<UMaterialInstanceDynamic>(CachedOriginalMaterials[i])) {
+               OriginalDynMat->SetScalarParameterValue(BushHeightParameterName, BushVisibleHeightValue);
             }
           }
         }

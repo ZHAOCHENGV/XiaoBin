@@ -913,6 +913,21 @@ protected:
             meta = (DisplayName = "正常参数值", ClampMin = "0.0", ClampMax = "1.0"))
   float BushVisibleParameterValue = 1.0f;
 
+  /** 草丛隐身时修改的亮度材质参数名称 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "草丛", 
+            meta = (DisplayName = "亮度材质参数名"))
+  FName BushHeightParameterName = FName("Height");
+
+  /** 隐身状态时的亮度参数值 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "草丛", 
+            meta = (DisplayName = "隐身亮度值", ClampMin = "0.0", ClampMax = "1.0"))
+  float BushHiddenHeightValue = 0.2f;
+
+  /** 正常状态时的亮度参数值 */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "草丛", 
+            meta = (DisplayName = "正常亮度值", ClampMin = "0.0", ClampMax = "1.0"))
+  float BushVisibleHeightValue = 1.0f;
+
   UPROPERTY(BlueprintReadOnly, Category = "草丛",
             meta = (DisplayName = "是否草丛隐身"))
   bool bIsHiddenInBush = false;
